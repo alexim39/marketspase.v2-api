@@ -1,0 +1,49 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { SignupSchema, VerifyEmailSchema, ResendVerificationSchema } from './Auth.validator.js';
+
+const openSignup = {
+  name: 'Ada',
+  surname: 'Lovelace',
+  email: 'ADA@example.com',
+  password: 'secret123',
+  phone: '08012345678',
+  tnc: true,
+};
+
+describe('SignupSchema', () => {
+  it('accepts open signup without a reservation code', () => {
+    const parsed = SignupSchema.parse(openSignup);
+    assert.equal(parsed.email, 'ada@example.com');
+    assert.equal(parsed.tnc, true);
+    assert.equal('reservationCode' in parsed, false);
+  });
+
+  it('still accepts a legacy reservation code when supplied', () => {
+    const parsed = SignupSchema.parse({ ...openSignup, reservationCode: 'ABC123' });
+    assert.equal(parsed.reservationCode, 'ABC123');
+  });
+
+  it('requires explicit terms consent', () => {
+    assert.throws(() => SignupSchema.parse({ ...openSignup, tnc: false }), /Terms of Service/);
+    assert.throws(() => {
+      const { tnc, ...rest } = openSignup;
+      SignupSchema.parse(rest);
+    });
+  });
+});
+
+describe('VerifyEmailSchema', () => {
+  it('accepts 64-character hex tokens only', () => {
+    assert.equal(VerifyEmailSchema.parse({ token: 'a'.repeat(64) }).token.length, 64);
+    assert.throws(() => VerifyEmailSchema.parse({ token: 'short' }));
+    assert.throws(() => VerifyEmailSchema.parse({ token: 'g'.repeat(64) }));
+  });
+});
+
+describe('ResendVerificationSchema', () => {
+  it('normalizes email casing and rejects invalid addresses', () => {
+    assert.equal(ResendVerificationSchema.parse({ email: 'ADA@example.com' }).email, 'ada@example.com');
+    assert.throws(() => ResendVerificationSchema.parse({ email: 'not-an-email' }));
+  });
+});
