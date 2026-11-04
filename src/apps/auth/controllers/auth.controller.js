@@ -1,6 +1,7 @@
 //import { PartnersModel } from "../../partner/models/partner.model.js";
 import bcrypt from "bcryptjs";
-import { sendEmail } from "../../../services/emailService.js";
+import { sendEmail, appBaseUrl } from "../../../services/emailService.js";
+import { sessionCookieFlags } from "../../../modules/identity-access/interface/Auth.controller.js";
 import crypto from 'crypto';
 import jwt from "jsonwebtoken";
 import dotenv  from "dotenv"
@@ -181,12 +182,7 @@ export const signin = async (req, res) => {
       await clearRevocations(String(user._id)).catch(() => null);
     } catch { /* revocation store unavailable — cookie session still applies */ }
 
-    res.cookie("jwt", token, {
-      httpOnly: true,
-      sameSite: "none",
-      secure: true,
-      maxAge: 24 * 60 * 60 * 1000,
-    });
+    res.cookie("jwt", token, sessionCookieFlags());
 
     // Bearer fallback in the body (additive): cross-site cookie blocking
     // can drop the Set-Cookie while login succeeds — the SPA replays the
@@ -200,7 +196,7 @@ export const signin = async (req, res) => {
 // Logout
 export const partnerSignout = async (req, res) => {
   try {
-    res.cookie("jwt", "", { maxAge: 0, httpOnly: true, sameSite: "none", secure: true });
+    res.cookie("jwt", "", { ...sessionCookieFlags(), maxAge: 0 });
     res.status(200).json({ message: "Logged out successfully", success: true });
   } catch (error) {
     res.status(500).json({ message: "Logout failed", error: error.message, success: false });
@@ -236,34 +232,19 @@ export const requestPasswordReset  = async (req, res) => {
     // Save the updated user record
     //await partner.save();
 
-    // Create reset URL
-    const resetUrl = `https://c21fg.online/partner/reset-password?token=${resetToken}`;
+    // Create reset URL for the public platform (never a legacy host).
+    const resetUrl = `${appBaseUrl()}/partner/reset-password?token=${resetToken}`;
 
-    // Create a Nodemailer transporter
-    const transporter = nodemailer.createTransport({
-      host: 'async.ng',
-      secure: true,
-      port: 465,
-      auth: {
-        user: 'alex.i@async.ng', // replace with your email
-        pass: process.env.EMAILPASS, // replace with your password
-      },
-    });
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Password Reset Request",
-      html: `
-        <h2>Password Reset Request</h2>
-        <p>You requested to reset your password. Click the link below to reset it:</p>
-        <a href="${resetUrl}" target="_blank">${resetUrl}</a>
-        <p>This link will expire in 45 minutes.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
+    const mail = await sendEmail(
+      email,
+      "Password Reset Request",
+      `<p>You requested to reset your password. This link expires in 1 hour.</p>
+       <p>If you did not request this, please ignore this email.</p>`,
+      { title: "Password Reset Request", actionUrl: resetUrl, actionLabel: "Reset password" },
+    );
+    if (!mail.sent) {
+      return res.status(502).json({ message: "Could not send the reset email. Please try again later." });
+    }
 
     res.status(200).json({
       message: "Password reset link sent to your email.",
@@ -289,7 +270,7 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ message: "New password is required." });
     }
 
-    const decoded = jwt.verify(token, SECRET_KEY);
+    const decoded = jwt.verify(token, process.env.JWTTOKENSECRET);
     const partner = await PartnersModel.findOne({ email: decoded.email });
     if (!partner) return res.status(404).send('Partner not found');
 

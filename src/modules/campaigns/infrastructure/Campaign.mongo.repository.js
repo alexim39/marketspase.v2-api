@@ -327,6 +327,50 @@ export class MongoCampaignRepository {
     };
   }
 
+  async attribution(limit = 100) {
+    const size = Math.min(Math.max(Number(limit) || 100, 1), 200);
+    const rows = await PartnersModel.aggregate([
+      { $match: { campaignCode: { $type: 'string', $nin: [''] } } },
+      {
+        $group: {
+          _id: '$campaignCode',
+          signups: { $sum: 1 },
+          activated: { $sum: { $cond: [{ $eq: ['$accountState', 'partner'] }, 1, 0] } },
+          kycVerified: { $sum: { $cond: [{ $eq: ['$kycStatus', 'verified'] }, 1, 0] } },
+          lastSignupAt: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { signups: -1, _id: 1 } },
+      { $limit: size },
+    ]);
+
+    const codes = rows.map((row) => String(row._id));
+    const campaigns = codes.length
+      ? await GrowthCampaignModel.find({ trackingCode: { $in: codes } })
+        .select('trackingCode name status ownerId')
+        .lean()
+      : [];
+    const byCode = new Map(campaigns.map((campaign) => [campaign.trackingCode, campaign]));
+
+    return rows.map((row) => {
+      const code = String(row._id);
+      const campaign = byCode.get(code);
+      const signups = Number(row.signups ?? 0);
+      const activated = Number(row.activated ?? 0);
+      return {
+        campaignCode: code,
+        campaign: campaign
+          ? { id: String(campaign._id), name: campaign.name, status: campaign.status }
+          : null,
+        signups,
+        activated,
+        kycVerified: Number(row.kycVerified ?? 0),
+        activationRate: signups ? round((activated / signups) * 100) : 0,
+        lastSignupAt: row.lastSignupAt ?? null,
+      };
+    });
+  }
+
   async activateCampaign({ campaignId, adminId, now = new Date() }) {
     const campaign = await this.findAdminCampaign(campaignId);
     if (campaign.status !== 'Pending') throw new ConflictException('Only pending campaigns can be activated');

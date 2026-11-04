@@ -10,6 +10,8 @@ export const SignupSchema = z.object({
   phone: z.string().trim().min(7).max(20),
   // Optional legacy transition field; open signup does not require it.
   reservationCode: z.string().trim().min(3).max(64).optional(),
+  // Acquisition attribution: campaign tracking code from /join?campaign=...
+  campaign: z.string().trim().min(3).max(64).optional(),
   tnc: z.boolean().refine((v) => v === true, {
     message: 'You must accept the Terms of Service and Privacy Policy',
   }),

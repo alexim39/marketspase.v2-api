@@ -41,6 +41,13 @@ const partnersSchema = mongoose.Schema(
     reservationCode: {
       type: String,
     },
+    // Acquisition attribution — growth campaign tracking code (gc_...).
+    campaignCode: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
     emailVerified: {
       type: Boolean,
     },

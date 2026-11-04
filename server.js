@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import path from 'path';
+import path from 'node:path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import AuthRouter from './src/apps/auth/index.js';
@@ -21,7 +21,6 @@ import EmailRouter from './src/apps/email/index.js';
 import SmsRouter from './src/apps/sms/index.js';
 import TicketRouter from './src/apps/ticket/index.js';
 import TeamsRouter from './src/apps/teams/index.js';
-import SettingsRouter from './src/apps/settings/index.js';
 
 // Strangler Fig: DDD slices (new) mounted alongside legacy routers
 import TicketV1Router from './src/modules/support-ticketing/index.js';
@@ -114,10 +113,8 @@ app.use(cors({
         'https://marketspase.com',
         'https://www.marketspase.com',
         'https://survey.c21fg.online',
-        'http://survey.c21fg.online',
         'https://shop.c21fg.online',
         'https://diamondproject.c21fg.online',
-        'https://prolificwomen.c21fg.online',
         'https://prolificwomen.c21fg.online',
         ...extraOrigins,
     ]
@@ -138,14 +135,8 @@ app.use('/emailSubscription', EmailSubscriptionRouter);
 
 app.use('/emails', EmailRouter);
 app.use('/sms', SmsRouter);
-// RETIRED: legacy disk upload (POST /image/profile/:userId) had no auth,
-// no file-type/size limits and wrote to local disk. Profile photos go
-// through session-owned POST /v1/settings/profile-image (Cloudinary).
-// The /uploads static serve below stays for previously stored filenames.
-// app.use('/image', ProfileImageRouter);
 app.use('/ticket', TicketRouter);
 app.use('/team', TeamsRouter);
-app.use('/settings', SettingsRouter);
 /* DDD v1 (new, strangler) — same data, validated boundary */
 app.use('/v1/tickets', TicketV1Router);
 app.use('/v1/auth', AuthV1Router);
@@ -203,6 +194,10 @@ app.use('/v1/admin/prolificwomen', ProlificWomanAdminLeadRouter);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Serve static files from the "uploads" directory
+// RETIRED: legacy disk upload (POST /image/profile/:userId) had no auth,
+// no file-type/size limits and wrote to local disk. Profile photos go
+// through session-owned POST /v1/settings/profile-image (Cloudinary).
+// This static serve stays for previously stored filenames.
 app.use('/uploads', express.static(path.join(__dirname, 'src', 'uploads')));
 
 /* Central domain-error map for v1 slices (legacy routes keep their own try/catch) */

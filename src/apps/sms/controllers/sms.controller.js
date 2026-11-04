@@ -1,67 +1,7 @@
 import {ParterSMSModel} from '../models/sms.model.js';
 import { PartnersModel } from '../../partner/models/partner.model.js';
 import {TransactionModel} from '../../transaction/models/transaction.model.js';
-import mongoose from 'mongoose';  
 
-
-// Save SMS details  
-export const saveSMSDetails = async (req, res) => {  
-    //console.log(req.body);  
-    try {  
-        // Validate incoming request data  
-        const { smsBody, transactionId, partner, prospect, status } = req.body;  
-
-        // Initialize prospect as an empty array  
-        let prospectArray = [];  
-
-        if (prospect) {  
-            if (Array.isArray(prospect)) {  
-                // If prospect is an array, validate and store string entries  
-                prospectArray = prospect.filter(item => typeof item === 'string'); // Keep only string entries  
-            } else if (typeof prospect === 'string') {  
-                // If prospect is a single string, wrap it in an array  
-                prospectArray = [prospect];  
-            }  
-        } else {  
-            // Handle the case when prospect is undefined  
-            console.warn("Prospect is undefined.");  
-        }   
-
-        // Ensure partner's ObjectId is valid before proceeding  
-        if (!partner || !mongoose.Types.ObjectId.isValid(partner)) {  
-            return res.status(400).json({ 
-                message: "Invalid partner ID!",
-                sucess: false,
-            });  
-        }  
-
-        // Build SMS details object  
-        const smsDetails = {  
-            smsBody,  
-            transactionId,  
-            partnerId: partner,  
-            prospect: prospectArray.length > 0 ? prospectArray : undefined, // Store the prospect array directly  
-            status  
-        };  
-
-        // Create and save SMS entry  
-        const saveSMS = await ParterSMSModel.create(smsDetails);  
-
-        // Return response  
-        res.status(200).json({
-            data: saveSMS,
-            message: 'SMS record saved successfully!',
-            sucess: true,
-        });  
-
-    } catch (error) {  
-        res.status(500).json({  
-            error: error.message,
-            message: 'Error saving SMS details',
-            sucess: false,
-        });  
-    }  
-};
 
 // Route handler to fetch all SMS by createdBy and the associated transactions  
 export const getSMSCreatedBy = async (req, res) => {  

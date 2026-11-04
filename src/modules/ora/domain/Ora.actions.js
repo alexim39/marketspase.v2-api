@@ -14,6 +14,12 @@
 
 export const ALLOWED_ACTION_PREFIXES = [
   '/dashboard',
+  '/dashboard/pipeline',
+  '/dashboard/campaigns',
+  '/dashboard/team',
+  '/dashboard/wallet',
+  '/dashboard/learn',
+  '/dashboard/compensation',
   '/dashboard/prospects',
   '/dashboard/goals',
   '/dashboard/community',
@@ -21,7 +27,6 @@ export const ALLOWED_ACTION_PREFIXES = [
   '/dashboard/training',
   '/dashboard/notifications',
   '/dashboard/messages',
-  '/dashboard/earnings',
   '/dashboard/insights',
   '/dashboard/progress',
 ];

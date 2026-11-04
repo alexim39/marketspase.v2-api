@@ -134,7 +134,7 @@ export function buildReleaseAlerts(entries, { lookbackDays = 30, now = new Date(
       body: `Level ${e.level ?? '?'} on ${e.buyerName || e.buyerUsername || 'a purchase'}`,
       icon: 'paid',
       tag: 'Payout',
-      link: `/dashboard/settings/billing/commissions`,
+      link: '/dashboard/compensation',
       at,
     }));
   }

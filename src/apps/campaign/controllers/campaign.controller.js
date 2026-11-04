@@ -88,7 +88,7 @@ const notifyOwner = async (ownerId, { title, body, campaignId, status }) => {
       title,
       body,
       icon: 'campaign',
-      link: '/dashboard/tools/campaigns/manage',
+      link: '/dashboard/campaigns',
       key: `campaign:${campaignId}:${status}`,
     }).catch(() => null);
     const owner = await PartnersModel.findById(ownerId).select('email name surname username').lean().catch(() => null);

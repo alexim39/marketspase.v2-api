@@ -12,6 +12,7 @@ import {
   CancelGrowthCampaignUseCase,
   CreateGrowthCampaignUseCase,
   EndGrowthCampaignUseCase,
+  GetCampaignAttributionUseCase,
   GetCampaignQueueUseCase,
   GetMyAllocationUseCase,
   GetMyGrowthCampaignUseCase,
@@ -133,6 +134,7 @@ export const buildAdminCampaignRouter = (deps = {}) => {
   const pause = deps.pause ?? new PauseGrowthCampaignUseCase({ repo });
   const resume = deps.resume ?? new ResumeGrowthCampaignUseCase({ repo });
   const queue = deps.queue ?? new GetCampaignQueueUseCase({ repo });
+  const attribution = deps.attribution ?? new GetCampaignAttributionUseCase({ repo });
   const allocate = deps.allocate ?? new AllocatePartnersUseCase({ repo, events: deps.events });
   const auth = deps.auth ?? requireAuth;
   const admin = deps.admin ?? requireRole('admin');
@@ -153,6 +155,12 @@ export const buildAdminCampaignRouter = (deps = {}) => {
   router.get('/queue', validate({ query: QueueQuerySchema }), asyncHandler(async (req, res) => {
     const data = await queue.execute(req.validated.query);
     return sendSuccess(res, { data: data.data, meta: data.meta });
+  }));
+
+  router.get('/attribution', asyncHandler(async (req, res) => {
+    const limit = Number(req.query?.limit ?? 100);
+    const data = await attribution.execute({ limit });
+    return sendSuccess(res, { data });
   }));
 
   router.post('/allocate', validate({ body: AllocatePartnersSchema }), asyncHandler(async (req, res) => {

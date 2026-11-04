@@ -33,6 +33,11 @@ export const makeBillingController = (uc) => ({
     res.status(200).json({ message: 'Account resolved successfully', data, success: true });
   }),
 
+  listBanks: asyncHandler(async (req, res) => {
+    const data = await uc.listBanks.execute();
+    res.status(200).json({ message: 'Banks retrieved successfully', data, success: true });
+  }),
+
   accrue: asyncHandler(async (req, res) => {
     const data = await uc.accrue.execute({ cartId: param(req, 'cartId') });
     res.status(200).json({ message: 'Commissions accrued successfully', data, success: true });

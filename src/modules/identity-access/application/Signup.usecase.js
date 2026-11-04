@@ -82,6 +82,7 @@ export class SignupUseCase {
             accountState: 'member',
             kycStatus: 'not_started',
             ...(entity.reservationCode ? { reservationCode: entity.reservationCode } : {}),
+            ...(entity.campaignCode ? { campaignCode: entity.campaignCode } : {}),
           ...(partnerOf ? { partnerOf } : {}),
           ...(issued ? {
             emailVerified: false,

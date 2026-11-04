@@ -11,6 +11,7 @@ import {
 import {
   GetEarningsTrendUseCase, GetMyCommissionsUseCase, GetPendingCartsUseCase, GetPerformanceUseCase,
   ResolveAccountUseCase,
+  ListBanksUseCase,
 } from '../application/Commission.queries.js';
 import { GetPlanUseCase, UpdatePlanUseCase } from '../application/Commission.plan.js';
 import { MongoCommissionLedger, MongoOrderReader } from '../infrastructure/Billing.mongo.repository.js';
@@ -44,6 +45,7 @@ export const buildBillingRouter = (deps = {}) => {
     performance: new GetPerformanceUseCase({ ledger, orders, network, partners }),
     trends: new GetEarningsTrendUseCase({ ledger }),
     resolveAccount: new ResolveAccountUseCase({ http: deps.http ?? axios }),
+    listBanks: new ListBanksUseCase({ http: deps.http ?? axios }),
     accrue: new AccrueCommissionsUseCase({ ledger, orders, network }),
     pendingCarts: new GetPendingCartsUseCase({ ledger }),
     release: new ReleaseCartCommissionsUseCase({ ledger, orders }),
@@ -61,6 +63,8 @@ export const buildBillingRouter = (deps = {}) => {
   router.get('/trends', validate({ query: TrendsQuery }), c.trends);
   // Bank account holder lookup — proxied so the Paystack secret never ships to clients.
   router.get('/resolve-account', validate({ query: ResolveQuery }), c.resolveAccount);
+  // Bank directory — proxied so the browser never calls Paystack directly.
+  router.get('/banks', c.listBanks);
   // Called by checkout after legacy order success (idempotent on retry).
   router.post('/accrue/:cartId', validate({ params: CartIdParam }), c.accrue);
 

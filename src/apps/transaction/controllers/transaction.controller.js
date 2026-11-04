@@ -1,5 +1,4 @@
 import { TransactionModel } from "../models/transaction.model.js";
-import axios from "axios";
 import { PartnersModel } from '../../partner/models/partner.model.js';
 import { sendEmail } from "../../../services/emailService.js";
 import { ownerEmailTemplate } from '../services/email/withdrawal/ownerTemplate.js';
@@ -22,7 +21,7 @@ const notifyPartner = async (ownerId, { title, body, key }) => {
       title,
       body,
       icon: 'payments',
-      link: '/dashboard/earnings',
+      link: '/dashboard/compensation',
       key,
     }).catch(() => null);
     const { PartnersModel } = await import('../../partner/models/partner.model.js');
@@ -31,83 +30,11 @@ const notifyPartner = async (ownerId, { title, body, key }) => {
   } catch { /* notifications never fail admin actions */ }
 };
 
-// confirm payment
-export const confirmPayment = async (req, res) => {
-  const { reference, partnerId } = req.body;
-  const paymentMethod = "Paystack";
-
-  // Step 1: Verify the transaction with Paystack
-  try {
-    const response = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACKTOKEN}`, // Replace with your Paystack secret key
-        },
-      }
-    );
-
-    const transactionData = response.data.data;
-    if (transactionData.status !== "success") {
-      return res.status(400).json({ 
-        message: "Transaction not successful",
-        success: false,
-    });
-    }
-
-    // Step 2: Find the user and update their balance
-    // Session-owned: a verified payment credits the payer's own wallet —
-    // a body partnerId pointing elsewhere is rejected (no credit gifting).
-    const sessionId = req.auth?.partnerId;
-    if (!sessionId || String(partnerId) !== String(sessionId)) {
-      return res.status(403).json({
-        message: 'Payment can only credit your own wallet',
-        success: false,
-      });
-    }
-    const partner = await PartnersModel.findById(sessionId);
-    if (!partner) {
-      return res.status(404).json({ 
-            message: "Partner not found",
-            success: false,
-        });
-    }
-
-    const amountInNaira = transactionData.amount / 100; // Convert kobo to Naira
-    partner.balance += amountInNaira;
-    await partner.save();
-
-    // Step 3: Save the transaction record
-    const transaction = new TransactionModel({
-      partnerId: partner._id,
-      amount: amountInNaira,
-      reference,
-      paymentMethod,
-      transactionType: "Credit",
-      status: transactionData.status,
-    });
-    await transaction.save();
-
-    return res.status(200).json({ 
-        message: "Payment verified and balance updated", 
-        partner,
-        success: true,
-    });
-  } catch (error) {
-    return res.status(500).json({ 
-        message: "Payment verification failed",
-        success: false,
-        error: error.message,
-     });
-  }
-};
-
 export const getTransactions = async (req, res) => {
   try {
     // Session-owned: partners read their own history only.
     const partnerId = req.auth?.partnerId;
 
-    // Find transactions where partnerId matches the provided ID
     const transaction = await TransactionModel.find({ partnerId });
 
     res.status(200).json({
@@ -173,70 +100,6 @@ export const singleSMSCharge = async (req, res) => {
       });
     } else {
       return res.status(400).json({
-        message: "Insufficient balance for transaction",
-        success: false,
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      message: "An error occurred while processing the charge.",
-      error: error.message,
-      success: false,
-    });
-  }
-};
-
-// Function to charge the partner for bulk sms
-export const bulkSMSCharge = async (req, res) => {
-  // Canonical outreach rate (see Outreach.entity) — never a local literal.
-
-  //console.log('body== ',req.body)
-  const { numberOfContacts, pages } = req.body;
-    // Session-owned charge (see singleSMSCharge) — body partnerId ignored.
-    const partnerId = req.auth?.partnerId;
-
-  try {
-    // Find the partner by ID
-    const partner = await PartnersModel.findById(partnerId);
-    if (!partner) {
-      return res.status(400).json({
-        message: "Partner not found",
-        success: false,
-      });
-    }
-
-    // get cost
-    const smsCostPerPage = pages * SMS_CHARGE;
-    const totalCost = smsCostPerPage * numberOfContacts;
-
-    // Check if the partner has sufficient balance
-    if (partner.balance >= totalCost) {
-      // Deduct the SMS charge
-      partner.balance -= totalCost;
-
-      // Save the updated partner balance
-      await partner.save();
-
-      // Record the transaction
-      const transaction = new TransactionModel({
-        partnerId: partner._id,
-        amount: totalCost,
-        status: "Completed",
-        paymentMethod: "SMS Charge",
-        transactionType: "Debit",
-        //reference: `Charge for SMS on ${new Date().toISOString()}`,
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString(), // Generate a random 9-digit number as string, ensuring it's always 9 digits
-      });
-
-      await transaction.save();
-
-      res.status(200).json({
-        message: "Charge successful. Transaction recorded.",
-        data: transaction,
-        success: true,
-      });
-    } else {
-      return res.status(401).json({
         message: "Insufficient balance for transaction",
         success: false,
       });

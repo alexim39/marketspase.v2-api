@@ -28,7 +28,7 @@ export const buildCampaignExpiryDueJob = (deps = {}) => {
         title,
         body,
         icon: 'campaign',
-        link: '/dashboard/tools/campaigns/manage',
+        link: '/dashboard/campaigns',
         key: `campaign-ended:${Date.now()}`,
       });
     } catch { /* in-app is best-effort */ }

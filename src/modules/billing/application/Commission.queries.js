@@ -35,6 +35,36 @@ export class GetMyCommissionsUseCase {  /** @param {{ledger}} deps */
 }
 
 /**
+ * Paystack bank directory — proxied server-side so production browsers never
+ * depend on Paystack CORS and the secret key stays on the server.
+ */
+export class ListBanksUseCase {
+  /** @param {{http}} deps (axios-compatible; stubbed in tests) */
+  constructor({ http }) {
+    this.http = http;
+  }
+
+  async execute() {
+    const secret = process.env.PAYSTACKTOKEN;
+    if (!secret) throw new AppError('Payment provider not configured', 500, 'CONFIG_ERROR');
+    let data;
+    try {
+      const response = await this.http.get('https://api.paystack.co/bank', {
+        params: { currency: 'NGN', perPage: 100 },
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      data = response?.data?.data ?? response?.data;
+    } catch {
+      throw new AppError('Could not load the bank list', 502, 'PROVIDER_ERROR');
+    }
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((bank) => ({ name: String(bank?.name ?? '').trim(), code: String(bank?.code ?? '').trim() }))
+      .filter((bank) => bank.name && bank.code);
+  }
+}
+
+/**
  * Resolve a bank account holder via Paystack — the secret lives server-side
  * (PAYSTACKTOKEN); the client must never call api.paystack.co directly.
  */

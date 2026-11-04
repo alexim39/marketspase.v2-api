@@ -56,6 +56,10 @@ export const createSignupEntity = (input) => {
   if (reservationCode) {
     entity.reservationCode = text(reservationCode, 'reservation code', { min: 3, max: 64 });
   }
+  const campaign = String(input.campaign ?? '').trim();
+  if (campaign) {
+    entity.campaignCode = text(campaign, 'campaign', { min: 3, max: 64 });
+  }
   return entity;
 };
 

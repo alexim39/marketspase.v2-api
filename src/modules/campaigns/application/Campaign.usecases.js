@@ -81,6 +81,16 @@ export class ListAdminGrowthCampaignsUseCase {
   }
 }
 
+export class GetCampaignAttributionUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute({ limit } = {}) {
+    return this.repo.attribution(limit);
+  }
+}
+
 export class ActivateGrowthCampaignUseCase {
   constructor({ repo, events = domainEvents }) {
     this.repo = repo;
