@@ -112,20 +112,63 @@ export const decideOrder = async (req, res) => {
   }
 };
 
+const cleanText = (value, max) => String(value ?? '').trim().slice(0, max);
+
+const cleanNumber = (value, label, { min = 0, allowNull = false } = {}) => {
+  if (allowNull && (value === null || value === '')) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min) {
+    throw new Error(`${label} must be ${min} or more`);
+  }
+  return Math.round(number * 100) / 100;
+};
+
+const cleanStringList = (value, { maxItems = 8, maxLength = 300 } = {}) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => cleanText(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+};
+
 const cleanProductFields = (body = {}) => {
   const out = {};
   if (body.name !== undefined) {
-    const name = String(body.name).trim().slice(0, 200);
+    const name = cleanText(body.name, 200);
     if (!name) throw new Error('Product name is required');
     out.name = name;
   }
   if (body.price !== undefined) {
-    const price = Number(body.price);
-    if (!Number.isFinite(price) || price < 0) throw new Error('Product price must be zero or more');
-    out.price = Math.round(price * 100) / 100;
+    out.price = cleanNumber(body.price, 'Product price');
   }
-  if (body.desc !== undefined) out.desc = String(body.desc).slice(0, 2000);
-  if (body.img !== undefined) out.img = String(body.img).slice(0, 500);
+  if (body.sku !== undefined) out.sku = cleanText(body.sku, 64);
+  if (body.desc !== undefined) out.desc = String(body.desc).slice(0, 8000);
+  if (body.img !== undefined) out.img = cleanText(body.img, 500);
+  if (body.gallery !== undefined) out.gallery = cleanStringList(body.gallery, { maxItems: 8, maxLength: 500 });
+  if (body.category !== undefined) out.category = cleanText(body.category, 80) || 'Essentials';
+  if (body.shortDesc !== undefined) out.shortDesc = cleanText(body.shortDesc, 240);
+  if (body.benefits !== undefined) out.benefits = cleanStringList(body.benefits, { maxItems: 8, maxLength: 200 });
+  if (body.howToUse !== undefined) out.howToUse = cleanText(body.howToUse, 1200);
+  if (body.deliveryNote !== undefined) out.deliveryNote = cleanText(body.deliveryNote, 1200);
+  if (body.cogs !== undefined) out.cogs = cleanNumber(body.cogs, 'Cost price');
+  if (body.partnerPrice !== undefined) out.partnerPrice = cleanNumber(body.partnerPrice, 'Partner price');
+  if (body.retailPrice !== undefined) out.retailPrice = cleanNumber(body.retailPrice, 'Retail price');
+  if (body.stock !== undefined) {
+    out.stock = body.stock === null ? null : cleanNumber(body.stock, 'Stock');
+  }
+  if (body.status !== undefined) {
+    if (!['active', 'inactive', 'archived'].includes(body.status)) {
+      throw new Error('Product status must be active, inactive or archived');
+    }
+    out.status = body.status;
+  }
+  if (body.commissionable !== undefined) out.commissionable = Boolean(body.commissionable);
+  if (body.featured !== undefined) out.featured = Boolean(body.featured);
+  if (body.sortOrder !== undefined) {
+    const order = Number(body.sortOrder);
+    if (!Number.isFinite(order)) throw new Error('Sort order must be a number');
+    out.sortOrder = Math.round(order);
+  }
   return out;
 };
 
@@ -177,11 +220,12 @@ export const adminUpdateProduct = async (req, res) => {
 // get all products
 export const getAllProducts = async (req, res) => {
     try {
-      //const { createdBy } = req.params; // Assuming createdBy is passed as a query parameter
-  
-      // get products
-      const products = await ProductModel.find({});
-  
+      // Hidden rows stay in the database for order history, but never show
+      // in the member/partner catalog.
+      const products = await ProductModel.find({
+        status: { $nin: ['inactive', 'archived'] },
+      }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+
       res.status(200).json({
         message: 'Products retrieved successfully!',
         data: products,
@@ -190,12 +234,40 @@ export const getAllProducts = async (req, res) => {
 
     } catch (error) {
       res.status(500).json({
-        message: 'Error retrieving Ads',
+        message: 'Error retrieving products',
         error: error.message,
         success: false,
       });
     }
   };
+
+// get one product for the full product page
+export const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!/^[a-fA-F0-9]{24}$/.test(String(id))) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
+    const product = await ProductModel.findOne({
+      _id: id,
+      status: { $nin: ['inactive', 'archived'] },
+    }).lean();
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
+    res.status(200).json({
+      message: 'Product retrieved successfully!',
+      data: product,
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error retrieving product',
+      error: error.message,
+      success: false,
+    });
+  }
+};
 
 
 // Update a product

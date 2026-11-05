@@ -1,33 +1,101 @@
 import mongoose from 'mongoose';
 
 
-/* Schema*/
+/* Schema
+ * Catalog products. `price` remains the single checkout price so legacy
+ * orders and wallet debits are untouched; the extra commerce fields are
+ * optional and are only used to present a richer shop.
+ */
 const productSchema = mongoose.Schema(
     {
-    
+        sku: {
+            type: String,
+            trim: true,
+        },
         img: {
             type: String,
-            //required: [true, "Please enter image"]
+        },
+        gallery: {
+            type: [String],
+            default: [],
         },
         name: {
             type: String,
-            //required: [true, "Please enter name"]
+        },
+        category: {
+            type: String,
+            trim: true,
+            default: 'Essentials',
+        },
+        shortDesc: {
+            type: String,
+            trim: true,
+            default: '',
         },
         price: {
             type: Number,
-            //required: [true, "Please enter price"]
+        },
+        cogs: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        partnerPrice: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        retailPrice: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        stock: {
+            type: Number,
+            min: 0,
+            default: null,
+        },
+        status: {
+            type: String,
+            enum: ['active', 'inactive', 'archived'],
+            default: 'active',
+        },
+        commissionable: {
+            type: Boolean,
+            default: true,
+        },
+        featured: {
+            type: Boolean,
+            default: false,
+        },
+        sortOrder: {
+            type: Number,
+            default: 0,
+        },
+        benefits: {
+            type: [String],
+            default: [],
+        },
+        howToUse: {
+            type: String,
+            trim: true,
+            default: '',
+        },
+        deliveryNote: {
+            type: String,
+            trim: true,
+            default: '',
         },
         desc: {
             type: String,
-            //required: [true, "Please enter description"]
         },
-        
-       
     },
     {
         timestamps: true
     }
 )
+
+productSchema.index({ status: 1, sortOrder: 1, createdAt: -1 });
 
 /* Model */
 export const ProductModel = mongoose.model('Product', productSchema);

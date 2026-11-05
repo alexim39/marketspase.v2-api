@@ -3,6 +3,7 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { requireRole } from '../../../modules/identity-access/interface/RequireRole.js';
 import { 
     getAllProducts,
+    getProductById,
     updateProduct,
     Savecart,
     GetAllCartsBy,
@@ -27,6 +28,8 @@ ProductRouter.patch('/orders/:id', requireAuth, requireRole('admin'), decideOrde
 // Admin product catalog (role-gated; legacy PUT /:id left untouched)
 ProductRouter.post('/', requireAuth, requireRole('admin'), adminCreateProduct);
 ProductRouter.patch('/:id', requireAuth, requireRole('admin'), adminUpdateProduct);
+// One product (full product page) — after every literal GET path
+ProductRouter.get('/:id', getProductById);
 
 
 export default ProductRouter;
