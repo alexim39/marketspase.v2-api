@@ -2,10 +2,10 @@ import { LEVELS, gate } from '../../progression/domain/Progression.levels.js';
 import { COURSES } from './Training.catalog.js';
 
 /**
- * Learning Paths — the 10 rank journeys.
- * Each path is the gate requirements for a rank, rendered as a checklist.
- * Derived from the same gate() that powers My Journey, so the checklists
- * never diverge. Pure, unit-testable.
+ * Learning Paths — legacy journey-stage checklists.
+ * Each path is the gate requirements for a journey stage, rendered as a
+ * checklist. This is not the four-rank commission model; commission rank is
+ * assigned on the Compensation desk. Pure, unit-testable.
  */
 
 const courseForMilestone = (key) => COURSES.find((c) => c.milestone === key)?.id ?? null;
@@ -20,7 +20,6 @@ const PATH_META = {
   ecl: { title: 'Emerging Cell Leader Path', tagline: 'Begin leading leaders.' },
   cell_leader: { title: 'Cell Leader Path', tagline: 'Run your cell.' },
   g_leader: { title: 'G Leader Path', tagline: 'Multiply leadership.' },
-  g8: { title: 'G8 Leader Path', tagline: 'Shape the organization.' },
 };
 
 /** Precomputed: for each rank, the gate reqs and their backing course. */

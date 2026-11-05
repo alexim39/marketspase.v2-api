@@ -38,6 +38,18 @@ export const makeBillingController = (uc) => ({
     res.status(200).json({ message: 'Banks retrieved successfully', data, success: true });
   }),
 
+  createWithdrawal: asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await uc.createWithdrawal.execute({
+      partnerId: req.auth?.partnerId,
+      bankCode: body?.bankCode,
+      bankName: body?.bankName,
+      accountNumber: body?.accountNumber,
+      amountNgn: body?.amountNgn,
+    });
+    res.status(201).json({ message: 'Withdrawal request created', data, success: true });
+  }),
+
   accrue: asyncHandler(async (req, res) => {
     const data = await uc.accrue.execute({ cartId: param(req, 'cartId') });
     res.status(200).json({ message: 'Commissions accrued successfully', data, success: true });

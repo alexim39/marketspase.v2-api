@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MIN_CAMPAIGN_BUDGET_NGN } from '../domain/Campaign.allocation.js';
+import { COST_PER_PROSPECT_NGN, MIN_CAMPAIGN_BUDGET_NGN, MIN_PROSPECTS } from '../domain/Campaign.allocation.js';
 
 const id = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 const state = z.string().trim().min(2).max(60);
@@ -9,14 +9,20 @@ export const CreateGrowthCampaignSchema = z.object({
   category: z.string().trim().max(60).default(''),
   brief: z.string().trim().max(600).default(''),
   budgetAmount: z.coerce.number().int().min(MIN_CAMPAIGN_BUDGET_NGN).max(10000000),
-  capacityTotal: z.coerce.number().int().min(1).max(20).default(4),
+  capacityTotal: z.coerce.number().int().min(MIN_PROSPECTS).max(20).default(MIN_PROSPECTS),
   maxPerWeek: z.coerce.number().int().min(1).max(10).default(2),
-  targetStates: z.array(state).max(10).default([]),
+  targetStates: z.array(state).max(37).default([]),
   ageRange: z.string().trim().max(30).default('All'),
   gender: z.string().trim().max(30).default('All'),
   startAt: z.coerce.date().optional(),
   endAt: z.coerce.date().optional().nullable(),
-});
+}).refine(
+  (body) => body.budgetAmount >= body.capacityTotal * COST_PER_PROSPECT_NGN,
+  {
+    message: `Budget must cover ${MIN_PROSPECTS}+ partner slots at NGN ${COST_PER_PROSPECT_NGN.toLocaleString()} each`,
+    path: ['budgetAmount'],
+  },
+);
 
 export const GrowCampaignQuerySchema = z.object({
   status: z.enum(['Pending', 'Active', 'Paused', 'Ended', 'Cancelled']).optional(),

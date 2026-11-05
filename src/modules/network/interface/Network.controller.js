@@ -6,12 +6,13 @@ const pid = (req) => req.validated?.params?.partnerId ?? req.params.partnerId;
 export const makeNetworkController = (uc) => ({
   tree: asyncHandler(async (req, res) => {
     const q = req.validated?.query ?? req.query;
-    const data = await uc.tree.execute({ partnerId: pid(req), depth: q?.depth });
+    const data = await uc.tree.execute({ partnerId: pid(req), depth: q?.depth, chain: q?.chain });
     res.status(200).json({ message: 'Network tree retrieved successfully', data, success: true });
   }),
 
   upline: asyncHandler(async (req, res) => {
-    const data = await uc.upline.execute({ partnerId: pid(req) });
+    const q = req.validated?.query ?? req.query;
+    const data = await uc.upline.execute({ partnerId: pid(req), chain: q?.chain });
     res.status(200).json({ message: 'Upline chain retrieved successfully', data, success: true });
   }),
 });

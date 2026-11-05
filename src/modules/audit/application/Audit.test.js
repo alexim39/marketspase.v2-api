@@ -23,12 +23,12 @@ const fakeStore = (rows = []) => ({
 describe('AUDIT_ACTIONS vocabulary', () => {
   it('covers every money-adjacent and governance decision', () => {
     for (const a of [
-      'role.set', 'permission.set', 'account.suspend', 'account.unsuspend',
+      'role.set', 'account.suspend', 'account.unsuspend',
       'account.signout', 'account.reset-password', 'account.erase',
       'account.reassign-upline',
       'account.view-as',
-      'payout.release', 'payout.void', 'withdrawal.decide', 'wallet.credit',
-      'campaign.decide', 'order.decide', 'reservation.decide', 'reservation.delete',
+      'payout.release', 'payout.void', 'wallet.credit',
+      'campaign.decide', 'order.decide',
       'training.quiz.save', 'training.media.save', 'training.media.revert',
       'ticket.decide', 'moderation.remove', 'moderation.dismiss',
       'broadcast.send', 'broadcast.campaign.queue', 'broadcast.campaign.cancel',
@@ -37,7 +37,7 @@ describe('AUDIT_ACTIONS vocabulary', () => {
       'partnersurvey.delete', 'page.reset',
       'subscription.delete', 'subscription.status',
       'billing.plan.update', 'product.create', 'product.update',
-      'bonus.claim', 'bonus.campaign.create', 'bonus.campaign.update',
+      'bonus.claim', 'bonus.campaign.create', 'bonus.campaign.update', 'bonus.campaign.delete',
       'tutorial.create', 'tutorial.update', 'tutorial.delete',
     ]) {
       assert.ok(AUDIT_ACTIONS.includes(a), `missing ${a}`);

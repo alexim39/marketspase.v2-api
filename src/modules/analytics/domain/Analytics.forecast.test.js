@@ -10,33 +10,41 @@ test('forecastNext projects linear pace, floored at zero', () => {
   assert.equal(forecastNext(2, 10), 0);
 });
 
-test('bench composes distribution plus backlogs', async () => {
+test('bench distributes commission ranks and counts leaders', async () => {
+  const people = {
+    a: 'Builder',
+    b: 'Leader',
+    c: 'Ambassador',
+  };
   const uc = new GetBenchUseCase({
-    network: {},
+    network: {
+      findChildren: async (parentIds) => (parentIds.includes('p1')
+        ? Object.keys(people).map((id) => ({ id }))
+        : []),
+      findNodesByIds: async (ids) => ids.map((id) => ({ id, commissionRank: people[id] })),
+    },
     progress: {
-      levelsFor: async () => ({ a: 'kingsman', b: 'partner' }),
       listPendingConfirmations: async () => [{}, {}],
       listPendingNominations: async () => [{}],
     },
   });
-  // Stub collectDownlineIds via network mock shape used by usecase? Patch directly:
-  const { collectDownlineIds } = await import('../../network/infrastructure/Network.mongo.repository.js');
-  void collectDownlineIds;
-  // Execute with faked network returning ids through monkey-patch below is heavy;
-  // instead verify the pure assembly contract via direct call with stubbed network:
-  const uc2 = new GetBenchUseCase({
+  const res = await uc.execute({ partnerId: 'p1' });
+  assert.equal(res.total, 3);
+  assert.deepEqual(res.distribution, { Builder: 1, Leader: 1, Ambassador: 1 });
+  assert.equal(res.leaders, 2);
+  assert.equal(res.pendingConfirmations, 2);
+  assert.equal(res.pendingNominations, 1);
+});
+
+test('bench degrades when the network cannot project ranks', async () => {
+  const uc = new GetBenchUseCase({
     network: { findChildren: async () => [] },
-    progress: {
-      levelsFor: async () => ({ x: 'ecl' }),
-      listPendingConfirmations: async () => [],
-      listPendingNominations: async () => [],
-    },
+    progress: null,
   });
-  // collectDownlineIds with empty network returns no ids → empty bench, still shaped.
-  const res = await uc2.execute({ partnerId: 'p1' }).catch(() => ({ total: 0, distribution: {}, pendingConfirmations: 0, pendingNominations: 0, leaders: 0 }));
-  assert.ok('distribution' in res);
-  assert.ok('leaders' in res);
-  void uc;
+  const res = await uc.execute({ partnerId: 'p1' });
+  assert.equal(res.total, 0);
+  assert.deepEqual(res.distribution, {});
+  assert.equal(res.leaders, 0);
 });
 
 test('referral stats shape link, count and recent', async () => {

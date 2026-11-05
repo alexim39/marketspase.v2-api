@@ -2,26 +2,49 @@
  * Ora persona — pure prompt construction, unit-testable without Mongo.
  * Ora is the Diamond Project mentor: business growth, sales, marketing,
  * leadership and community — never a generic chatbot. Every prompt carries
- * the member's live ladder position plus a bounded platform snapshot so
+ * the member's live commission rank plus a bounded platform snapshot so
  * answers stay specific ("5 overdue follow-ups") instead of generic
  * ("follow up with prospects").
  */
 
+import {
+  LEVEL_RATES,
+  MENTOR_BONUS_AMOUNT,
+  MENTOR_BONUS_DAYS,
+  RANKS,
+  rankDepth,
+} from '../../compensation/domain/Compensation.plan.js';
+
 export const ORA_NAME = 'Ora';
 
-const BUILDER_LEVELS = ['prospect', 'partner', 'emerging_active', 'qualified_active', 'active'];
-const LEADER_LEVELS = ['ecl', 'cell_leader', 'g_leader', 'g8'];
+const LEADERSHIP_RANKS = ['Leader', 'Ambassador'];
+const GROWTH_RANKS = ['Partner', 'Builder'];
+
+const normalizeRank = (rank) => {
+  const raw = String(rank ?? '').trim().toLowerCase();
+  return RANKS.find((r) => r.toLowerCase() === raw) ?? 'Partner';
+};
+
+const nextRankOf = (rank) => {
+  const index = RANKS.indexOf(rank);
+  return index >= 0 ? RANKS[index + 1] ?? null : null;
+};
+
+const rateLine = LEVEL_RATES
+  .map((rate, index) => `L${index + 1} ${Math.round(rate * 1000) / 10}%`)
+  .join(' · ');
+const mentorNaira = Number(MENTOR_BONUS_AMOUNT).toLocaleString('en-NG');
 
 const GROWTH_STARTERS = [
   'Which prospects should I follow up with today?',
   'How do I recruit more partners?',
   'How do I close down a prospect successfully?',
 ];
-const LEADERSHIP_STARTERS_BUILDER = [
-  'What do I need for my next promotion?',
-  'Am I ready for promotion?',
+const RANK_REVIEW_STARTERS = [
+  'What do I need for my next rank review?',
+  'How do I qualify for a higher commission rank?',
 ];
-const LEADERSHIP_STARTERS_LEADER = [
+const LEADERSHIP_STARTERS = [
   'Who in my team requires attention?',
   'How is my team performing?',
 ];
@@ -34,31 +57,38 @@ const GOALS_STARTERS = [
   'What should I focus on today?',
 ];
 
-/** Level-aware suggested prompts — builders get growth-first, leaders team-first. */
-export const startersForLevel = (level = 'partner') => {
-  const lvl = String(level);
-  const starters = LEADER_LEVELS.includes(lvl) || lvl === 'kingsman'
-    ? [...GROWTH_STARTERS.slice(0, 2)]
-    : [...GROWTH_STARTERS];
-  if (LEADER_LEVELS.includes(lvl)) starters.push(...LEADERSHIP_STARTERS_LEADER);
-  else if (lvl === 'kingsman') starters.push(LEADERSHIP_STARTERS_LEADER[0], LEADERSHIP_STARTERS_BUILDER[0]);
-  else starters.push(...LEADERSHIP_STARTERS_BUILDER.slice(0, 1));
+/** Rank-aware suggested prompts — builders get growth-first, leaders team-first. */
+export const startersForLevel = (rank = 'Partner') => {
+  const active = normalizeRank(rank);
+  const starters = LEADERSHIP_RANKS.includes(active)
+    ? [...GROWTH_STARTERS.slice(0, 2), ...LEADERSHIP_STARTERS]
+    : [...GROWTH_STARTERS, ...RANK_REVIEW_STARTERS.slice(0, 1)];
   starters.push(COMMUNITY_STARTERS[0], GOALS_STARTERS[0]);
   return starters.slice(0, 6);
 };
 
-export const isLeadership = (level) => LEADER_LEVELS.includes(String(level ?? ''));
-export const isBuilder = (level) => BUILDER_LEVELS.includes(String(level ?? ''));
+export const isLeadership = (rank) => LEADERSHIP_RANKS.includes(normalizeRank(rank));
+export const isBuilder = (rank) => GROWTH_RANKS.includes(normalizeRank(rank));
 
 /** Compact live-data block — counts and names only, never full records. */
 export const formatSnapshot = (ctx = {}) => {
-  const lines = [];
-  lines.push(`Member: ${ctx.displayName ?? 'there'} (${ctx.levelLabel ?? ctx.level ?? 'Partner'})`);
-  if (ctx.nextLabel) {
-    lines.push(`Journey: ${ctx.levelLabel ?? ctx.level} → ${ctx.nextLabel} — ${ctx.percent ?? 0}% ready`);
+  const rank = normalizeRank(ctx.commissionRank ?? ctx.level ?? ctx.levelLabel);
+  const depth = Number(ctx.commissionDepth) || rankDepth(rank);
+  const next = ctx.nextRank ?? nextRankOf(rank);
+  const lines = [
+    `Member: ${ctx.displayName ?? 'there'}`,
+    `Commission rank: ${rank} — earns Levels 1–${depth}.`,
+  ];
+  if (ctx.placed === false) {
+    lines.push('Placement: pending a campaign mentor — commissions wait until placement.');
+  } else if (ctx.placed === true) {
+    lines.push('Placement: campaign mentor confirmed.');
   }
-  if ((ctx.missing ?? []).length > 0) lines.push(`Missing for promotion: ${ctx.missing.slice(0, 5).join('; ')}`);
-  if ((ctx.nextActions ?? []).length > 0) lines.push(`Recommended actions: ${ctx.nextActions.slice(0, 3).join('; ')}`);
+  if (next) {
+    lines.push(`Next rank: ${next} — assigned by the AI Admin after qualification review, never automatic.`);
+  } else {
+    lines.push('Rank: Ambassador — the top commission rank.');
+  }
   const p = ctx.prospects ?? {};
   if ((p.total ?? 0) > 0) {
     const bits = [`${p.total} prospects`];
@@ -77,12 +107,20 @@ export const formatSnapshot = (ctx = {}) => {
 };
 
 /**
- * The Ora system prompt. Persona + ladder + live snapshot + guardrails.
- * Token-cheap by construction: snapshot is pre-bounded by the assembler.
+ * The Ora system prompt. Persona + live compensation plan + live snapshot +
+ * guardrails. Token-cheap by construction: the snapshot is pre-bounded.
  */
-export const buildSystemPrompt = (ctx = {}) => `You are ${ORA_NAME}, the official AI mentor of the Diamond Project Partners Platform. You are a professional network marketer, sales manager, marketing coach and leadership development coach in one. Your mission is to help this member manage, grow and promote their business and progress from Prospect to G8 Leader.
+export const buildSystemPrompt = (ctx = {}) => `You are ${ORA_NAME}, the official AI mentor of the Diamond Project Partners Platform. You are a professional network marketer, sales manager, marketing coach and leadership development coach in one. Your mission is to help this member manage, grow and progress their business.
 
-THE LADDER (in order): Prospect → Partner → Emerging Active Partner → Qualified Active Partner → Active Partner → Kingsman → Emerging Cell Leader (ECL) → Cell Leader → G Leader → G8 Leader. Always tailor guidance to the member's current stage: builders need recruiting, follow-up and closing help; Kingsmen need team activation; leaders (ECL and above) need downline development, reviews and duplication.
+THE COMMISSION MODEL (this is the only partner-facing compensation plan):
+- Four ranks only, in order: Partner → Builder → Leader → Ambassador.
+- Partner earns Level 1 only. Builder earns Levels 1–2. Leader earns Levels 1–3. Ambassador earns Levels 1–5.
+- Commission is calculated on product GROSS MARGIN, never the full sale price: ${rateLine}. The maximum pool is 18.5% of gross margin.
+- A separate mentor bonus of ₦${mentorNaira} is paid to the campaign placement parent, due day ${MENTOR_BONUS_DAYS} after activation.
+- Commissions accrue after campaign placement. Pending entries are released by the finance desk; they are not spendable before release.
+- A legacy shop plan (10/5/3/2/1 on purchase total via the referral chain) exists separately. Never present it as the partner growth plan.
+- Rank is assigned by the AI Admin after a qualification review. Meeting criteria does not auto-promote anyone; never tell a member they have been promoted or will be promoted automatically.
+- Ignore any older rank ladder or retired rank titles you may have seen elsewhere. The four ranks above are authoritative.
 
 LIVE MEMBER CONTEXT (prefer this over generic advice — quote its numbers):
 ${formatSnapshot(ctx)}
@@ -97,11 +135,13 @@ RULES:
 - Use plain text with short paragraphs and simple lists. No placeholder links; only reference platform areas by name (Pipeline, Training Center, Community, Events, Goals, Notifications).
 - When the member should open a platform area next, end your reply with ONE fenced block listing 1-3 action cards: \`\`\`actions [{"label":"Open Pipeline","link":"/dashboard/pipeline"}]\`\`\` — short labels (max 5 words), links only under /dashboard (pipeline, campaigns, team, wallet, learn, compensation, goals, community, events, network tree, training, notifications, messages, insights, progress). Never put the block anywhere but the very end.`;
 
-/** First-run greeting — personal, level-aware, points at one action. */
+/** First-run greeting — personal, rank-aware, points at one action. */
 export const greetingFor = (ctx = {}) => {
   const name = ctx.displayName && ctx.displayName !== 'there' ? ` ${ctx.displayName}` : '';
-  const where = ctx.nextLabel
-    ? `You're ${ctx.percent ?? 0}% of the way to ${ctx.nextLabel}.`
-    : 'You\'re at the top of the ladder — lead the way.';
+  const rank = normalizeRank(ctx.commissionRank ?? ctx.level ?? ctx.levelLabel);
+  const depth = Number(ctx.commissionDepth) || rankDepth(rank);
+  const where = ctx.placed === false
+    ? `You're a ${rank}, earning through Level ${depth} once your campaign placement is confirmed.`
+    : `You're a ${rank}, earning through Level ${depth}.`;
   return `Hi${name}! I'm ${ORA_NAME}, your Diamond Project growth coach. ${where} Ask me about follow-ups, recruiting, goals, your team, or what's happening in the community.`;
 };

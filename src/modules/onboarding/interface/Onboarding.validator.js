@@ -14,13 +14,13 @@ const shippingSchema = z.object({
 });
 
 export const SubmitKycSchema = z.object({
-  dateOfBirth: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
-  address: z.string().trim().min(5).max(300),
-  city: z.string().trim().min(2).max(100),
-  state: z.string().trim().min(2).max(100),
-  country: z.string().trim().min(2).max(100).default('Nigeria'),
-  idType: z.enum(['nin', 'drivers_license', 'passport', 'voters_card']),
-  idNumber: z.string().trim().regex(/^[A-Za-z0-9-]{6,30}$/, 'Enter a valid ID number'),
+  dateOfBirth: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+  address: z.string().trim().min(5).max(300).optional(),
+  city: z.string().trim().min(2).max(100).optional(),
+  state: z.string().trim().min(2).max(100).optional(),
+  country: z.string().trim().min(2).max(100).optional(),
+  idType: z.enum(['nin', 'drivers_license', 'passport', 'voters_card']).optional(),
+  idNumber: z.string().trim().regex(/^[A-Za-z0-9-]{6,30}$/, 'Enter a valid ID number').optional(),
 });
 
 export const CreateActivationOrderSchema = z.object({

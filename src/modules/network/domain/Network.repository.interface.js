@@ -4,13 +4,13 @@
  */
 export class NetworkRepository {
   /**
-   * @param {string} id
-   * @returns {Promise<(any & {parentId:string|null})|null>} projected node + upline link
+   * @param {string} id @param {'growth'|'referral'|'all'} [chain]
+   * @returns {Promise<(any & {parentId:string|null})|null>} projected node + chain-specific upline link
    */
-  async findNode(id) { throw new Error('Not implemented'); }
+  async findNode(id, chain = 'all') { void chain; throw new Error('Not implemented'); }
   /**
-   * @param {string[]} parentIds @param {number} limit
+   * @param {string[]} parentIds @param {number} limit @param {'growth'|'referral'|'all'} [chain]
    * @returns {Promise<Array<any & {parentId:string}>>} projected children, each tagged with its parent
    */
-  async findChildren(parentIds, limit) { throw new Error('Not implemented'); }
+  async findChildren(parentIds, limit, chain = 'all') { void parentIds; void limit; void chain; throw new Error('Not implemented'); }
 }

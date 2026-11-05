@@ -23,9 +23,12 @@ import { MAX_DEPTH } from '../domain/Network.entity.js';
 const PartnerIdParam = z.object({
   partnerId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id'),
 });
-const DepthQuery = z.object({
+const ChainQuery = z.enum(['growth', 'referral', 'all']).optional();
+const TreeQuery = z.object({
   depth: z.coerce.number().int().min(1).max(MAX_DEPTH).optional(),
+  chain: ChainQuery,
 });
+const UplineQuery = z.object({ chain: ChainQuery });
 const PresenceBody = z.object({
   ids: z.array(z.string().trim().max(64)).min(1).max(100),
 });
@@ -67,8 +70,8 @@ export const buildNetworkRouter = (deps = {}) => {
   const router = express.Router();
   // Authenticated: nodes expose only directory-safe fields (no email/phone).
   router.use(requireAuth);
-  router.get('/:partnerId/tree', validate({ params: PartnerIdParam, query: DepthQuery }), c.tree);
-  router.get('/:partnerId/upline', validate({ params: PartnerIdParam }), c.upline);
+  router.get('/:partnerId/tree', validate({ params: PartnerIdParam, query: TreeQuery }), c.tree);
+  router.get('/:partnerId/upline', validate({ params: PartnerIdParam, query: UplineQuery }), c.upline);
   // Bulk presence — lastSeenAt per id, scoped to self/downline/upline
   // (admins see all). Out-of-scope ids resolve null: no existence oracle.
   router.post('/presence', validate({ body: PresenceBody }), asyncHandler(async (req, res) => {

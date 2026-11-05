@@ -40,14 +40,11 @@ export const newDepositReference = () =>
 
 /**
  * Business receiving accounts for manual transfer.
- * Env-overridable (`MANUAL_DEPOSIT_ACCOUNTS` JSON) so numbers rotate
- * without a code change; code default is the live Opay pair.
+ * Retired: no default accounts are hardcoded or advertised. Set
+ * `MANUAL_DEPOSIT_ACCOUNTS` JSON only if the manual flow is deliberately
+ * re-enabled; new manual claims are disabled at the route level.
  */
-export const DEFAULT_MANUAL_ACCOUNTS = Object.freeze([
-  Object.freeze({ bank: 'Opay', number: '6102514335', name: 'ASYNC SOLUTIONS LTD' }),
-  Object.freeze({ bank: 'Opay', number: '6102513801', name: 'ASYNC SOLUTIONS LTD' }),
-  Object.freeze({ bank: 'Opay', number: '6141809708', name: 'ASYNC SOLUTIONS LTD' }),
-]);
+export const DEFAULT_MANUAL_ACCOUNTS = Object.freeze([]);
 
 export const manualAccounts = (env = process.env) => {
   const raw = env?.MANUAL_DEPOSIT_ACCOUNTS;

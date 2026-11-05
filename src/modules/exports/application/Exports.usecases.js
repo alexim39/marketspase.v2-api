@@ -73,24 +73,65 @@ export class ExportPipelineUseCase {
   }
 }
 
-/** Own commission ledger entries (audit trail shape). */
+/**
+ * Own growth compensation ledger — commission entries plus mentor bonuses.
+ * This is the plan partners actually earn from; the legacy shop ledger is a
+ * separate engine and no longer backs this export.
+ */
 export class ExportCommissionsUseCase {
-  /** @param {{ledger}} deps */
-  constructor({ ledger }) {
-    this.ledger = ledger;
+  /** @param {{growth}} deps */
+  constructor({ growth }) {
+    this.growth = growth;
   }
 
   async execute({ partnerId, limit = 5000 }) {
-    const { items } = await this.ledger.findByEarner(partnerId, { limit: clampLimit(limit, 5000), skip: 0 });
+    const { entries = [], bonuses = [] } = await this.growth.listForExport(partnerId, {
+      limit: clampLimit(limit, 5000),
+    });
+    const at = (value) => (value ? new Date(value).getTime() : 0);
+    const rows = [
+      ...entries.map((e) => ({
+        type: 'Commission',
+        level: e.level ?? '',
+        rate: e.rate ?? '',
+        grossMargin: e.grossMargin ?? '',
+        amount: e.amount ?? '',
+        rankAtAccrual: e.rankAtAccrual ?? '',
+        status: e.status ?? '',
+        orderId: e.orderId ? String(e.orderId) : '',
+        settledAt: e.releasedAt ?? e.voidedAt ?? null,
+        recordedAt: e.createdAt ?? null,
+        note: e.reversalReason ?? '',
+      })),
+      ...bonuses.map((b) => ({
+        type: 'Mentor bonus',
+        level: '',
+        rate: '',
+        grossMargin: '',
+        amount: b.amount ?? '',
+        rankAtAccrual: '',
+        status: b.status ?? '',
+        orderId: b.orderId ? String(b.orderId) : '',
+        settledAt: b.paidAt ?? null,
+        recordedAt: b.dueAt ?? b.createdAt ?? null,
+        note: b.note ?? '',
+      })),
+    ].sort((a, b) => at(b.recordedAt) - at(a.recordedAt));
+
     const columns = [
-      { header: 'Entry', format: (e) => e.id ?? '' },
-      { header: 'Amount', format: (e) => e.amount ?? '' },
-      { header: 'Status', format: (e) => e.status ?? '' },
-      { header: 'Cart', format: (e) => (e.cartId ? String(e.cartId) : '') },
-      { header: 'Released', format: (e) => isoDate(e.releasedAt) },
-      { header: 'Recorded', format: (e) => isoDate(e.createdAt) },
+      { header: 'Type', format: (r) => r.type },
+      { header: 'Level', format: (r) => r.level },
+      { header: 'Rate', format: (r) => (r.rate === '' || r.rate === null ? '' : `${(Number(r.rate) * 100).toFixed(1)}%`) },
+      { header: 'Gross margin', format: (r) => r.grossMargin },
+      { header: 'Amount', format: (r) => r.amount },
+      { header: 'Rank at accrual', format: (r) => r.rankAtAccrual },
+      { header: 'Status', format: (r) => r.status },
+      { header: 'Order', format: (r) => r.orderId },
+      { header: 'Settled', format: (r) => isoDate(r.settledAt) },
+      { header: 'Recorded', format: (r) => isoDate(r.recordedAt) },
+      { header: 'Note', format: (r) => r.note },
     ];
-    return { name: exportBasename('commissions'), columns, rows: items, count: items.length };
+    return { name: exportBasename('commissions'), columns, rows, count: rows.length };
   }
 }
 

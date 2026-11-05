@@ -26,22 +26,61 @@ const claimSchema = new mongoose.Schema(
 );
 claimSchema.index({ campaignId: 1, partnerId: 1 }, { unique: true });
 
+const seedStateSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true },
+    campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'BonusCampaign', default: null },
+  },
+  { timestamps: true, collection: 'bonus_seed_state' },
+);
+
 export const BonusCampaignModel =
   mongoose.models.BonusCampaign ?? mongoose.model('BonusCampaign', campaignSchema);
 export const BonusClaimModel =
   mongoose.models.BonusClaim ?? mongoose.model('BonusClaim', claimSchema);
+export const BonusSeedStateModel =
+  mongoose.models.BonusSeedState ?? mongoose.model('BonusSeedState', seedStateSchema);
 
-/** Seed the initial N2500 welcome bonus (idempotent — one active welcome campaign).
- * Open to every member, old and new: no eligibleAfter gate. Existing seeds
- * from before this fix get their gate lifted on boot. */
+const WELCOME_SEED_KEY = 'welcome_bonus';
+
+/**
+ * Seed the initial N2500 welcome bonus exactly once.
+ *
+ * The old behavior looked only for an active campaign, so disabling the
+ * welcome bonus on every API restart created a new copy. A persistent seed
+ * marker now records the one campaign we created; disabled campaigns stay
+ * disabled, and deleting the seeded campaign does not resurrect it.
+ */
 export const ensureSeedBonus = async (now = new Date()) => {
-  const existing = await BonusCampaignModel.findOne({ status: 'active' }).lean().catch(() => null);
-  if (existing) {
+  const marker = await BonusSeedStateModel.findOne({ key: WELCOME_SEED_KEY }).lean().catch(() => null);
+  if (marker) {
+    if (!marker.campaignId) return { seeded: false, id: null, retired: true };
+    const existing = await BonusCampaignModel.findById(marker.campaignId).lean().catch(() => null);
+    if (!existing) return { seeded: false, id: null, retired: true };
     if (existing.eligibleAfter) {
       await BonusCampaignModel.updateOne({ _id: existing._id }, { $set: { eligibleAfter: null } }).catch(() => null);
     }
     return { seeded: false, id: String(existing._id) };
   }
+
+  // Adopt an existing welcome campaign (including a disabled one) instead of
+  // creating a duplicate, then remember it for all future boots.
+  const existing = await BonusCampaignModel.findOne({ title: /^welcome bonus$/i })
+    .sort({ createdAt: 1 })
+    .lean()
+    .catch(() => null);
+  if (existing) {
+    await BonusSeedStateModel.updateOne(
+      { key: WELCOME_SEED_KEY },
+      { $set: { campaignId: existing._id } },
+      { upsert: true },
+    ).catch(() => null);
+    if (existing.eligibleAfter) {
+      await BonusCampaignModel.updateOne({ _id: existing._id }, { $set: { eligibleAfter: null } }).catch(() => null);
+    }
+    return { seeded: false, id: String(existing._id) };
+  }
+
   const doc = await BonusCampaignModel.create({
     title: 'Welcome bonus',
     message: 'Claim your N2500 welcome bonus into your wallet — use it to claim prospects and grow your business.',
@@ -51,8 +90,12 @@ export const ensureSeedBonus = async (now = new Date()) => {
     startsAt: now,
   }).catch(() => null);
   if (!doc) {
-    const retry = await BonusCampaignModel.findOne({ status: 'active' }).lean().catch(() => null);
-    return { seeded: false, id: retry ? String(retry._id) : null };
+    return { seeded: false, id: null };
   }
+  await BonusSeedStateModel.updateOne(
+    { key: WELCOME_SEED_KEY },
+    { $set: { campaignId: doc._id } },
+    { upsert: true },
+  ).catch(() => null);
   return { seeded: true, id: String(doc._id) };
 };

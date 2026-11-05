@@ -22,7 +22,7 @@ export const TOPIC_LABELS = {
 
 const BUCKETS = [
   ['growth', /prospect|recruit|follow.?up|clos|\bcall\b|contact|sale|pipeline|present|enroll|convert|market|campaign|invite/i],
-  ['leadership', /promot|kingsman|ecl|cell leader|g leader|g8|rank|level|leadership|mentor|qualif/i],
+  ['leadership', /promot|builder|leader|ambassador|rank|level|leadership|mentor|qualif|review/i],
   ['goals', /goal|target|track|pace|focus|progress/i],
   ['team', /team|downline|member|inactive|upline|tree/i],
   ['community', /communit|event|announce|post|recognition|rsvp|training session|meeting/i],

@@ -11,7 +11,7 @@ import { GetCurrentPartnerUseCase } from '../application/GetCurrentPartner.useca
 import { RequestSelfErasureUseCase, CancelSelfErasureUseCase } from '../application/SelfErase.usecase.js';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/PasswordReset.usecase.js';
 import { VerifyEmailUseCase, ResendVerificationUseCase } from '../application/EmailVerification.usecases.js';
-import { MongoPartnerRepository, MongoReservationRepository } from '../infrastructure/Auth.mongo.repository.js';
+import { MongoPartnerRepository } from '../infrastructure/Auth.mongo.repository.js';
 import { BcryptPasswordHasher, JwtSessionIssuer, EmailVerificationTokens } from '../infrastructure/Auth.crypto.js';
 import { PasswordResetMailer } from '../infrastructure/clients/PasswordResetMailer.js';
 import { EmailVerificationMailer } from '../infrastructure/clients/EmailVerificationMailer.js';
@@ -76,7 +76,6 @@ async function notifyErasureRequested(partnerId, data) {
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners ?? new MongoPartnerRepository();
-  const reservations = deps.reservations ?? new MongoReservationRepository();
   const hasher = deps.hasher ?? new BcryptPasswordHasher();
   const sessions = deps.sessions ?? new JwtSessionIssuer();
   const tx = deps.tx ?? { runInTransaction };
@@ -90,7 +89,6 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   const controller = makeAuthController({
     signup: new SignupUseCase({
       partners,
-      reservations,
       hasher,
       tx,
       tokens,

@@ -50,7 +50,6 @@ import CommunityRouter from './src/modules/community/index.js';
 import MarketingRouter from './src/modules/marketing/index.js';
 import EventsRouter from './src/modules/events/index.js';
 import OraRouter from './src/modules/ora/index.js';
-import ReservationsRouter from './src/modules/reservations/index.js';
 import SettingsV1Router from './src/modules/settings/index.js';
 import OutreachRouter from './src/modules/outreach/index.js';
 import SubscriptionsRouter from './src/modules/subscriptions/index.js';
@@ -61,7 +60,6 @@ import JobHealthRouter from './src/jobs/JobHealth.routes.js';
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
-import { subscribeTrainingFanout } from './src/modules/notifications/application/TrainingFanout.js';
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
 import { subscribeContactListFanout } from './src/modules/notifications/application/ContactListFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
@@ -71,7 +69,6 @@ import { sendEmail } from './src/services/emailService.js';
 import { NotifyUseCase } from './src/modules/notifications/application/NotificationsCenter.usecases.js';
 import { NotificationDeliveryService } from './src/modules/notifications/application/NotificationDelivery.js';
 import { MongoStoredNotificationStore } from './src/modules/notifications/infrastructure/StoredNotifications.mongo.repository.js';
-import { MongoProspectRepository } from './src/modules/crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoPartnerRepository } from './src/modules/identity-access/infrastructure/Auth.mongo.repository.js';
 import { MongoNetworkRepository } from './src/modules/network/infrastructure/Network.mongo.repository.js';
 import { buildSmsSender } from './src/modules/notifications/infrastructure/SmsSender.js';
@@ -79,19 +76,19 @@ import { buildPushSender } from './src/modules/notifications/infrastructure/Push
 import ProspectV1Router from './src/modules/crm/index.js';
 import PagesRouter from './src/modules/partner-pages/interface/Pages.routes.js';
 import PartnerSurveysRouter from './src/modules/partner-surveys/interface/Surveys.routes.js';
-import ProlificWomanLeadRouter, {
-  AdminLeadRouter as ProlificWomanAdminLeadRouter,
-  InboxLeadRouter as ProlificWomanInboxLeadRouter,
-} from './src/modules/prolificwomen/index.js';
 import { errorMiddleware } from './src/shared/http/errorMiddleware.js';
 import { ensureIndexes } from './src/shared/mongo/indexes.js';
 import { scheduleJobs } from './src/jobs/schedule.js';
+import { runGrowthAllocationDueJob } from './src/jobs/growth-allocation-due.js';
 import { attachMessagingGateway } from './src/modules/messaging/interface/Messaging.gateway.js';
 import { MongoGroupStore } from './src/modules/messaging/infrastructure/Group.mongo.repository.js';
 
 const port = process.env.PORT || 8080;
 const app = express();
-app.use(express.json()); // Use json middleware
+// Capture raw bytes for provider webhooks (Paystack signs the raw body).
+app.use(express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+})); // Use json middleware
 app.use(express.urlencoded({extended: false})); // Use formdata middleware
 app.use(cookieParser());
 // Extra web origins (comma-separated) for new subdomains without a code
@@ -115,7 +112,6 @@ app.use(cors({
         'https://survey.c21fg.online',
         'https://shop.c21fg.online',
         'https://diamondproject.c21fg.online',
-        'https://prolificwomen.c21fg.online',
         ...extraOrigins,
     ]
 }));
@@ -151,6 +147,7 @@ app.use('/v1/compensation', CompensationRouter);
 app.use('/v1/admin/compensation', buildAdminCompensationRouter());
 app.use('/v1/admin', AdminRouter);
 app.use('/v1/network', NetworkRouter);
+app.use('/v1/billing', DepositRouter);
 app.use('/v1/billing', BillingRouter);
 app.use('/v1/notifications', NotificationsRouter);
 app.use('/v1/goals', GoalsRouter);
@@ -163,7 +160,6 @@ app.use('/v1/messages', MessagingRouter);
 app.use('/v1/messages', buildGroupRouter());
 app.use('/v1/progression', ProgressionRouter);
 app.use('/v1/training', TrainingRouter);
-app.use('/v1/billing', DepositRouter);
 app.use('/v1/admin/training', AdminTrainingRouter);
 app.use('/v1/admin/audit', AuditRouter);
 app.use('/v1/admin/jobs', JobHealthRouter);
@@ -173,7 +169,6 @@ app.use('/v1/community', CommunityRouter);
 app.use('/v1/marketing', MarketingRouter);
 app.use('/v1/events', EventsRouter);
 app.use('/v1/ora', OraRouter);
-app.use('/v1/reservations', ReservationsRouter);
 app.use('/v1/settings', SettingsV1Router);
 app.use('/v1/outreach', OutreachRouter);
 app.use('/v1/admin/subscriptions', SubscriptionsRouter);
@@ -184,9 +179,6 @@ app.use('/v1/admin/tutorials', buildAdminTutorialRouter());
 app.use('/v1/kits', buildKitRouter());
 app.use('/v1/admin/kits', buildAdminKitRouter());
 
-app.use('/prolificwomen', ProlificWomanLeadRouter);
-app.use('/v1/prolificwomen', ProlificWomanInboxLeadRouter);
-app.use('/v1/admin/prolificwomen', ProlificWomanAdminLeadRouter);
 
 
 
@@ -218,20 +210,12 @@ app.use(errorMiddleware);
   const lifecyclePartners = new MongoPartnerRepository();
   subscribeActivation({
     events: domainEvents,
-    prospects: new MongoProspectRepository(),
     stored: lifecycleStore,
     notify: new NotifyUseCase({ stored: lifecycleStore }),
     delivery: lifecycleDelivery,
     partners: lifecyclePartners,
   });
   subscribePromotionFanout({
-    events: domainEvents,
-    stored: lifecycleStore,
-    delivery: lifecycleDelivery,
-    partners: lifecyclePartners,
-    network: new MongoNetworkRepository(),
-  });
-  subscribeTrainingFanout({
     events: domainEvents,
     stored: lifecycleStore,
     delivery: lifecycleDelivery,
@@ -259,6 +243,15 @@ app.use(errorMiddleware);
     partners: lifecyclePartners,
   });
   subscribeCompensation({ events: domainEvents });
+  // Allocation is automatic: a newly activated partner or newly activated
+  // campaign immediately kicks the growth-campaign placement sweep. The
+  // 15-minute cron remains the safety net.
+  domainEvents.on('partner.activated', () => {
+    void runGrowthAllocationDueJob().catch(() => null);
+  });
+  domainEvents.on('campaign.activated', () => {
+    void runGrowthAllocationDueJob().catch(() => null);
+  });
 }
 
 /* DB connection */
@@ -275,7 +268,7 @@ mongoose.connect(`mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MO
     }
     scheduleJobs();
     ensureSeedBonus().then(
-      (r) => console.log(`[bonuses] seed: ${r.seeded ? `created welcome N2500 (${r.id})` : 'welcome campaign present'}`),
+      (r) => console.log(`[bonuses] seed: ${r.seeded ? `created welcome N2500 (${r.id})` : r.retired ? 'welcome campaign removed — not reseeding' : 'welcome campaign present'}`),
       (error) => console.warn('[bonuses] seed skipped:', error?.message ?? error),
     );
     ensureStarterProduct().then(

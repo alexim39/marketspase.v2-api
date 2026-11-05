@@ -1,3 +1,4 @@
+import { RANKS, rankDepth } from '../../compensation/domain/Compensation.plan.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
 
 /**
@@ -23,7 +24,7 @@ const fmtDay = (v) => {
 };
 
 export class OraContextAssembler {
-  /** @param {{journey, goals, prospects, events, notifications, partners}} deps */
+  /** @param {{goals, prospects, events, notifications, partners}} deps */
   constructor(deps = {}) {
     Object.assign(this, deps);
   }
@@ -35,10 +36,13 @@ export class OraContextAssembler {
   async assemble({ partnerId, now = new Date() } = {}) {
     const ctx = {
       displayName: 'there',
-      level: 'partner',
+      commissionRank: 'Partner',
+      commissionDepth: 1,
+      placed: null,
+      level: 'Partner',
       levelLabel: 'Partner',
-      next: null,
-      nextLabel: null,
+      next: 'Builder',
+      nextLabel: 'Builder',
       percent: 0,
       missing: [],
       nextActions: [],
@@ -47,8 +51,7 @@ export class OraContextAssembler {
       events: [],
       unread: 0,
     };
-    const [journey, prospects, goals, events, unread, partner] = await Promise.all([
-      this.journey?.execute({ partnerId, now }).catch(() => null),
+    const [prospects, goals, events, unread, partner] = await Promise.all([
       this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 }).catch(() => null),
       this.goals?.execute({ partnerId, now }).catch(() => []),
       this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS }).catch(() => null),
@@ -56,16 +59,16 @@ export class OraContextAssembler {
       this.partners?.findById(partnerId).catch(() => null),
     ]);
 
-    if (journey) {
-      ctx.level = journey.level ?? ctx.level;
-      ctx.levelLabel = journey.levelLabel ?? ctx.level;
-      ctx.next = journey.next ?? null;
-      ctx.nextLabel = journey.nextLabel ?? null;
-      ctx.percent = journey.percent ?? 0;
-      ctx.missing = (journey.missing ?? []).map((m) => m?.label ?? m?.key ?? String(m)).slice(0, 5);
-      ctx.nextActions = (journey.remainingActions ?? []).map(String).slice(0, 3);
-    }
     if (partner) {
+      const rank = RANKS.includes(partner.commissionRank) ? partner.commissionRank : 'Partner';
+      const index = RANKS.indexOf(rank);
+      ctx.commissionRank = rank;
+      ctx.commissionDepth = rankDepth(rank);
+      ctx.placed = !!partner.placementParentId;
+      ctx.level = rank;
+      ctx.levelLabel = rank;
+      ctx.next = RANKS[index + 1] ?? null;
+      ctx.nextLabel = ctx.next;
       const full = [partner.name, partner.surname].filter(Boolean).join(' ').trim();
       ctx.displayName = full || partner.username || 'there';
     }

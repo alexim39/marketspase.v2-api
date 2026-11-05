@@ -140,7 +140,19 @@ describe('growth campaign partner routes', () => {
 
   it('rejects a budget below the platform minimum before the use case', async () => {
     createdInput = null;
-    const result = await post('/v1/campaigns', { ...payload, budgetAmount: 5000 });
+    const result = await post('/v1/campaigns', { ...payload, budgetAmount: 1000 });
+
+    assert.equal(result.status, 400);
+    assert.equal(createdInput, null);
+  });
+
+  it('rejects a budget that does not cover the selected partner slots', async () => {
+    createdInput = null;
+    const result = await post('/v1/campaigns', {
+      ...payload,
+      budgetAmount: 1100,
+      capacityTotal: 4,
+    });
 
     assert.equal(result.status, 400);
     assert.equal(createdInput, null);

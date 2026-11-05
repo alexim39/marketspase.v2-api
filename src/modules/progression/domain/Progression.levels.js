@@ -1,7 +1,11 @@
 /**
- * Diamond progression ladder — pure rules, unit-testable without Mongo.
+ * Legacy journey-stage ladder — pure rules, unit-testable without Mongo.
  *
- * Levels auto-derive by walking entry gates from the bottom up. A gate is
+ * This is separate from the four-rank commission model (Partner → Builder →
+ * Leader → Ambassador), which is assigned on the Compensation desk and
+ * controls earning depth. Journey stages remain for training/coaching reads.
+ *
+ * Stages auto-derive by walking entry gates from the bottom up. A gate is
  * a mix of COMPUTED signals (recruits, active team, maintenance — read
  * from source aggregates, never stored) and ATTESTED milestones (training,
  * office, nominations — stored on the progression record with timestamps).
@@ -17,7 +21,6 @@ export const LEVELS = [
   'ecl',
   'cell_leader',
   'g_leader',
-  'g8',
 ];
 
 export const LEVEL_LABELS = {
@@ -30,10 +33,9 @@ export const LEVEL_LABELS = {
   ecl: 'Emerging Cell Leader',
   cell_leader: 'Cell Leader',
   g_leader: 'G Leader',
-  g8: 'G8 Leader',
 };
 
-/** G8 nominations approve at this many distinct G8/admin approvals. */
+/** Leader nominations approve at this many distinct Leader/admin approvals. */
 export const NOMINATION_APPROVALS_REQUIRED = 3;
 
 /**
@@ -158,7 +160,7 @@ export const gate = (level, signals = {}, m = {}) => {
       // Onboarding needs upline eyes, same as training — self-tap alone
       // must not open the gate.
       return [
-        req('g8Request', 'Submit request letter to G8 Leader', 'Send your qualification request letter', m.g8Request?.status === 'submitted'),
+        req('g8Request', 'Submit request letter to your Leader', 'Send your qualification request letter', m.g8Request?.status === 'submitted'),
         req('onboardingSession', 'Attend onboarding session', 'Schedule your onboarding session and get it confirmed', confirmed(m.onboardingSession)),
       ];
     case 'kingsman':
@@ -188,13 +190,9 @@ export const gate = (level, signals = {}, m = {}) => {
         req('eclTeam', 'Manage 5 Emerging Cell Leaders', 'Develop 5 downline members to ECL', (signals.eclsExact ?? 0) >= 5),
         req('office', 'Office ownership', 'Register your office (1 or more) and get it confirmed', confirmed(m.office)),
         req('leadership', 'Demonstrated leadership', skills.missing.length > 0 ? `To demonstrate: ${skills.missing.join('; ')}` : 'Keep leading visibly', skills.met),
-        req('nomination', 'Nominated by your G8 Leader', 'Request nomination from a G8 Leader', (m.nomination?.approvals?.length ?? 0) >= 1),
+        req('nomination', 'Nominated by your Leader', 'Request nomination from your Leader', (m.nomination?.approvals?.length ?? 0) >= 1),
       ];
     }
-    case 'g8':
-      return [
-        req('nominations', `Nominated by ${NOMINATION_APPROVALS_REQUIRED}+ G8 Leaders`, 'Collect G8 approvals on your nomination', (m.nomination?.approvals?.length ?? 0) >= NOMINATION_APPROVALS_REQUIRED),
-      ];
     default:
       return [];
   }

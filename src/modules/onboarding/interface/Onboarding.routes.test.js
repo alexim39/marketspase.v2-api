@@ -35,7 +35,7 @@ app.use('/v1/onboarding', buildOnboardingRouter({
     execute: async () => [{ id: productId, sku: 'MS-STARTER-001', price: 38000 }],
   },
   submitKyc: {
-    execute: async (_partnerId, input) => ({ status: 'pending', ...input }),
+    execute: async (_partnerId, input) => ({ status: 'verified', ...input }),
   },
   createOrder: {
     execute: async (input) => {
@@ -161,18 +161,11 @@ describe('onboarding routes', () => {
     assert.equal(result.status, 400);
   });
 
-  it('accepts a complete KYC form', async () => {
-    const result = await post('/v1/onboarding/kyc', {
-      dateOfBirth: '1998-04-12',
-      address: '12 Market Road',
-      city: 'Lagos',
-      state: 'Lagos',
-      idType: 'nin',
-      idNumber: '12345678901',
-    });
+  it('accepts an empty KYC form and completes it automatically', async () => {
+    const result = await post('/v1/onboarding/kyc', {});
 
     assert.equal(result.status, 200);
-    assert.equal(result.body.data.status, 'pending');
+    assert.equal(result.body.data.status, 'verified');
   });
 
   it('serves the admin activation order desk with pagination', async () => {

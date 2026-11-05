@@ -138,13 +138,16 @@ export class CompleteLessonUseCase {
     const row = await this.training.completeLesson(partnerId, courseId, lessonId, next.certified);
     const newlyCertified = next.certified && !alreadyCertified;
 
-    // Ladder tie-in: a fresh certificate checks its progression milestone.
+    // Ladder tie-in: a fresh certificate records and auto-confirms its
+    // progression milestone. IPO/QSG/SMO training no longer waits for an
+    // upline approval — the certificate is the verification.
     let milestoneChecked = null;
     if (newlyCertified && course.milestone && this.progress) {
+      const now = new Date();
       await this.progress.upsertMilestones(
         partnerId,
-        { [course.milestone]: { done: true, at: new Date() } },
-        { at: new Date(), by: partnerId, key: `${course.milestone} (via ${courseId} certificate)` },
+        { [course.milestone]: { done: true, at: now, confirmedAt: now, confirmedBy: null } },
+        { at: now, by: partnerId, key: `${course.milestone} (recorded automatically via ${courseId} certificate)` },
       );
       milestoneChecked = course.milestone;
     }

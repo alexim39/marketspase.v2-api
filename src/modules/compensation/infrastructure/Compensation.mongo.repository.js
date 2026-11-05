@@ -502,6 +502,22 @@ export class MongoCompensationRepository {
     };
   }
 
+  /** Raw growth ledger rows for a partner's own data export (bounded). */
+  async listForExport(partnerId, { limit = 5000 } = {}) {
+    const size = Math.min(Math.max(Number(limit) || 5000, 1), 5000);
+    const [entries, bonuses] = await Promise.all([
+      GrowthCommissionModel.find({ earnerId: partnerId })
+        .sort({ createdAt: -1 })
+        .limit(size)
+        .lean(),
+      MentorBonusModel.find({ mentorId: partnerId })
+        .sort({ createdAt: -1 })
+        .limit(size)
+        .lean(),
+    ]);
+    return { entries, bonuses };
+  }
+
   async listAdminEntries({ status, page = 1, limit = 25 } = {}) {
     const size = Math.min(Math.max(Number(limit) || 25, 1), 100);
     const current = Math.max(Number(page) || 1, 1);

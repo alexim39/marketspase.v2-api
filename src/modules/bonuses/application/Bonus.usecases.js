@@ -191,9 +191,10 @@ export class CreateBonusCampaignUseCase {
 
 /** Admin: edit amount/message/windows or enable/disable. */
 export class UpdateBonusCampaignUseCase {
-  /** @param {{campaigns}} deps */
-  constructor({ campaigns } = {}) {
+  /** @param {{campaigns, claims}} deps */
+  constructor({ campaigns, claims } = {}) {
     this.campaigns = campaigns ?? BonusCampaignModel;
+    this.claims = claims ?? BonusClaimModel;
   }
 
   async execute({ campaignId, patch = {} }) {
@@ -222,7 +223,23 @@ export class UpdateBonusCampaignUseCase {
     if (patch.startsAt !== undefined) doc.startsAt = patch.startsAt ? new Date(patch.startsAt) : null;
     if (patch.endsAt !== undefined) doc.endsAt = patch.endsAt ? new Date(patch.endsAt) : null;
     await doc.save();
-    const claims = await BonusClaimModel.countDocuments({ campaignId: doc._id }).catch(() => 0);
+    const claims = await this.claims.countDocuments({ campaignId: doc._id }).catch(() => 0);
     return { campaign: { ...shapedCampaign(doc.toObject?.() ?? doc), claims } };
+  }
+}
+
+/** Admin: delete a campaign. Historical claims remain in the wallet ledger. */
+export class DeleteBonusCampaignUseCase {
+  /** @param {{campaigns, claims}} deps */
+  constructor({ campaigns, claims } = {}) {
+    this.campaigns = campaigns ?? BonusCampaignModel;
+    this.claims = claims ?? BonusClaimModel;
+  }
+
+  async execute({ campaignId }) {
+    const doc = await this.campaigns.findByIdAndDelete(campaignId);
+    if (!doc) throw new NotFoundException('Bonus campaign not found');
+    const claims = await this.claims.countDocuments({ campaignId: doc._id }).catch(() => 0);
+    return { deleted: true, campaignId: String(doc._id ?? campaignId), claims };
   }
 }

@@ -2,104 +2,14 @@
 import bcrypt from "bcryptjs";
 import { sendEmail, appBaseUrl } from "../../../services/emailService.js";
 import { sessionCookieFlags } from "../../../modules/identity-access/interface/Auth.controller.js";
-import crypto from 'crypto';
 import jwt from "jsonwebtoken";
 import dotenv  from "dotenv"
 dotenv.config()
-import { ReservationCodeModel } from "../../reservation-code/models/reservation-code.model.js";
 import { PartnersModel } from './../../partner/models/partner.model.js';
-import { userNotificationEmailTemplate } from "../services/email/userTemplate.js";
 
 
-// Generate a unique username
-const generateUniqueUsername = async (name, surname) => {
-  if (!name || !surname) {
-    throw new Error("Name and surname are required to generate a username");
-  }
-
-  const baseUsername = (name.charAt(0) + surname).toLowerCase();
-  let candidateUsername = baseUsername;
-  let counter = 1;
-
-  while (true) {
-    const existingUser = await PartnersModel.findOne({ username: candidateUsername }).exec();
-    if (!existingUser) return candidateUsername;
-    candidateUsername = `${baseUsername}${counter++}`;
-  }
-};
-
-// Partner registration
-export const signup = async (req, res) => {
-  const { name, surname, email, password, reservationCode, tnc, phone } = req.body;
-
-  // Validate reservation code
-  const reservation = await ReservationCodeModel.findOne({
-    code: reservationCode.trim(),
-  }).collation({ locale: "en", strength: 2 });
-
-  if (!reservation) {
-    return res.status(400).json({ 
-      message: "The reservation code is invalid or does not exist", 
-      success: false 
-    });
-  }
-  if (reservation.status === "Pending") {
-    return res.status(402).json({ 
-      message: "Reservation code is pending approval", 
-      success: false 
-    });
-  }
-
-  const isCodeUsed = await PartnersModel.findOne({ reservationCode: reservationCode.trim() });
-  if (isCodeUsed) {
-    return res.status(401).json({ 
-      message: "This reservation code has already been used", 
-      success: false 
-    });
-  }
-
-  // Hash password and generate username
-  const hashedPassword = await bcrypt.hash(password.trim(), 10);
-  const username = await generateUniqueUsername(name.trim(), surname.trim());
-
-  // Create new partner
-  const newPartner = new PartnersModel({
-    name: name.trim(),
-    surname: surname.trim(),
-    email: email.trim(),
-    password: hashedPassword,
-    tnc,
-    reservationCode: reservationCode.trim(),
-    phone: phone.trim(),
-    username,
-  });
-
-  // Assign partnerOf if the reservation is approved
-  if (reservation.status === "Approved" && reservation.partnerId) {
-    const uplinePartner = await PartnersModel.findById(reservation.partnerId);
-    if (!uplinePartner) {
-      return res.status(404).json({ 
-        message: "Upline partner not found", 
-        success: false 
-      });
-    }
-    newPartner.partnerOf = reservation.partnerId;
-  }
-
-  await newPartner.save();
-
-  // Send welcome email
-  //const userSubject = "Welcome to Diamond Project Online Partners Platform!";
-  //const userMessage = userNotificationEmailTemplate(newPartner);
-  //await sendEmail(newPartner.email, userSubject, userMessage);
-
-  const { password: _, ...userObject } = newPartner.toJSON();
-  res.status(200).json({
-    userObject, 
-    message: "Registration successful", 
-    success: true 
-  });
-};
+// Partner registration is retired on the legacy surface — POST /v1/auth/signup
+// is the only signup path (transactional consume + verification email).
 
 // Get current signed in user
 export const getPartner = async (req, res) => {

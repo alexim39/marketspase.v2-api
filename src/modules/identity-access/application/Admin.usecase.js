@@ -1,6 +1,5 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '../../../shared/domain/AppError.js';
 import { lenientRole, normalizeRole } from '../domain/PartnerRole.js';
-import { normalizePermissions } from '../domain/Permissions.js';
 import { toSafePartner } from '../domain/Partner.entity.js';
 
 /**
@@ -29,22 +28,6 @@ export class SetPartnerRoleUseCase {
     }
 
     const updated = await this.partners.updateById(partnerId, { role: next });
-    return toSafePartner(updated);
-  }
-}
-
-export class SetPartnerPermissionsUseCase {
-  constructor({ partners }) {
-    this.partners = partners;
-  }
-
-  async execute({ partnerId, permissions }) {
-    const target = await this.partners.findById(partnerId);
-    if (!target) throw new NotFoundException('Partner not found');
-
-    const updated = await this.partners.updateById(partnerId, {
-      permissions: normalizePermissions(permissions),
-    });
     return toSafePartner(updated);
   }
 }
@@ -245,9 +228,9 @@ export class ReassignUplineUseCase {
  * never the erased PII.
  */
 export class ErasePartnerUseCase {
-  /** @param {{partners, prospects, tickets, codes, sessions?}} deps */
-  constructor({ partners, prospects, tickets, codes, sessions = null }) {
-    Object.assign(this, { partners, prospects, tickets, codes, sessions });
+  /** @param {{partners, prospects, tickets, sessions?}} deps */
+  constructor({ partners, prospects, tickets, sessions = null }) {
+    Object.assign(this, { partners, prospects, tickets, sessions });
   }
 
   async execute({ requesterId, partnerId, viaSelfRequest = false }) {
@@ -312,15 +295,12 @@ export class ErasePartnerUseCase {
     };
     const updated = await this.partners.updateById(partnerId, anonymized);
 
-    const removed = { prospects: 0, tickets: 0, codes: 0 };
+    const removed = { prospects: 0, tickets: 0 };
     if (this.prospects?.deleteByPartner) {
       removed.prospects = await this.prospects.deleteByPartner(partnerId).catch(() => 0);
     }
     if (this.tickets?.deleteByPartner) {
       removed.tickets = await this.tickets.deleteByPartner(partnerId).catch(() => 0);
-    }
-    if (this.codes?.deleteByPartner) {
-      removed.codes = await this.codes.deleteByPartner(partnerId).catch(() => 0);
     }
     if (this.sessions?.revoke) {
       await this.sessions.revoke(String(partnerId), { reason: 'Account erased', by: String(requesterId) }).catch(() => null);

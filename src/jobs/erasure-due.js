@@ -4,7 +4,6 @@ import { ErasePartnerUseCase } from '../modules/identity-access/application/Admi
 import { MongoPartnerRepository } from '../modules/identity-access/infrastructure/Auth.mongo.repository.js';
 import { MongoProspectRepository } from '../modules/crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoTicketRepository } from '../modules/support-ticketing/infrastructure/Ticket.mongo.repository.js';
-import { MongoReservationCodes } from '../modules/crm/infrastructure/Prospect.mongo.repository.js';
 import { revokeSessions } from '../modules/identity-access/infrastructure/SessionRevocation.js';
 import { lenientRole } from '../modules/identity-access/domain/PartnerRole.js';
 import { recordAudit } from '../modules/audit/index.js';
@@ -42,7 +41,6 @@ export const buildErasureDueJob = (deps = {}) => ({
     partners: new MongoPartnerRepository(),
     prospects: new MongoProspectRepository(),
     tickets: new MongoTicketRepository(),
-    codes: new MongoReservationCodes(),
     sessions: { revoke: (id, opts) => revokeSessions(id, opts) },
   }),
   recordTransaction: deps.recordTransaction ?? ((doc) => TransactionModel.create(doc)),

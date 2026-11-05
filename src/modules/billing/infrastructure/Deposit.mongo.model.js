@@ -13,7 +13,7 @@ const depositSchema = new mongoose.Schema(
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
     amountNgn: { type: Number, required: true, min: 0 },
     amountKobo: { type: Number, required: true, min: 0 },
-    method: { type: String, enum: ['opay', 'manual'], default: 'opay', index: true },
+    method: { type: String, enum: ['opay', 'paystack', 'manual'], default: 'opay', index: true },
     status: {
       type: String,
       enum: ['created', 'pending', 'success', 'failed', 'closed', 'awaiting-review', 'approved', 'rejected'],
@@ -21,6 +21,8 @@ const depositSchema = new mongoose.Schema(
       index: true,
     },
     orderNo: { type: String, default: null },
+    accessCode: { type: String, default: null },
+    authorizationUrl: { type: String, default: null },
     creditedAt: { type: Date, default: null },
     lastCallback: { type: mongoose.Schema.Types.Mixed, default: null },
     // Manual-claim evidence (details only v1) + the exactly-once decision.

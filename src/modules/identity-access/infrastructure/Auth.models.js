@@ -4,9 +4,8 @@ import mongoose from 'mongoose';
 // (like Ticket.schema.js) at final cutover; duplicating the 168-line
 // Partner schema now would risk drift between the two stacks.
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
-import { ReservationCodeModel } from '../../../apps/reservation-code/models/reservation-code.model.js';
 
-export { PartnersModel, ReservationCodeModel };
+export { PartnersModel };
 
 /**
  * Runs `fn(session)` inside a Mongo transaction (snapshot of `tx`).

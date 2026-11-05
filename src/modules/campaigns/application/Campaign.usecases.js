@@ -237,7 +237,11 @@ export class AllocatePartnersUseCase {
           now: context.now,
         });
         allocated.push(result);
-        best.entry.campaign.capacity.allocated = Number(best.entry.campaign.capacity.allocated) + 1;
+        if (result.campaign?.capacity) {
+          best.entry.campaign = { ...best.entry.campaign, ...result.campaign };
+        } else {
+          best.entry.campaign.capacity.allocated = Number(best.entry.campaign.capacity.allocated) + 1;
+        }
         best.entry.weeklyAllocated += 1;
         const index = candidates.indexOf(best.candidate);
         if (index >= 0) candidates.splice(index, 1);

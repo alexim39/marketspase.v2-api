@@ -58,9 +58,18 @@ export class ListBanksUseCase {
       throw new AppError('Could not load the bank list', 502, 'PROVIDER_ERROR');
     }
     if (!Array.isArray(data)) return [];
-    return data
-      .map((bank) => ({ name: String(bank?.name ?? '').trim(), code: String(bank?.code ?? '').trim() }))
-      .filter((bank) => bank.name && bank.code);
+    // Paystack's live directory can contain two names for one bank code.
+    // Keep one row per code so selects/autocomplete have unique keys.
+    const seen = new Set();
+    const list = [];
+    for (const bank of data) {
+      const name = String(bank?.name ?? '').trim();
+      const code = String(bank?.code ?? '').trim();
+      if (!name || !code || seen.has(code)) continue;
+      seen.add(code);
+      list.push({ name, code });
+    }
+    return list;
   }
 }
 
@@ -88,12 +97,14 @@ export class ResolveAccountUseCase {
         headers: { Authorization: `Bearer ${secret}` },
       });
       data = response?.data?.data ?? response?.data;
-    } catch (error) {
+    } catch {
       throw new ValidationException(
-        error?.response?.data?.message ?? 'Account could not be resolved',
+        'We could not verify that account — check the number and bank, then try again.',
       );
     }
-    if (!data?.account_name) throw new ValidationException('Account not found');
+    if (!data?.account_name) {
+      throw new ValidationException('We could not verify that account — check the number and bank, then try again.');
+    }
     return { accountName: data.account_name, accountNumber: data.account_number ?? acct };
   }
 }

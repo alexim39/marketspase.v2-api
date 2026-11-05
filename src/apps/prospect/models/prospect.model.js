@@ -86,11 +86,6 @@ const prospectSchema = mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Survey',
         },
-        prolificWomanLeadId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'ProlificWomanLead',
-            default: null,
-        },
         // Buy Prospect pickup timestamp — starts the 7-day return window
         // (partners may send a pool-claimed lead back within 7 days).
         // Absent on manually added contacts and pre-tracking claims.

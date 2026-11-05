@@ -1,6 +1,6 @@
 import { PATHS, isPathUnlocked, pathProgress } from '../domain/Training.paths.js';
 
-/** GET /v1/training/paths — 10 rank paths with unlock + progress derived from live gates. */
+/** GET /v1/training/paths — journey-stage paths with unlock + progress from live gates. */
 export class ListPathsUseCase {
   /** @param {{progress, training}} deps */
   constructor({ progress, training }) {

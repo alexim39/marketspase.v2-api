@@ -27,7 +27,7 @@ const growthCampaignSchema = new mongoose.Schema(
       endAt: { type: Date, default: null },
     },
     capacity: {
-      total: { type: Number, default: 4, min: 1, max: 20 },
+      total: { type: Number, default: 2, min: 2, max: 20 },
       allocated: { type: Number, default: 0, min: 0 },
       maxPerWeek: { type: Number, default: 2, min: 1, max: 10 },
     },

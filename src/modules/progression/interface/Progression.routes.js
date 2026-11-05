@@ -4,9 +4,7 @@ import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
-  DecideNominationUseCase, DecideTrainingConfirmUseCase, GetConfirmationStatsUseCase, GetMyProgressionUseCase,
-  GetOversightUseCase, ListPendingConfirmationsUseCase, ListPendingNominationsUseCase, RequestNominationUseCase,
-  RequestTrainingConfirmUseCase, TeamDistributionUseCase, UpdateMilestonesUseCase,
+  GetMyProgressionUseCase, TeamDistributionUseCase, UpdateMilestonesUseCase,
 } from '../application/Progression.usecases.js';
 import { MongoProgressionStore } from '../infrastructure/Progression.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
@@ -49,24 +47,10 @@ const MilestonesSchema = z.object({
   fullTime: stamp.optional(),
   office: stamp.optional(),
   officeAddress: z.string().max(200).optional(),
-  g8Request: z.union([z.object({ status: z.enum(['none', 'submitted', 'approved']) }).passthrough(), z.enum(['none', 'submitted', 'approved'])]).optional(),
   onboardingSession: stamp.optional(),
   qualifiedConfirmed: stamp.optional(),
   appointment: stamp.optional(),
 }).refine((b) => Object.keys(b).length > 0, { message: 'Nothing to update' });
-
-const NominationSchema = z.object({ note: z.string().trim().max(500).optional().default('') });
-const DecisionSchema = z.object({ partnerId: objectId, approved: z.boolean() });
-const TrainingRequestSchema = z.object({ key: z.enum(['ipo', 'qsg', 'smo', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance']) });
-const TrainingDecisionSchema = z.object({
-  partnerId: objectId,
-  key: z.enum(['ipo', 'qsg', 'smo', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance']),
-  approved: z.boolean(),
-  note: z.string().trim().max(500).optional().default(''),
-}).refine((b) => b.approved === true || b.note.length > 0, {
-  message: 'A reason is required when declining',
-  path: ['note'],
-});
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildProgressionRouter = (deps = {}) => {
@@ -86,20 +70,8 @@ export const buildProgressionRouter = (deps = {}) => {
     reports: deps.reports ?? new MongoReportStore(),
   });
   const update = deps.update ?? new UpdateMilestonesUseCase({ progress, network });
-  const nominate = new RequestNominationUseCase({ progress, network, orders, mine });
-  const requestTraining = new RequestTrainingConfirmUseCase({ progress, network });
-  const decideTraining = new DecideTrainingConfirmUseCase({ progress, network });
-  const pendingConfirmations = new ListPendingConfirmationsUseCase({ progress, network });
-  const confirmationStats = new GetConfirmationStatsUseCase({ progress, network });
-  const decide = new DecideNominationUseCase({ progress, network, orders, mine });
   const team = new TeamDistributionUseCase({ progress, network });
   const partners = deps.partners ?? new MongoPartnerRepository();
-  const pending = deps.pending ?? new ListPendingNominationsUseCase({ progress, network });
-  const oversight = deps.oversight ?? new GetOversightUseCase({
-    mine, partners,
-    distribution: deps.distribution ?? team,
-    pending,
-  });
 
   const router = express.Router();
   router.use(requireAuth);
@@ -127,59 +99,9 @@ export const buildProgressionRouter = (deps = {}) => {
     res.status(200).json({ message: 'Milestones updated successfully', data, success: true });
   }));
 
-  router.post('/mine/nomination', validate({ body: NominationSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await nominate.execute({ partnerId: req.auth?.partnerId, note: body?.note });
-    res.status(200).json({ message: 'Nomination requested successfully', data, success: true });
-  }));
-
-  router.post('/nominations/decision', validate({ body: DecisionSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await decide.execute({ approverId: req.auth?.partnerId, partnerId: body.partnerId, approved: body.approved });
-    res.status(200).json({ message: 'Nomination decided successfully', data, success: true });
-  }));
-
-  router.post('/mine/training/request', validate({ body: TrainingRequestSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await requestTraining.execute({ partnerId: req.auth?.partnerId, key: body.key });
-    res.status(200).json({ message: 'Training sent for upline confirmation', data, success: true });
-  }));
-
-  router.get('/team/confirmations', asyncHandler(async (req, res) => {
-    const data = await pendingConfirmations.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Pending training confirmations retrieved successfully', data, success: true });
-  }));
-
-  router.get('/team/confirmation-stats', asyncHandler(async (req, res) => {
-    const data = await confirmationStats.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Confirmation responsiveness retrieved successfully', data, success: true });
-  }));
-
-  router.post('/confirmations/decision', validate({ body: TrainingDecisionSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await decideTraining.execute({
-      approverId: req.auth?.partnerId,
-      partnerId: body.partnerId,
-      key: body.key,
-      approved: body.approved,
-      note: body.note,
-    });
-    res.status(200).json({ message: body.approved ? 'Training confirmed successfully' : 'Training declined', data, success: true });
-  }));
-
   router.get('/team/distribution', asyncHandler(async (req, res) => {
     const data = await team.execute({ partnerId: req.auth?.partnerId });
     res.status(200).json({ message: 'Team distribution retrieved successfully', data, success: true });
-  }));
-
-  router.get('/nominations/pending', asyncHandler(async (req, res) => {
-    const data = await pending.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Pending nominations retrieved successfully', data, success: true });
-  }));
-
-  router.get('/oversight', asyncHandler(async (req, res) => {
-    const data = await oversight.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Oversight retrieved successfully', data, success: true });
   }));
 
   return router;

@@ -3,26 +3,55 @@
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
 import { toNetworkNode } from '../domain/Network.entity.js';
 
-const project = (doc) => {
+export const project = (doc, chain = 'all') => {
   if (!doc) return null;
   const node = toNetworkNode(doc);
   const raw = typeof doc.toObject === 'function' ? doc.toObject() : doc;
-  node.parentId = raw.partnerOf ? String(raw.partnerOf) : null;
+  const referralParent = raw.partnerOf ? String(raw.partnerOf) : null;
+  const placementParent = raw.placementParentId ? String(raw.placementParentId) : null;
+  if (chain === 'growth') {
+    node.parentId = placementParent;
+    node.relationType = placementParent ? 'placement' : null;
+  } else if (chain === 'referral') {
+    node.parentId = referralParent;
+    node.relationType = referralParent ? 'referral' : null;
+  } else {
+    node.parentId = referralParent ?? placementParent;
+    node.relationType = referralParent ? 'referral' : placementParent ? 'placement' : null;
+  }
   return node;
 };
 
+/**
+ * Campaign placement is a second relationship: a partner may have no referral
+ * upline but be placed with a campaign mentor. In that case the mentor is the
+ * effective network parent so the partner appears in team/tree/coach views.
+ * Growth commissions follow `placementParentId`; referral/shop commissions
+ * follow `partnerOf`.
+ */
+export const childFilter = (parentIds, chain = 'all') => {
+  if (chain === 'growth') return { placementParentId: { $in: parentIds } };
+  if (chain === 'referral') return { partnerOf: { $in: parentIds } };
+  return {
+    $or: [
+      { partnerOf: { $in: parentIds } },
+      { partnerOf: null, placementParentId: { $in: parentIds } },
+    ],
+  };
+};
+
 /** Mongo implementation of the network read contracts. All reads `.lean()`. */
-export class MongoNetworkRepository {  async findNode(id) {
-    return project(await PartnersModel.findById(id).lean());
+export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
+    return project(await PartnersModel.findById(id).lean(), chain);
   }
 
-  async findChildren(parentIds, limit) {
+  async findChildren(parentIds, limit, chain = 'all') {
     if (parentIds.length === 0) return [];
-    const docs = await PartnersModel.find({ partnerOf: { $in: parentIds } })
+    const docs = await PartnersModel.find(childFilter(parentIds, chain))
       .sort({ username: 1 })
       .limit(Math.max(0, limit * parentIds.length))
       .lean();
-    return docs.map(project);
+    return docs.map((doc) => project(doc, chain));
   }
 
   /** Bulk directory-safe fetch for rosters/exports (capped). */
@@ -32,29 +61,33 @@ export class MongoNetworkRepository {  async findNode(id) {
       .sort({ username: 1 })
       .limit(Math.min(Math.max(Number(limit) || 5000, 1), 5000))
       .lean();
-    return docs.map(project);
+    return docs.map((doc) => project(doc));
   }
 
-  /** Everyone with ≥1 direct recruit — the snapshot job's work list. */
+  /** Everyone with ≥1 direct recruit or campaign placement — snapshot work list. */
   async findLeaderIds(limit = 2000) {
-    const ids = await PartnersModel.distinct('partnerOf');
-    return ids.map(String).filter(Boolean).slice(0, Math.min(Math.max(Number(limit) || 2000, 1), 5000));
+    const [referralParents, placementParents] = await Promise.all([
+      PartnersModel.distinct('partnerOf'),
+      PartnersModel.distinct('placementParentId'),
+    ]);
+    return [...new Set([...referralParents, ...placementParents].map(String).filter(Boolean))]
+      .slice(0, Math.min(Math.max(Number(limit) || 2000, 1), 5000));
   }
 
-  /** Direct-recruit count (progression signals). */
+  /** Direct-recruit count (referral or campaign placement) for progression signals. */
   async countChildren(partnerId) {
-    return PartnersModel.countDocuments({ partnerOf: String(partnerId) });
+    return PartnersModel.countDocuments(childFilter([String(partnerId)]));
   }
 
-  /** Newest direct recruits for the referral card (bounded). */
+  /** Newest direct children for the referral card (bounded). */
   async recentChildren(partnerId, limit = 5) {
     const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
-    const docs = await PartnersModel.find({ partnerOf: String(partnerId) })
-      .select('name surname username createdAt')
+    const docs = await PartnersModel.find(childFilter([String(partnerId)]))
+      .select('name surname username createdAt partnerOf placementParentId commissionRank')
       .sort({ createdAt: -1 })
       .limit(lim)
       .lean();
-    return docs.map(project);
+    return docs.map((doc) => project(doc));
   }
 }
 

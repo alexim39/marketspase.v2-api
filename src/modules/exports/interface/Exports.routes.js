@@ -11,7 +11,7 @@ import { buildXlsx } from '../domain/Export.xlsx.js';
 import { CommunityAnalyticsUseCase } from '../../community/application/Community.usecases.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
-import { MongoCommissionLedger } from '../../billing/infrastructure/Billing.mongo.repository.js';
+import { MongoCompensationRepository } from '../../compensation/infrastructure/Compensation.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 
@@ -42,14 +42,14 @@ const sendXlsx = async (res, sheet, { name, columns, rows }) => {
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildExportsRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
-  const ledger = deps.ledger ?? new MongoCommissionLedger();
+  const growth = deps.growth ?? new MongoCompensationRepository();
   const network = deps.network ?? new MongoNetworkRepository();
   const reports = deps.reports ?? new MongoReportStore();
   const community = deps.community ?? new MongoCommunityStore();
 
   const team = new ExportTeamUseCase({ network });
   const pipeline = new ExportPipelineUseCase({ prospects });
-  const commissions = new ExportCommissionsUseCase({ ledger });
+  const commissions = new ExportCommissionsUseCase({ growth });
   const periodReports = new ExportReportsUseCase({ reports, network });
   const communityStats = deps.communityStats ?? new ExportCommunityUseCase({
     analytics: deps.analytics ?? new CommunityAnalyticsUseCase({ community }),

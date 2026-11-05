@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '../../../shared/domain/AppError.js';
+import { RANKS, rankDepth } from '../../compensation/domain/Compensation.plan.js';
 import { toSafePartner } from '../domain/Partner.entity.js';
 import { lenientRole } from '../domain/PartnerRole.js';
 
@@ -42,6 +43,7 @@ export class GetMember360UseCase {
 
   identity(member) {
     const safe = toSafePartner(member);
+    const commissionRank = RANKS.includes(safe.commissionRank) ? safe.commissionRank : 'Partner';
     return {
       id: String(safe.id ?? safe._id),
       name: [safe.name, safe.surname].filter(Boolean).join(' ') || safe.username,
@@ -50,6 +52,8 @@ export class GetMember360UseCase {
       phone: safe.phone ?? null,
       state: safe.address?.state ?? null,
       role: lenientRole(safe.role),
+      commissionRank,
+      commissionDepth: rankDepth(commissionRank),
       suspended: !!safe.suspended,
       suspendReason: safe.suspendReason ?? null,
       createdAt: safe.createdAt ?? null,

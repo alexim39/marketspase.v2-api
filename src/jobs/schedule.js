@@ -15,6 +15,7 @@ import { runOutreachDueJob } from './outreach-due.js';
 import { runBroadcastDueJob } from './broadcast-due.js';
 import { runLeadPoolDueJob } from './leadpool-due.js';
 import { runAllocationDueJob } from './allocation-due.js';
+import { runGrowthAllocationDueJob } from './growth-allocation-due.js';
 import { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 import { JobRunModel, withJobHealth } from './job-health.js';
 import { runSessionRemindersJob } from './session-reminders.js';
@@ -22,6 +23,7 @@ import { runErasureDueJob } from './erasure-due.js';
 import { runEventRsvpDueJob } from './event-rsvp-due.js';
 import { runMentorBonusDueJob } from './mentor-bonus-due.js';
 import { runCompensationReconcileJob } from './compensation-reconcile.js';
+import { runPayoutReconcileJob } from './payout-reconcile.js';
 
 /**
  * Background jobs — the single scheduling mechanism (the legacy birthday
@@ -78,13 +80,15 @@ export function scheduleJobs() {
   cron.schedule('* * * * *', () => runBroadcastDueJob());
   cron.schedule('*/15 * * * *', () => withJobHealth(JobRunModel, 'leadpool-sweep', () => runLeadPoolDueJob()));
   cron.schedule('*/30 * * * *', () => withJobHealth(JobRunModel, 'campaign-allocation', () => runAllocationDueJob()));
+  cron.schedule('*/15 * * * *', () => runGrowthAllocationDueJob());
   cron.schedule('30 1 * * *', () => withJobHealth(JobRunModel, 'campaign-expiry', () => runCampaignExpiryDueJob()));
   cron.schedule('*/15 * * * *', () => runSessionRemindersJob());
   cron.schedule('*/15 * * * *', () => runEventRsvpDueJob());
   cron.schedule('30 3 * * *', () => runErasureDueJob());
   cron.schedule('15 * * * *', () => withJobHealth(JobRunModel, 'mentor-bonus', () => runMentorBonusDueJob()));
   cron.schedule('45 * * * *', () => withJobHealth(JobRunModel, 'compensation-reconcile', () => runCompensationReconcileJob()));
-  console.log('[jobs] scheduled: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45');
+  cron.schedule('*/10 * * * *', () => withJobHealth(JobRunModel, 'payout-reconcile', () => runPayoutReconcileJob()));
+  console.log('[jobs] scheduled: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes');
 }
 
 export { runBirthdayJob } from './birthday.js';
@@ -96,9 +100,11 @@ export { runOutreachDueJob } from './outreach-due.js';
 export { runBroadcastDueJob } from './broadcast-due.js';
 export { runLeadPoolDueJob } from './leadpool-due.js';
 export { runAllocationDueJob } from './allocation-due.js';
+export { runGrowthAllocationDueJob } from './growth-allocation-due.js';
 export { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 export { runSessionRemindersJob } from './session-reminders.js';
 export { runEventRsvpDueJob } from './event-rsvp-due.js';
 export { runErasureDueJob } from './erasure-due.js';
 export { runMentorBonusDueJob } from './mentor-bonus-due.js';
 export { runCompensationReconcileJob } from './compensation-reconcile.js';
+export { runPayoutReconcileJob } from './payout-reconcile.js';

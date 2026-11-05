@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaimBonusUseCase, GetEligibleBonusUseCase } from './Bonus.usecases.js';
+import { ClaimBonusUseCase, DeleteBonusCampaignUseCase, GetEligibleBonusUseCase, UpdateBonusCampaignUseCase } from './Bonus.usecases.js';
 
 const campaign = (over = {}) => ({
   _id: 'c1',
@@ -71,3 +71,54 @@ test('claim rejects duplicates and dead campaigns', async () => {
   const badId = new ClaimBonusUseCase({});
   await assert.rejects(badId.execute({ partnerId: 'p1', campaignId: 'nope' }), /Invalid campaign/);
 });
+
+test('admin update writes every editable field', async () => {
+  const doc = {
+    ...campaign(),
+    save: async function () { this.saved = true; },
+    toObject() { return { ...this }; },
+  };
+  const uc = new UpdateBonusCampaignUseCase({
+    campaigns: { findById: async () => doc },
+    claims: { countDocuments: async () => 4 },
+  });
+  const res = await uc.execute({
+    campaignId: C1,
+    patch: {
+      title: 'Updated title',
+      message: 'Updated message',
+      amountNgn: 5000,
+      status: 'disabled',
+      startsAt: '2026-01-01',
+      endsAt: '2026-12-31',
+      eligibleAfter: '2026-02-01',
+    },
+  });
+  assert.equal(doc.title, 'Updated title');
+  assert.equal(doc.message, 'Updated message');
+  assert.equal(doc.amountNgn, 5000);
+  assert.equal(doc.status, 'disabled');
+  assert.ok(doc.startsAt instanceof Date);
+  assert.ok(doc.endsAt instanceof Date);
+  assert.ok(doc.eligibleAfter instanceof Date);
+  assert.equal(res.campaign.claims, 4);
+  assert.equal(res.campaign.status, 'disabled');
+});
+
+test('admin delete removes the campaign and reports claim history', async () => {
+  let deleted = null;
+  const uc = new DeleteBonusCampaignUseCase({
+    campaigns: {
+      findByIdAndDelete: async (id) => {
+        deleted = id;
+        return { _id: id, title: 'Welcome bonus' };
+      },
+    },
+    claims: { countDocuments: async () => 7 },
+  });
+  const res = await uc.execute({ campaignId: C1 });
+  assert.equal(deleted, C1);
+  assert.equal(res.deleted, true);
+  assert.equal(res.claims, 7);
+});
+

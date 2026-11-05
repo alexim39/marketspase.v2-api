@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ALLOCATION_WEIGHTS,
+  COST_PER_PROSPECT_NGN,
+  campaignBudgetRemaining,
   campaignInFlight,
   ownerEligibleForCampaign,
   partnerEligibleForAllocation,
@@ -63,6 +65,14 @@ describe('campaign allocation gates', () => {
   it('campaign owners must be activated and KYC verified but may be placed under another owner', () => {
     assert.equal(ownerEligibleForCampaign(partner({ placementParentId: 'owner-9' })), true);
     assert.equal(ownerEligibleForCampaign(partner({ kycStatus: 'pending' })), false);
+  });
+
+  it('treats legacy accounts with missing activation/KYC fields as active and verified', () => {
+    const legacy = { _id: 'legacy', suspendedAt: null, placementParentId: null };
+    assert.equal(ownerEligibleForCampaign(legacy), true);
+    assert.equal(partnerEligibleForAllocation(legacy), true);
+    assert.equal(ownerEligibleForCampaign({ ...legacy, accountState: 'member' }), false);
+    assert.equal(ownerEligibleForCampaign({ ...legacy, kycStatus: 'pending' }), false);
   });
 });
 
@@ -163,6 +173,20 @@ describe('fair allocation score', () => {
 
     assert.ok(result);
     assert.equal(result.score.fit, 20);
-    assert.match(result.explanation.join(' '), /Outside target states/);
+    assert.match(result.explanation.join(' '), /Fallback: outside preferred states/);
+  });
+
+  it('refuses a campaign whose remaining budget cannot cover one more prospect', () => {
+    const exhausted = campaign({
+      budget: { total: 5000, spent: 5000 - (COST_PER_PROSPECT_NGN - 1), refunded: 0 },
+    });
+    assert.equal(campaignBudgetRemaining(exhausted), COST_PER_PROSPECT_NGN - 1);
+    assert.equal(scoreAllocationPair({
+      campaign: exhausted,
+      queueEntry: queueEntry(),
+      partner: partner(),
+      partnerState: 'Lagos',
+      now,
+    }), null);
   });
 });

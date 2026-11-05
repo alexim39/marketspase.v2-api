@@ -7,6 +7,7 @@ import {
   UpdateStatusSchema, LogCommunicationSchema, PaginationQuery, CommIdsParam, StuckQuery,
   ConvertProspectSchema, ClaimProspectSchema, AcceptPageLeadSchema, PoolQuery, RateLeadSchema, ImportLeadsSchema,
   AdminLeadsQuery, LeadIdParam, AdminPageLeadsQuery, PageLeadIdParam, ReassignPageLeadSchema, PushPoolLeadSchema,
+  ResolveContactPhoneSchema,
 } from './Prospect.validator.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { makeProspectController } from './Prospect.controller.js';
@@ -14,14 +15,20 @@ import {
   CreateProspectUseCase, UpdateProspectUseCase, UpdateProspectStatusUseCase, DeleteProspectUseCase,
 } from '../application/Prospect.commands.js';
 import { LogCommunicationUseCase, RemoveCommunicationUseCase } from '../application/Prospect.communications.js';
-import { GetMyContactListUseCase, ListActivationBoardUseCase, ListDownlineContactListsUseCase, SubmitContactListUseCase } from '../application/ContactList.usecases.js';
+import {
+  GetMyContactListUseCase,
+  ListActivationBoardUseCase,
+  ListDownlineContactListsUseCase,
+  ResolveContactByPhoneUseCase,
+  SubmitContactListUseCase,
+} from '../application/ContactList.usecases.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import {
   GetFollowUpRemindersUseCase, GetProspectByIdUseCase, GetProspectsByPartnerUseCase, GetProspectNotificationsUseCase,
   GetStuckProspectsUseCase,
 } from '../application/Prospect.queries.js';
-import { MongoProspectRepository, MongoPartnerLookup, MongoReservationCodes } from '../infrastructure/Prospect.mongo.repository.js';
+import { MongoProspectRepository, MongoPartnerLookup } from '../infrastructure/Prospect.mongo.repository.js';
 import { MongoCampaignLookup } from '../../marketing/infrastructure/Marketing.mongo.repository.js';
 import { ConvertProspectToPartnerUseCase } from '../application/Prospect.convert.js';
 import { ImportContactsUseCase } from '../application/Prospect.import.js';
@@ -53,7 +60,6 @@ import { recordAudit } from '../../audit/index.js';import { domainEvents } from 
 export const buildProspectRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const partners = deps.partners ?? new MongoPartnerLookup();
-  const reservations = deps.reservations ?? new MongoReservationCodes();
   const campaigns = deps.campaigns ?? new MongoCampaignLookup();
 
   const network = deps.network ?? new MongoNetworkRepository();
@@ -79,7 +85,7 @@ export const buildProspectRouter = (deps = {}) => {
     notifications: new GetProspectNotificationsUseCase({ prospects }),
     stuck: new GetStuckProspectsUseCase({ prospects }),
     reminders: new GetFollowUpRemindersUseCase({ prospects }),
-    convert: new ConvertProspectToPartnerUseCase({ prospects, reservations }),
+    convert: new ConvertProspectToPartnerUseCase({ prospects }),
     release: new ReleaseProspectToPoolUseCase({ prospects }),
     claim: new ClaimPoolLeadUseCase({}),
     pool: new GetPoolUseCase({}),
@@ -93,6 +99,7 @@ export const buildProspectRouter = (deps = {}) => {
       ?? new SubmitContactListUseCase({ prospects, network, events }),
     contactListDownline: new ListDownlineContactListsUseCase({ prospects, network }),
     contactListActivation: new ListActivationBoardUseCase({ prospects, network, progress }),
+    contactListResolvePhone: new ResolveContactByPhoneUseCase({ prospects, network }),
   }, { guard });
 
   const router = express.Router();
@@ -110,6 +117,7 @@ export const buildProspectRouter = (deps = {}) => {
   router.post('/contact-list/submit', c.contactListSubmit);
   router.get('/contact-list/downline', c.contactListDownline);
   router.get('/contact-list/activation', c.contactListActivation);
+  router.post('/contact-list/resolve-phone', validate({ body: ResolveContactPhoneSchema }), c.contactListResolvePhone);
   router.get('/pool', validate({ query: PoolQuery }), c.pool);
   router.put('/update', validate({ body: UpdateProspectSchema }), c.update);
   router.put('/:prospectId', validate({ params: ProspectIdParam, body: UpdateProspectSchema }), c.update);

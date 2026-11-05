@@ -14,9 +14,12 @@ import {
   ListBanksUseCase,
 } from '../application/Commission.queries.js';
 import { GetPlanUseCase, UpdatePlanUseCase } from '../application/Commission.plan.js';
+import { CreateWithdrawalUseCase, MIN_WITHDRAWAL_NGN, MAX_WITHDRAWAL_NGN } from '../application/Withdrawal.usecases.js';
+import { PaystackClient } from '../infrastructure/PaystackClient.js';
 import { MongoCommissionLedger, MongoOrderReader } from '../infrastructure/Billing.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
+import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 const CartIdParam = z.object({ cartId: objectId });
@@ -32,6 +35,12 @@ const ResolveQuery = z.object({
   accountNumber: z.string().trim().regex(/^\d{10}$/, 'Invalid account number'),
   bankCode: z.string().trim().min(1).max(20),
 });
+const WithdrawalSchema = z.object({
+  bankCode: z.string().trim().min(1).max(20),
+  bankName: z.string().trim().max(120).optional(),
+  accountNumber: z.string().trim().regex(/^\d{10}$/, 'Invalid account number'),
+  amountNgn: z.number().min(MIN_WITHDRAWAL_NGN).max(MAX_WITHDRAWAL_NGN),
+});
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildBillingRouter = (deps = {}) => {
@@ -39,6 +48,9 @@ export const buildBillingRouter = (deps = {}) => {
   const orders = deps.orders ?? new MongoOrderReader();
   const network = deps.network ?? new MongoNetworkRepository();
   const partners = deps.partners ?? new MongoPartnerRepository();
+  const paystack = deps.paystack ?? new PaystackClient({ http: deps.http });
+  const autoPayout = deps.autoPayout ?? process.env.PAYSTACK_AUTO_PAYOUT !== 'false';
+
 
   const c = makeBillingController({
     mine: new GetMyCommissionsUseCase({ ledger }),
@@ -52,11 +64,11 @@ export const buildBillingRouter = (deps = {}) => {
     void: new VoidCartCommissionsUseCase({ ledger, orders }),
     plan: new GetPlanUseCase({ ledger }),
     updatePlan: new UpdatePlanUseCase({ ledger }),
+    createWithdrawal: new CreateWithdrawalUseCase({ paystack, notifier: notifyPayoutOutcome, autoPayout }),
   });
 
   const router = express.Router();
   router.use(requireAuth);
-
   // Earner self-service (own session identity — no :partnerId to tamper with).
   router.get('/mine', validate({ query: PageQuery }), c.mine);
   router.get('/performance', validate({ query: z.object({}) }), c.summary);
@@ -65,6 +77,8 @@ export const buildBillingRouter = (deps = {}) => {
   router.get('/resolve-account', validate({ query: ResolveQuery }), c.resolveAccount);
   // Bank directory — proxied so the browser never calls Paystack directly.
   router.get('/banks', c.listBanks);
+  // Withdrawal request — account name is re-resolved server-side.
+  router.post('/withdrawals', validate({ body: WithdrawalSchema }), c.createWithdrawal);
   // Called by checkout after legacy order success (idempotent on retry).
   router.post('/accrue/:cartId', validate({ params: CartIdParam }), c.accrue);
 

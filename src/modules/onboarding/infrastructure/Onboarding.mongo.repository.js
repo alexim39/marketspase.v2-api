@@ -19,7 +19,7 @@ import {
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified';
+const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;
@@ -37,6 +37,12 @@ export const partnerSummary = (partner) => {
     activatedAt: partner.activatedAt ?? null,
     createdAt: partner.createdAt ?? null,
     emailVerified: partner.emailVerified !== false,
+    address: partner.address ? {
+      street: partner.address.street ?? '',
+      city: partner.address.city ?? '',
+      state: partner.address.state ?? '',
+      country: partner.address.country ?? 'Nigeria',
+    } : null,
   };
 };
 
@@ -148,43 +154,44 @@ export class MongoOnboardingRepository {
     };
   }
 
-  async submitKyc(partnerId, input) {
+  async submitKyc(partnerId, input = {}) {
     const now = new Date();
-    const age = ageOn(input.dateOfBirth, now);
-    if (!Number.isFinite(age) || age < 18) {
-      throw new ValidationException('You must be at least 18 years old to activate');
+    if (input.dateOfBirth) {
+      const age = ageOn(input.dateOfBirth, now);
+      if (!Number.isFinite(age) || age < 18) {
+        throw new ValidationException('You must be at least 18 years old to activate');
+      }
+      if (age > 120) throw new ValidationException('Enter a valid date of birth');
     }
-    if (age > 120) throw new ValidationException('Enter a valid date of birth');
 
     return runInTransaction(async (session) => {
       const partner = await this.findById(partnerId, { session });
       if (!partner) throw new NotFoundException('Partner account not found');
-      if (partner.kycStatus === 'verified') {
-        throw new ConflictException('Identity verification is already complete');
-      }
-      if (partner.kycStatus === 'pending') {
-        throw new ConflictException('Identity verification is already under review');
-      }
 
-      const idNumber = String(input.idNumber).replace(/\s+/g, '').toUpperCase();
+      // Document/address fields are optional while the no-document KYC step is
+      // in place. The identity step completes automatically on submit; when
+      // document verification returns, this block can require them again.
+      const rawIdNumber = String(input.idNumber ?? '').replace(/\s+/g, '').toUpperCase();
       const hashSecret = process.env.KYC_HASH_SECRET ?? process.env.JWTTOKENSECRET ?? 'marketspase-kyc';
-      const idNumberHash = crypto.createHmac('sha256', hashSecret).update(idNumber).digest('hex');
+      const idNumberHash = rawIdNumber
+        ? crypto.createHmac('sha256', hashSecret).update(rawIdNumber).digest('hex')
+        : null;
       const submission = await KycSubmissionModel.findOneAndUpdate(
         { partnerId },
         {
           $set: {
-            dateOfBirth: input.dateOfBirth,
-            address: input.address,
-            city: input.city,
-            state: input.state,
+            dateOfBirth: input.dateOfBirth ?? null,
+            address: input.address ?? null,
+            city: input.city ?? null,
+            state: input.state ?? null,
             country: input.country ?? 'Nigeria',
-            idType: input.idType,
+            idType: input.idType ?? null,
             idNumberHash,
-            idLast4: idNumber.slice(-4),
-            status: 'pending',
+            idLast4: rawIdNumber ? rawIdNumber.slice(-4) : null,
+            status: 'verified',
             submittedAt: now,
             reviewedBy: null,
-            reviewedAt: null,
+            reviewedAt: now,
             reviewNote: null,
           },
         },
@@ -193,7 +200,7 @@ export class MongoOnboardingRepository {
 
       await PartnersModel.updateOne(
         { _id: partnerId },
-        { $set: { kycStatus: 'pending', kycSubmittedAt: now, kycVerifiedAt: null } },
+        { $set: { kycStatus: 'verified', kycSubmittedAt: now, kycVerifiedAt: now } },
         opts(session),
       );
 
@@ -289,6 +296,12 @@ export class MongoOnboardingRepository {
               accountState: 'partner',
               activatedAt: now,
               activationOrderId: order._id,
+              address: {
+                street: shipping.street,
+                city: shipping.city,
+                state: shipping.state,
+                country: shipping.country ?? 'Nigeria',
+              },
             },
           },
           opts(session, { new: true }),

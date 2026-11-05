@@ -14,7 +14,6 @@ const partners = {
   findByEmail: async (email) => rows.get(String(email).toLowerCase()) ?? null,
   findById: async (id) => [...rows.values()].find((row) => String(row._id) === String(id)) ?? null,
   existsByUsername: async (username) => [...rows.values()].some((row) => row.username === username),
-  existsByReservationCode: async (code) => [...rows.values()].some((row) => row.reservationCode === code),
   create: async (data) => {
     const existing = rows.get(String(data.email).toLowerCase());
     if (existing) throw { code: 11000 };
@@ -76,10 +75,6 @@ const app = express();
 app.use(express.json());
 app.use('/v1/auth', buildAuthRouter({
   partners,
-  reservations: {
-    findByCode: async () => null,
-    markUsed: async () => ({ used: false }),
-  },
   hasher,
   sessions,
   tx: { runInTransaction: async (fn) => fn(undefined) },

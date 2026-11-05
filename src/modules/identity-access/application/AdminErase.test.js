@@ -52,7 +52,6 @@ const eraseUc = (rows, extra = {}) => new ErasePartnerUseCase({
   partners: fakePartners(rows),
   prospects: counter(3),
   tickets: counter(1),
-  codes: counter(2),
   sessions: fakeSessions(),
   ...extra,
 });
@@ -62,10 +61,10 @@ describe('ErasePartnerUseCase', () => {
     const sessions = fakeSessions();
     const uc = new ErasePartnerUseCase({
       partners: fakePartners([partner()]),
-      prospects: counter(3), tickets: counter(1), codes: counter(2), sessions,
+      prospects: counter(3), tickets: counter(1), sessions,
     });
     const res = await uc.execute({ requesterId: 'admin1', partnerId: 'p1' });
-    assert.deepEqual(res.removed, { prospects: 3, tickets: 1, codes: 2 });
+    assert.deepEqual(res.removed, { prospects: 3, tickets: 1 });
     const e = res.erased;
     assert.equal(e.name, 'Deleted');
     assert.match(e.email, /^deleted_[a-z0-9]+@deleted\.local$/);
@@ -98,7 +97,7 @@ describe('ErasePartnerUseCase', () => {
   it('tolerates missing optional stores', async () => {
     const uc = new ErasePartnerUseCase({ partners: fakePartners([partner()]) });
     const res = await uc.execute({ requesterId: 'admin1', partnerId: 'p1' });
-    assert.deepEqual(res.removed, { prospects: 0, tickets: 0, codes: 0 });
+    assert.deepEqual(res.removed, { prospects: 0, tickets: 0 });
     assert.equal(res.erased.suspended, true);
   });
 
@@ -112,7 +111,7 @@ describe('ErasePartnerUseCase', () => {
       ]);
       const uc = new ErasePartnerUseCase({
         partners: store,
-        prospects: counter(0), tickets: counter(0), codes: counter(0), sessions: fakeSessions(),
+        prospects: counter(0), tickets: counter(0), sessions: fakeSessions(),
       });
       const res = await uc.execute({ requesterId: 'admin1', partnerId: 'mid' });
       assert.equal(res.movedDownline, 2);

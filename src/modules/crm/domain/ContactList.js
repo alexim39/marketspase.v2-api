@@ -8,6 +8,23 @@
 /** Minimum unsubmitted contacts before a list can go to the upline. */
 export const MIN_CONTACTS = 1;
 
+/**
+ * Phone visibility for the upline workbench.
+ * A prospect's phone is shared only with their direct referral upline and only
+ * when the prospect agreed to be contacted. Everyone else sees the contact
+ * without a phone number.
+ */
+export const prospectPhoneAccess = ({
+  consentToContact = false,
+  directUpline = false,
+  hasPhone = true,
+} = {}) => {
+  if (!hasPhone) return { visible: false, reason: 'no-phone' };
+  if (!directUpline) return { visible: false, reason: 'not-direct' };
+  if (!consentToContact) return { visible: false, reason: 'no-consent' };
+  return { visible: true, reason: null };
+};
+
 /** First-touch SLA: upline should attempt every submitted batch within 48h. */
 export const LIST_SLA_HOURS = 48;
 

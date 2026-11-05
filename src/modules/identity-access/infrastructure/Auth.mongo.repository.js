@@ -1,4 +1,4 @@
-import { PartnersModel, ReservationCodeModel } from './Auth.models.js';
+import { PartnersModel } from './Auth.models.js';
 
 const opts = (session) => (session ? { session } : {});
 const byId = (session) => (session ? { session } : {});
@@ -16,9 +16,6 @@ export class MongoPartnerRepository {
   }
   async existsByUsername(username, { session } = {}) {
     return (await PartnersModel.exists({ username }).setOptions(opts(session))) !== null;
-  }
-  async existsByReservationCode(reservationCode, { session } = {}) {
-    return (await PartnersModel.exists({ reservationCode }).setOptions(opts(session))) !== null;
   }
   async create(data, { session } = {}) {
     const [doc] = await PartnersModel.create([data], opts(session));
@@ -229,41 +226,15 @@ export class MongoPartnerRepository {
     const t = new Date(now).getTime();
     const since = (days) => new Date(t - days * 24 * 60 * 60 * 1000);
     const role = (r) => PartnersModel.find({ role: r }).collation({ locale: 'en', strength: 2 }).countDocuments();
-    const [total, new7d, new30d, user, leader, g8, admin, suspended] = await Promise.all([
+    const [total, new7d, new30d, user, leader, admin, suspended] = await Promise.all([
       PartnersModel.countDocuments({}),
       PartnersModel.countDocuments({ createdAt: { $gte: since(7) } }),
       PartnersModel.countDocuments({ createdAt: { $gte: since(30) } }),
       role('user'),
       role('leader'),
-      role('g8'),
       role('admin'),
       PartnersModel.countDocuments({ suspendedAt: { $ne: null } }),
     ]);
-    return { total, new7d, new30d, roles: { user, leader, g8, admin }, suspended };
-  }
-}
-
-export class MongoReservationRepository {
-  async findByCode(code, { session } = {}) {
-    const doc = await ReservationCodeModel.findOne({ code: String(code).trim() })
-      .collation({ locale: 'en', strength: 2 })
-      .setOptions(opts(session))
-      .lean();
-    if (!doc) return null;
-    return {
-      id: String(doc._id),
-      status: doc.status,
-      partnerId: doc.partnerId ? String(doc.partnerId) : null,
-      prospectId: doc.prospectId ? String(doc.prospectId) : null,
-    };
-  }
-
-  async markUsed(code, { session } = {}) {
-    const res = await ReservationCodeModel.updateOne(
-      { code: String(code).trim() },
-      { $set: { status: 'Used' } },
-      opts(session),
-    );
-    return { used: (res.modifiedCount ?? 0) > 0 };
+    return { total, new7d, new30d, roles: { user, leader, admin }, suspended };
   }
 }

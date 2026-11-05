@@ -149,34 +149,35 @@ describe('onboarding read models', () => {
     assert.equal(publicQueue({ status: 'queued', enteredAt: new Date() }, 2).position, 2);
     assert.equal(publicQueue({ status: 'allocated', enteredAt: new Date() }, 2).position, null);
   });
+
+  it('passes the saved profile address through for shipping prefill', () => {
+    const partner = partnerSummary({
+      _id: 'c',
+      address: { street: '12 Market Road', city: 'Lagos', state: 'Lagos', country: 'Nigeria' },
+    });
+    assert.deepEqual(partner.address, {
+      street: '12 Market Road', city: 'Lagos', state: 'Lagos', country: 'Nigeria',
+    });
+  });
 });
 
 describe('onboarding input validation', () => {
-  it('accepts a complete KYC submission and strips unknown keys', () => {
-    const result = SubmitKycSchema.parse({
-      dateOfBirth: '1998-04-12',
-      address: '12 Market Road',
-      city: 'Lagos',
-      state: 'Lagos',
-      country: 'Nigeria',
-      idType: 'nin',
-      idNumber: '12345678901',
-      admin: true,
-    });
-
-    assert.equal(result.idType, 'nin');
-    assert.equal('admin' in result, false);
+  it('accepts an empty KYC submission for automatic completion', () => {
+    const result = SubmitKycSchema.parse({ admin: true });
+    assert.deepEqual(result, {});
   });
 
-  it('rejects underage-invalid shapes at the boundary', () => {
+  it('still validates optional identity fields when they are supplied', () => {
     assert.throws(() => SubmitKycSchema.parse({
       dateOfBirth: '12/04/1998',
-      address: '12 Market Road',
-      city: 'Lagos',
-      state: 'Lagos',
-      idType: 'nin',
       idNumber: '123',
     }));
+    const parsed = SubmitKycSchema.parse({
+      dateOfBirth: '1998-04-12',
+      idType: 'nin',
+      idNumber: '12345678901',
+    });
+    assert.equal(parsed.idType, 'nin');
   });
 
   it('accepts a real product id and rejects a loose reference', () => {

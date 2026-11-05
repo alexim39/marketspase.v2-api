@@ -4,17 +4,14 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { requireRole } from './RequireRole.js';
 import { z } from 'zod';
 import { ROLES } from '../domain/PartnerRole.js';
-import { ALLOWED_PERMISSIONS } from '../domain/Permissions.js';
-import { asyncHandler } from '../../../shared/http/asyncHandler.js';
-import { recordAudit } from '../../audit/index.js';
 import { makeAdminController } from './Admin.controller.js';
-import { ListPartnersUseCase, SetPartnerRoleUseCase, SetPartnerPermissionsUseCase, SetSuspendUseCase, PlatformStatsUseCase, ResetOnBehalfUseCase, ErasePartnerUseCase, ReassignUplineUseCase } from '../application/Admin.usecase.js';
+import { ListPartnersUseCase, SetPartnerRoleUseCase, SetSuspendUseCase, PlatformStatsUseCase, ResetOnBehalfUseCase, ErasePartnerUseCase, ReassignUplineUseCase } from '../application/Admin.usecase.js';
 import { GetMember360UseCase } from '../application/Member360.usecase.js';
 import { RequestPasswordResetUseCase } from '../application/PasswordReset.usecase.js';
 import { PasswordResetMailer } from '../infrastructure/clients/PasswordResetMailer.js';
 import { MongoPartnerRepository } from '../infrastructure/Auth.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
-import { MongoProspectRepository, MongoReservationCodes } from '../../crm/infrastructure/Prospect.mongo.repository.js';
+import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoTicketRepository } from '../../support-ticketing/infrastructure/Ticket.mongo.repository.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
 import { DepositIntentModel } from '../../billing/infrastructure/Deposit.mongo.model.js';
@@ -27,9 +24,6 @@ const SetRoleSchema = z.object({
   role: z.string().trim().toLowerCase().refine((v) => ROLES.includes(v), {
     message: `Invalid role (expected one of: ${ROLES.join(', ')})`,
   }),
-});
-const SetPermissionsSchema = z.object({
-  permissions: z.array(z.enum(ALLOWED_PERMISSIONS)).max(20),
 });
 const AdminListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(25),
@@ -60,7 +54,6 @@ export const buildAdminRouter = (deps = {}) => {
     revoke: (id, opts) => revokeSessions(id, opts),
     clear: (id) => clearRevocations(id),
   };
-  const setPermissions = deps.setPermissions ?? new SetPartnerPermissionsUseCase({ partners });
   const controller = makeAdminController({
     setRole: new SetPartnerRoleUseCase({ partners }),
     listPartners: new ListPartnersUseCase({ partners }),
@@ -85,7 +78,6 @@ export const buildAdminRouter = (deps = {}) => {
       partners,
       prospects: deps.prospects ?? new MongoProspectRepository(),
       tickets: deps.tickets ?? new MongoTicketRepository(),
-      codes: deps.codes ?? new MongoReservationCodes(),
       sessions,
     }),
     reassignUpline: deps.reassignUpline ?? new ReassignUplineUseCase({ partners }),
@@ -102,20 +94,6 @@ export const buildAdminRouter = (deps = {}) => {
   router.use(requireAuth, requireRole('admin'));
   router.get('/partners', validate({ query: AdminListQuery }), controller.list);
   router.patch('/partners/:partnerId/role', validate({ params: PartnerIdParam, body: SetRoleSchema }), controller.setRole);
-  router.patch('/partners/:partnerId/permissions', validate({ params: PartnerIdParam, body: SetPermissionsSchema }), asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    const body = req.validated?.body ?? req.body;
-    const data = await setPermissions.execute({
-      partnerId: params.partnerId,
-      permissions: body.permissions,
-    });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'permission.set',
-      targetType: 'partner', targetId: params.partnerId,
-      detail: { permissions: data?.permissions ?? [] },
-    });
-    res.status(200).json({ message: 'Feature access updated successfully', data, success: true });
-  }));
   router.patch('/partners/:partnerId/suspend', validate({ params: PartnerIdParam, body: SetSuspendSchema }), controller.suspend);
   router.patch('/partners/:partnerId/upline', validate({ params: PartnerIdParam, body: ReassignUplineSchema }), controller.reassignUpline);
   router.get('/stats', controller.stats);

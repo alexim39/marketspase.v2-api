@@ -1,6 +1,11 @@
 import { ConflictException, NotFoundException } from '../../../shared/domain/AppError.js';
-import { createProspectEntity, normalizePhone } from '../domain/Prospect.entity.js';
-import { createStatusOverlay } from '../domain/Prospect.entity.js';
+import {
+  createProspectEntity,
+  createStatusOverlay,
+  normalizePhone,
+  stageForStatusName,
+  statusNameForStage,
+} from '../domain/Prospect.entity.js';
 import { PROSPECT_WORKED_EVENTS, prospectWorkedPayload } from '../domain/ProspectWorkedEvents.js';
 
 /** POST /v1/prospects — scoped dup-check (legacy: global). */
@@ -105,7 +110,18 @@ export class UpdateProspectStatusUseCase {
     // Author attribution rides along (owner vs upline) — trimmed/bounded,
     // never part of the status overlay itself.
     const { by, byName, ...rest } = status ?? {};
-    const overlay = createStatusOverlay(rest);
+    let overlay = createStatusOverlay(rest);
+    // Pipeline advance sends only `stage`; keep the coaching status name in
+    // sync. Preserve a detailed name that already belongs to the new stage
+    // (e.g. "Booked for Session" for "In Negotiation").
+    if (overlay.stage && overlay.name === undefined) {
+      const current = await this.prospects.findById(prospectId).catch(() => null);
+      const currentName = current?.status?.name;
+      if (stageForStatusName(currentName) !== overlay.stage) {
+        const fallback = statusNameForStage(overlay.stage);
+        if (fallback) overlay = { ...overlay, name: fallback };
+      }
+    }
     const author = {
       ...(by !== undefined && by !== null && String(by).trim() !== '' ? { by: String(by).trim().slice(0, 40) } : {}),
       ...(byName !== undefined && byName !== null && String(byName).trim() !== '' ? { byName: String(byName).trim().slice(0, 120) } : {}),

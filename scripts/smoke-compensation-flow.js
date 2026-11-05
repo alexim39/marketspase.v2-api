@@ -232,13 +232,7 @@ async function main() {
 
   // 3. KYC + wallet funding + activation order.
   c.step('KYC and activation');
-  await api('v1/onboarding/kyc', {
-    method: 'POST', token: memberToken,
-    body: {
-      dateOfBirth: '1993-04-12', address: '1 Smoke Test Way', city: 'Lagos', state: 'Lagos',
-      country: 'Nigeria', idType: 'nin', idNumber: '12345678901',
-    },
-  });
+  await api('v1/onboarding/kyc', { method: 'POST', token: memberToken, body: {} });
   const products = await api('v1/onboarding/products', { token: memberToken });
   const product = products.data?.[0];
   if (!product) throw new Error('No starter product found');
@@ -257,9 +251,6 @@ async function main() {
   });
   if (orderRes.data?.order?.status !== 'Paid') throw new Error('Activation order was not paid');
   c.ok(`Activated with ${product.name} (${ngn(orderRes.data.order.amount)})`);
-
-  await api(`v1/admin/onboarding/kyc/${ids.member}/verify`, { method: 'POST', token: adminToken });
-  c.ok('Admin verified KYC');
 
   // 4. Fund and activate an owner campaign.
   c.step('Fund and activate a growth campaign');

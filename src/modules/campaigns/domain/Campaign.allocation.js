@@ -6,14 +6,26 @@ export const ALLOCATION_WEIGHTS = Object.freeze({
 });
 
 export const CONTRIBUTION_CAP_NGN = 500000;
-export const MIN_CAMPAIGN_BUDGET_NGN = Number(process.env.CAMPAIGN_MIN_BUDGET_NGN ?? 20000);
-export const DEFAULT_CAPACITY = 4;
+/** Each allocated prospect consumes this much of the campaign budget. */
+export const COST_PER_PROSPECT_NGN = 550;
+/** A campaign must be able to fund at least this many prospects. */
+export const MIN_PROSPECTS = 2;
+export const MIN_CAMPAIGN_BUDGET_NGN = COST_PER_PROSPECT_NGN * MIN_PROSPECTS;
+export const DEFAULT_CAPACITY = 2;
 export const DEFAULT_MAX_PER_WEEK = 2;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 const clamp = (value, min = 0, max = 100) => Math.min(Math.max(Number(value) || 0, min), max);
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalized = (value) => String(value ?? '').trim().toLowerCase();
+
+/** Remaining budget after spend and refunds. */
+export const campaignBudgetRemaining = (campaign) => Math.max(
+  Number(campaign?.budget?.total ?? 0)
+  - Number(campaign?.budget?.spent ?? 0)
+  - Number(campaign?.budget?.refunded ?? 0),
+  0,
+);
 
 export const campaignInFlight = (campaign, now = new Date()) => {
   if (!campaign || campaign.status !== 'Active') return false;
@@ -23,12 +35,21 @@ export const campaignInFlight = (campaign, now = new Date()) => {
   return Number.isFinite(start) && start <= at && (!end || at < end);
 };
 
+export const isActivatedPartner = (partner) => {
+  if (!partner) return false;
+  if (partner.accountState === 'member') return false;
+  return partner.accountState == null || partner.accountState === 'partner';
+};
+
+export const isKycVerified = (partner) => {
+  if (!partner) return false;
+  return partner.kycStatus == null || partner.kycStatus === 'verified';
+};
+
 export const ownerEligibleForCampaign = (owner) => {
-  if (!owner) return false;
-  if (owner.accountState !== 'partner') return false;
+  if (!isActivatedPartner(owner)) return false;
   if (owner.suspendedAt) return false;
-  if (owner.kycStatus !== 'verified') return false;
-  return true;
+  return isKycVerified(owner);
 };
 
 export const partnerEligibleForAllocation = (partner) => {
@@ -62,6 +83,7 @@ export const scoreAllocationPair = ({
 
   const capacity = campaignCapacity(campaign, weeklyAllocated);
   if (capacity.remaining <= 0 || capacity.weeklyRemaining <= 0) return null;
+  if (campaignBudgetRemaining(campaign) < COST_PER_PROSPECT_NGN) return null;
 
   const enteredAt = new Date(queueEntry?.enteredAt ?? now).getTime();
   const waitDays = Math.max((new Date(now).getTime() - enteredAt) / DAY_MS, 0);
@@ -82,8 +104,11 @@ export const scoreAllocationPair = ({
       fit = 100;
       fitReason = `State match: ${partnerState}`;
     } else {
+      // Preferred states improve fit but never block allocation. When none of
+      // the preferred states have an available prospect, the engine falls back
+      // to any eligible prospect instead of starving the campaign.
       fit = 20;
-      fitReason = `Outside target states (${partnerState})`;
+      fitReason = `Fallback: outside preferred states (${partnerState})`;
     }
   }
 

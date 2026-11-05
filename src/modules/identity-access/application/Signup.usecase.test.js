@@ -13,7 +13,6 @@ const fakePartners = (seed = [], { createError = null } = {}) => {
     findByEmail: async (email) => rows.get(String(email).toLowerCase()) ?? null,
     findById: async (id) => all().find((row) => String(row._id ?? row.id) === String(id)) ?? null,
     existsByUsername: async (username) => all().some((row) => row.username === username),
-    existsByReservationCode: async (code) => all().some((row) => row.reservationCode === code),
     create: async (data) => {
       if (createError) throw createError;
       const row = { _id: `id-${rows.size + 1}`, ...data };
@@ -63,18 +62,6 @@ const fakeEvents = () => {
   };
 };
 
-const fakeReservations = (codes = {}) => {
-  const used = [];
-  return {
-    used,
-    findByCode: async (code) => codes[code] ?? null,
-    markUsed: async (code) => {
-      used.push(code);
-      return { used: true };
-    },
-  };
-};
-
 const baseInput = {
   name: 'Ada',
   surname: 'Lovelace',
@@ -87,12 +74,10 @@ const baseInput = {
 describe('SignupUseCase', () => {
   it('creates an unverified open account with no upline and emails a verification link', async () => {
     const partners = fakePartners();
-    const reservations = fakeReservations();
     const mailer = fakeMailer();
     const events = fakeEvents();
     const uc = new SignupUseCase({
       partners,
-      reservations,
       hasher: fakeHasher,
       tx: fakeTx,
       events,
@@ -108,7 +93,6 @@ describe('SignupUseCase', () => {
     assert.equal(result.user.partnerOf, undefined);
 
     const row = partners.rows.get('ada@example.com');
-    assert.equal(row.reservationCode, undefined);
     assert.equal(row.partnerOf, undefined);
     assert.equal(row.emailVerified, false);
     assert.equal(row.emailVerificationTokenHash, 'token-hash-1');
@@ -119,89 +103,8 @@ describe('SignupUseCase', () => {
       url: `https://marketspase.com/partner/verify-email?token=${'a'.repeat(64)}`,
     }]);
     assert.equal(events.emissions.length, 1);
-    assert.equal(events.emissions[0].payload.uplineId, null);
-    assert.equal(events.emissions[0].payload.code, '');
-  });
-
-  it('keeps legacy reservation-code signup working, links the upline and consumes the code', async () => {
-    const partners = fakePartners([
-      { _id: 'upline-1', email: 'upline@example.com', username: 'upline' },
-    ]);
-    const reservations = fakeReservations({
-      ABC123: { id: 'res-1', status: 'Approved', partnerId: 'upline-1', prospectId: 'prospect-1' },
-    });
-    const events = fakeEvents();
-    const uc = new SignupUseCase({
-      partners,
-      reservations,
-      hasher: fakeHasher,
-      tx: fakeTx,
-      events,
-      tokens: tokenService,
-      verificationMailer: fakeMailer(),
-      frontendUrl: 'https://marketspase.com',
-    });
-
-    const result = await uc.execute({ ...baseInput, reservationCode: 'ABC123' });
-
-    const row = partners.rows.get('ada@example.com');
-    assert.equal(row.reservationCode, 'ABC123');
-    assert.equal(row.partnerOf, 'upline-1');
-    assert.deepEqual(reservations.used, ['ABC123']);
-    assert.equal(events.emissions[0].payload.uplineId, 'upline-1');
-    assert.equal(events.emissions[0].payload.prospectId, 'prospect-1');
-    assert.equal(result.user.emailVerified, false);
-  });
-
-  it('rejects a missing legacy reservation code', async () => {
-    const uc = new SignupUseCase({
-      partners: fakePartners(),
-      reservations: fakeReservations(),
-      hasher: fakeHasher,
-      tx: fakeTx,
-      tokens: tokenService,
-      verificationMailer: fakeMailer(),
-    });
-    await assert.rejects(
-      uc.execute({ ...baseInput, reservationCode: 'NOPE' }),
-      /invalid or does not exist/,
-    );
-  });
-
-  it('rejects a pending reservation code', async () => {
-    const uc = new SignupUseCase({
-      partners: fakePartners(),
-      reservations: fakeReservations({
-        PENDING1: { id: 'res-1', status: 'Pending', partnerId: null, prospectId: null },
-      }),
-      hasher: fakeHasher,
-      tx: fakeTx,
-      tokens: tokenService,
-      verificationMailer: fakeMailer(),
-    });
-    await assert.rejects(
-      uc.execute({ ...baseInput, reservationCode: 'PENDING1' }),
-      (error) => error.code === 'RESERVATION_PENDING',
-    );
-  });
-
-  it('rejects a reservation code already attached to a partner', async () => {
-    const uc = new SignupUseCase({
-      partners: fakePartners([
-        { _id: 'used-1', email: 'used@example.com', username: 'used', reservationCode: 'USED1' },
-      ]),
-      reservations: fakeReservations({
-        USED1: { id: 'res-1', status: 'Approved', partnerId: 'upline-1', prospectId: null },
-      }),
-      hasher: fakeHasher,
-      tx: fakeTx,
-      tokens: tokenService,
-      verificationMailer: fakeMailer(),
-    });
-    await assert.rejects(
-      uc.execute({ ...baseInput, reservationCode: 'USED1' }),
-      (error) => error.code === 'CODE_ALREADY_USED',
-    );
+    assert.equal(events.emissions[0].name, 'member.signedup');
+    assert.equal(events.emissions[0].payload.partnerId, result.user.id);
   });
 
   it('retries a username race before giving up', async () => {
@@ -215,7 +118,6 @@ describe('SignupUseCase', () => {
     };
     const uc = new SignupUseCase({
       partners,
-      reservations: fakeReservations(),
       hasher: fakeHasher,
       tx: fakeTx,
       tokens: tokenService,
@@ -229,7 +131,6 @@ describe('SignupUseCase', () => {
   it('maps duplicate database keys to a conflict', async () => {
     const uc = new SignupUseCase({
       partners: fakePartners([], { createError: { code: 11000 } }),
-      reservations: fakeReservations(),
       hasher: fakeHasher,
       tx: fakeTx,
       tokens: tokenService,
@@ -245,7 +146,6 @@ describe('SignupUseCase', () => {
     const partners = fakePartners();
     const uc = new SignupUseCase({
       partners,
-      reservations: fakeReservations(),
       hasher: fakeHasher,
       tx: fakeTx,
       tokens: tokenService,

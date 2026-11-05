@@ -11,7 +11,7 @@ test('ListBanksUseCase maps the Paystack directory', async () => {
         get: async (url, options) => {
           assert.match(url, /api\.paystack\.co\/bank$/);
           assert.equal(options.headers.Authorization, 'Bearer sk_test');
-          return { data: { data: [{ name: 'GTBank', code: '058' }, { name: '', code: 'bad' }] } };
+          return { data: { data: [{ name: 'GTBank', code: '058' }, { name: 'GTBank alias', code: '058' }, { name: '', code: 'bad' }] } };
         },
       },
     });

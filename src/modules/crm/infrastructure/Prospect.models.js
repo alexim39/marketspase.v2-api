@@ -3,6 +3,5 @@
 // Prospect schema text moves into this folder at final cutover.
 import { ProspectModel } from '../../../apps/prospect/models/prospect.model.js';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
-import { ReservationCodeModel } from '../../../apps/reservation-code/models/reservation-code.model.js';
 
-export { ProspectModel, PartnersModel, ReservationCodeModel };
+export { ProspectModel, PartnersModel };

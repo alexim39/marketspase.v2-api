@@ -8,8 +8,6 @@ export const SignupSchema = z.object({
   email,
   password: z.string().min(6).max(128), // sole intentional tightening (legacy had no floor)
   phone: z.string().trim().min(7).max(20),
-  // Optional legacy transition field; open signup does not require it.
-  reservationCode: z.string().trim().min(3).max(64).optional(),
   // Acquisition attribution: campaign tracking code from /join?campaign=...
   campaign: z.string().trim().min(3).max(64).optional(),
   tnc: z.boolean().refine((v) => v === true, {

@@ -19,9 +19,10 @@ describe('SignupSchema', () => {
     assert.equal('reservationCode' in parsed, false);
   });
 
-  it('still accepts a legacy reservation code when supplied', () => {
-    const parsed = SignupSchema.parse({ ...openSignup, reservationCode: 'ABC123' });
-    assert.equal(parsed.reservationCode, 'ABC123');
+  it('ignores a retired reservation code and keeps campaign attribution', () => {
+    const parsed = SignupSchema.parse({ ...openSignup, reservationCode: 'ABC123', campaign: 'gc_launch' });
+    assert.equal(parsed.reservationCode, undefined);
+    assert.equal(parsed.campaign, 'gc_launch');
   });
 
   it('requires explicit terms consent', () => {

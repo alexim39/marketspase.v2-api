@@ -6,8 +6,13 @@ export {
 export {
   ALLOCATION_WEIGHTS,
   CONTRIBUTION_CAP_NGN,
+  COST_PER_PROSPECT_NGN,
   MIN_CAMPAIGN_BUDGET_NGN,
+  MIN_PROSPECTS,
+  campaignBudgetRemaining,
   campaignInFlight,
+  isActivatedPartner,
+  isKycVerified,
   ownerEligibleForCampaign,
   partnerEligibleForAllocation,
   scoreAllocationPair,

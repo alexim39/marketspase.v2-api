@@ -88,9 +88,7 @@ export const INDEXES = [
   { collection: 'notification-preferences', keys: { emailDigest: 1, partnerId: 1 }, options: {} },
   { collection: 'partners', keys: { status: 1, _id: 1 }, options: {} },
   { collection: 'ora-conversations', keys: { partnerId: 1, updatedAt: -1 }, options: {} },
-  { collection: 'reservation-codes', keys: { partnerId: 1, createdAt: -1 }, options: {} },
-  // Admin review queue: status filter + FIFO sort leg.
-  { collection: 'reservation-codes', keys: { status: 1, createdAt: 1 }, options: {} },
+  { collection: 'bonus_seed_state', keys: { key: 1 }, options: { unique: true, name: 'key_1' } },
   { collection: 'progressions', keys: { 'ipo.confirmedBy': 1, 'ipo.confirmedAt': 1 }, options: {} },
   { collection: 'progressions', keys: { 'qsg.confirmedBy': 1, 'qsg.confirmedAt': 1 }, options: {} },
   { collection: 'progressions', keys: { 'smo.confirmedBy': 1, 'smo.confirmedAt': 1 }, options: {} },

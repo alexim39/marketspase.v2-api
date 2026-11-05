@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { ValidationException } from '../../../shared/domain/AppError.js';
-import { MIN_CONTACTS, batchSla } from '../domain/ContactList.js';
+import { MIN_CONTACTS, batchSla, prospectPhoneAccess } from '../domain/ContactList.js';
 import { CONTACT_LIST_EVENTS, contactListSubmittedPayload } from '../domain/ContactListEvents.js';
 import { LEVEL_LABELS } from '../../progression/domain/Progression.levels.js';
 import { collectDownlineIds } from '../../network/infrastructure/Network.mongo.repository.js';
@@ -79,8 +79,14 @@ export class ListDownlineContactListsUseCase {  /** @param {{prospects, network}
   }
 
   async execute({ requesterId, limit = 100, now = new Date() }) {
-    const { ids } = await collectDownlineIds(this.network, requesterId);
+    const [{ ids }, direct] = await Promise.all([
+      collectDownlineIds(this.network, requesterId),
+      this.network.findChildren
+        ? this.network.findChildren([String(requesterId)], 500, 'referral').catch(() => [])
+        : [],
+    ]);
     const bounded = ids.slice(0, 2000);
+    const directIds = new Set((direct ?? []).map((node) => String(node.id)));
     const [rows, contacts] = await Promise.all([
       this.prospects.downlineSubmittedBatches(bounded),
       this.prospects.submittedContacts(bounded, 500),
@@ -93,17 +99,26 @@ export class ListDownlineContactListsUseCase {  /** @param {{prospects, network}
       if (!byList.has(k)) byList.set(k, []);
       byList.get(k).push(c);
     }
-    const slimContact = (c) => ({
-      id: String(c.id ?? c._id),
-      prospectName: c.prospectName,
-      prospectSurname: c.prospectSurname ?? '',
-      prospectPhone: c.prospectPhone,
-      relationship: c.relationship ?? 'Other',
-      priority: c.priority ?? 'normal',
-      bestTimeToCall: c.bestTimeToCall ?? '',
-      consentToContact: c.consentToContact === true,
-      stage: c.status?.stage ?? 'New',
-    });
+    const slimContact = (c) => {
+      const directUpline = directIds.has(String(c.partnerId));
+      const phoneAccess = prospectPhoneAccess({
+        consentToContact: c.consentToContact === true,
+        directUpline,
+        hasPhone: Boolean(c.prospectPhone),
+      });
+      return {
+        id: String(c.id ?? c._id),
+        prospectName: c.prospectName,
+        prospectSurname: c.prospectSurname ?? '',
+        prospectPhone: phoneAccess.visible ? c.prospectPhone : null,
+        phoneHiddenReason: phoneAccess.reason,
+        relationship: c.relationship ?? 'Other',
+        priority: c.priority ?? 'normal',
+        bestTimeToCall: phoneAccess.visible ? (c.bestTimeToCall ?? '') : '',
+        consentToContact: c.consentToContact === true,
+        stage: c.status?.stage ?? 'New',
+      };
+    };
     const withContacts = capped.map((r) => {
       const all = (byList.get(`${r.partnerId}::${r.batch}`) ?? []).map(slimContact);
       // Unworked first so the upline calls fresh numbers, then cap.
@@ -111,7 +126,12 @@ export class ListDownlineContactListsUseCase {  /** @param {{prospects, network}
       // Derived first-touch SLA (no storage): untouched batches go overdue
       // after 48h so the workbench can surface them first.
       const sla = batchSla({ submittedAt: r.submittedAt, worked: r.worked, now });
-      return { ...r, contacts: all.slice(0, 30), sla };
+      return {
+        ...r,
+        directUpline: directIds.has(String(r.partnerId)),
+        contacts: all.slice(0, 30),
+        sla,
+      };
     });
     // Overdue first, then newest — the upline sees what needs them now.
     withContacts.sort((a, b) =>
@@ -130,9 +150,30 @@ export class ListDownlineContactListsUseCase {  /** @param {{prospects, network}
 }
 
 /**
+ * POST /v1/prospects/contact-list/resolve-phone — resolve a booking phone to
+ * one contact id in the requester's own + downline pipeline. Returns ids only,
+ * never the phone, so hidden/no-consent numbers are not exposed to the client.
+ */
+export class ResolveContactByPhoneUseCase {
+  /** @param {{prospects, network}} deps */
+  constructor({ prospects, network }) {
+    Object.assign(this, { prospects, network });
+  }
+
+  async execute({ requesterId, phone }) {
+    if (!this.prospects.findByPhoneInPartners) return { match: null };
+    const { ids } = await collectDownlineIds(this.network, requesterId);
+    const scoped = [String(requesterId), ...ids].slice(0, 2001);
+    const matches = await this.prospects.findByPhoneInPartners(scoped, phone, 3).catch(() => []);
+    if (matches.length !== 1) return { match: null };
+    return { match: matches[0] };
+  }
+}
+
+/**
  * GET /v1/prospects/contact-list/activation — per-member onboarding board.
  * One light row per downline member (no contact arrays, so huge downlines
- * stay cheap): IPO/QSG stamps + list totals + oldest pending age + overdue
+ * stay cheap): IPO/QSG/SMO stamps + list totals + oldest pending age + overdue
  * + next action. Progress store is optional — missing stamps read as undone.
  */
 export class ListActivationBoardUseCase {
@@ -150,7 +191,7 @@ export class ListActivationBoardUseCase {
     const [rows, nodes, training, levels] = await Promise.all([
       this.prospects.downlineSubmittedBatches(bounded, 5000),
       this.network.findNodesByIds(bounded).catch(() => []),
-      this.progress?.listConfirmationStats?.(bounded, ['ipo', 'qsg']).catch(() => []) ?? [],
+      this.progress?.listConfirmationStats?.(bounded, ['ipo', 'qsg', 'smo']).catch(() => []) ?? [],
       this.progress?.levelsFor?.(bounded).catch(() => ({})) ?? {},
     ]);
     const byMember = new Map();
@@ -188,6 +229,7 @@ export class ListActivationBoardUseCase {
       // Gates count confirmed training only (done + upline confirmation).
       const ipoDone = stamp.ipo?.done === true && stamp.ipo?.confirmedAt != null;
       const qsgDone = stamp.qsg?.done === true && stamp.qsg?.confirmedAt != null;
+      const smoDone = stamp.smo?.done === true && stamp.smo?.confirmedAt != null;
       // Ladder level (stored default) + distance from the viewing upline.
       const level = levels?.[pid] ?? 'partner';
       const depth = depths?.[pid] ?? 1;
@@ -195,6 +237,7 @@ export class ListActivationBoardUseCase {
       let nextTone = 'ok';
       if (!ipoDone) { nextAction = 'Complete IPO'; nextTone = 'warn'; }
       else if (!qsgDone) { nextAction = 'Complete QSG'; nextTone = 'warn'; }
+      else if (!smoDone) { nextAction = 'Complete SMO'; nextTone = 'warn'; }
       else if (total === 0) { nextAction = 'Submit contact list'; nextTone = 'warn'; }
       else if (overdue) { nextAction = `Call now — ${unworked} unworked, overdue 48h`; nextTone = 'bad'; }
       else if (unworked > 0) { nextAction = `Work list — ${unworked} of ${total} left`; nextTone = 'info'; }
@@ -207,6 +250,7 @@ export class ListActivationBoardUseCase {
         relation: depth <= 1 ? 'Direct' : `Level ${depth}`,
         ipoDone,
         qsgDone,
+        smoDone,
         lists: batches.length,
         total,
         worked,

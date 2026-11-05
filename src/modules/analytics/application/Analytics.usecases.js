@@ -316,7 +316,7 @@ export class GetActivationUseCase {
 
 /**
  * Leadership bench — who is ready for the next rank?
- * Distribution from stored levels + pending confirmation/nomination
+ * Distribution from commission ranks + pending confirmation/nomination
  * backlogs as bench pressure. Per-member promotion readiness stays in
  * My Journey (single-member signals); this is the org-wide bench view.
  */
@@ -329,24 +329,29 @@ export class GetBenchUseCase {
   async execute({ partnerId }) {
     const { ids } = await collectDownlineIds(this.network, partnerId);
     const bounded = ids.slice(0, 2000);
-    const [levels, pendingConfirmations, pendingNominations] = await Promise.all([
-      this.progress.levelsFor ? this.progress.levelsFor(bounded).catch(() => ({})) : {},
-      this.progress.listPendingConfirmations
+    const [nodes, pendingConfirmations, pendingNominations] = await Promise.all([
+      this.network.findNodesByIds
+        ? this.network.findNodesByIds(bounded, 2000).catch(() => [])
+        : [],
+      this.progress?.listPendingConfirmations
         ? this.progress.listPendingConfirmations(bounded, ['ipo', 'qsg', 'smo'], 200).catch(() => [])
         : [],
-      this.progress.listPendingNominations
+      this.progress?.listPendingNominations
         ? this.progress.listPendingNominations(bounded, 100).catch(() => [])
         : [],
     ]);
     const dist = {};
-    for (const lvl of Object.values(levels ?? {})) dist[lvl] = (dist[lvl] ?? 0) + 1;
+    for (const node of nodes ?? []) {
+      const rank = node.commissionRank ?? 'Partner';
+      dist[rank] = (dist[rank] ?? 0) + 1;
+    }
     return {
       total: bounded.length,
       capped: ids.length > bounded.length,
       distribution: dist,
       pendingConfirmations: (pendingConfirmations ?? []).length,
       pendingNominations: (pendingNominations ?? []).length,
-      leaders: (dist.ecl ?? 0) + (dist.cell_leader ?? 0) + (dist.g_leader ?? 0) + (dist.g8 ?? 0),
+      leaders: (dist.Leader ?? 0) + (dist.Ambassador ?? 0),
     };
   }
 }

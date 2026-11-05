@@ -7,30 +7,23 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { recordAudit } from '../../audit/index.js';
 import {
   AdminCreditWalletUseCase, DecideManualDepositUseCase, ListManualQueueUseCase,
-  LookupPartnerUseCase, MyManualClaimsUseCase, SubmitManualDepositUseCase,
+  LookupPartnerUseCase, MyManualClaimsUseCase,
   InitDepositUseCase, HandleDepositCallbackUseCase, DepositStatusUseCase,
-  resolveAdminEmails,
 } from '../application/Deposit.usecases.js';
-import { PartnersModel } from '../infrastructure/Billing.models.js';
-import { sendEmail } from '../../../services/emailService.js';
 import { OpayClient, OPAY_TEST_BASE, OPAY_LIVE_BASE } from '../infrastructure/OpayClient.js';
+import { PaystackClient } from '../infrastructure/PaystackClient.js';
+import {
+  InitPaystackDepositUseCase, HandlePaystackWebhookUseCase, PaystackDepositStatusUseCase,
+} from '../application/PaystackDeposit.usecases.js';
+import { HandlePaystackTransferUseCase } from '../application/PaystackPayout.usecases.js';
+import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
 import { NotifyUseCase } from '../../notifications/application/NotificationsCenter.usecases.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import {
-  ADMIN_CREDIT_MAX_NGN, DEPOSIT_MAX_NGN, DEPOSIT_MIN_NGN, manualAccounts,
+  ADMIN_CREDIT_MAX_NGN, DEPOSIT_MAX_NGN, DEPOSIT_MIN_NGN,
 } from '../domain/Deposit.js';
 
 const objectIdParam = z.string().trim().min(1).max(64);
-
-const ManualClaimSchema = z.object({
-  amountNgn: z.number().min(DEPOSIT_MIN_NGN).max(DEPOSIT_MAX_NGN),
-  destinationAccount: z.string().trim().min(10).max(20),
-  senderName: z.string().trim().min(2).max(120),
-  senderAccount: z.string().trim().min(10).max(20),
-  paidAt: z.coerce.date(),
-  bankReference: z.string().trim().min(4).max(64),
-  note: z.string().trim().max(500).optional(),
-});
 
 const DecideSchema = z.object({
   decision: z.enum(['approve', 'reject']),
@@ -88,7 +81,8 @@ export const resolveOpayConfig = (env = process.env) => {
 export const buildDepositRouter = (deps = {}) => {
   const conf = resolveOpayConfig();
   const opay = deps.opay ?? new OpayClient(conf);
-  const frontendBase = (process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'https://c21fg.online').replace(/\/+$/, '');
+  const paystack = deps.paystack ?? new PaystackClient({ http: deps.http });
+  const frontendBase = (process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'https://marketspase.com').replace(/\/+$/, '');
   const notifyStore = new MongoStoredNotificationStore();
   const notify = new NotifyUseCase({ stored: notifyStore });
   const notifyCredit = (label) => async (partnerId, amountNgn, reference) => {
@@ -129,12 +123,34 @@ export const buildDepositRouter = (deps = {}) => {
     privateKey: conf.privateKey,
     notifier: notifyCredit('Opay deposit'),
   });
-  const status = deps.status ?? new DepositStatusUseCase({ opay });
+  const paystackInit = deps.paystackInit ?? new InitPaystackDepositUseCase({
+    paystack,
+    urls: { returnUrl: `${frontendBase}/dashboard/wallet/deposit/result` },
+  });
+  const paystackTransferWebhook = deps.paystackTransferWebhook ?? new HandlePaystackTransferUseCase({
+    notifier: notifyPayoutOutcome,
+  });
+  const paystackWebhook = deps.paystackWebhook ?? new HandlePaystackWebhookUseCase({
+    paystack,
+    notifier: notifyCredit('Paystack deposit'),
+    transferHandler: paystackTransferWebhook,
+  });
+  const paystackStatus = deps.paystackStatus ?? new PaystackDepositStatusUseCase({
+    paystack,
+    notifier: notifyCredit('Paystack deposit'),
+  });
+  const status = deps.status ?? new DepositStatusUseCase({ opay, paystackStatus });
 
   // Method registry: adding a gateway (e.g. Paystack) = one entry here +
   // its handler — the deposit page renders whatever this lists.
-  const accounts = manualAccounts();
   const methods = () => ([
+    {
+      id: 'paystack',
+      kind: 'gateway',
+      label: 'Card or bank payment',
+      detail: 'Secure Paystack checkout — card, bank transfer or USSD.',
+      enabled: paystack.enabled,
+    },
     {
       id: 'opay',
       kind: 'gateway',
@@ -142,16 +158,7 @@ export const buildDepositRouter = (deps = {}) => {
       detail: 'Card, transfer or USSD through Opay secure checkout.',
       enabled: opay.enabled,
     },
-    {
-      id: 'manual',
-      kind: 'manual',
-      label: 'Bank transfer',
-      detail: 'Transfer to our account, then send your transfer details for confirmation.',
-      enabled: true,
-      accounts,
-    },
   ]);
-  const submitManual = deps.submitManual ?? new SubmitManualDepositUseCase({ accounts });
   const myClaims = deps.myClaims ?? new MyManualClaimsUseCase({});
   const queue = deps.queue ?? new ListManualQueueUseCase({});
   const decide = deps.decide ?? new DecideManualDepositUseCase({
@@ -160,36 +167,6 @@ export const buildDepositRouter = (deps = {}) => {
   });
   const credit = deps.credit ?? new AdminCreditWalletUseCase({ notifier: notifyCredit('Admin Credit') });
   const lookup = deps.lookup ?? new LookupPartnerUseCase({});
-
-  // Extra alert inboxes beyond role-admins (comma-separated env).
-  const alertExtras = String(process.env.DEPOSIT_ALERT_EMAILS ?? '')
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
-
-  /** Ping every admin about a fresh manual claim (email + in-app, best-effort). */
-  const alertAdminsOfClaim = async ({ reference, amountNgn }) => {
-    try {
-      const emails = await resolveAdminEmails({ partners: PartnersModel }, alertExtras);
-      if (emails.length === 0) return;
-      const subject = `Manual deposit claim ₦${Number(amountNgn).toLocaleString()} awaiting confirmation`;
-      const html = `<p>A member filed a bank-transfer deposit claim (<strong>${reference}</strong>, ₦${Number(amountNgn).toLocaleString()}). Confirm it against the statement so their wallet credits fast.</p>`;
-      await Promise.all(emails.map((to) => sendEmail(to, subject, html).catch(() => null)));
-      const admins = await PartnersModel.find({ email: { $in: emails } }).select('_id').lean().catch(() => []);
-      await Promise.all((admins ?? []).map((a) => notify.execute({
-        recipientId: String(a._id),
-        category: 'system',
-        priority: 'high',
-        title: subject,
-        body: `Claim ${reference} is waiting in Manual deposits.`,
-        icon: 'add_card',
-        link: '/dashboard/admin/deposits',
-        key: `deposit-claim:${reference}:${String(a._id)}`,
-      }).catch(() => null)));
-    } catch (err) {
-      console.error('[deposit] admin claim alert failed:', err?.message ?? err);
-    }
-  };
 
   const router = express.Router();
 
@@ -201,6 +178,16 @@ export const buildDepositRouter = (deps = {}) => {
       contact: { email: body.email, name: body.name, phone: body.phone },
     });
     res.status(200).json({ message: 'Checkout opened — complete payment with Opay', data, success: true });
+  }));
+
+  router.post('/deposit/paystack/init', requireAuth, validate({ body: InitSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await paystackInit.execute({
+      partnerId: req.auth?.partnerId,
+      amountNgn: body.amountNgn,
+      contact: { email: body.email, name: body.name, phone: body.phone },
+    });
+    res.status(200).json({ message: 'Checkout opened — complete payment with Paystack', data, success: true });
   }));
 
   router.get('/deposit/status', requireAuth, validate({ query: StatusQuery }), asyncHandler(async (req, res) => {
@@ -225,19 +212,45 @@ export const buildDepositRouter = (deps = {}) => {
     }
   }));
 
+  // PUBLIC Paystack webhook — HMAC-verified against the raw request body.
+  // One endpoint handles both money directions:
+  //   charge.success   → wallet deposit credit
+  //   transfer.success → withdrawal marked Paid
+  //   transfer.failed / transfer.reversed → withdrawal rejected + refunded
+  const handlePaystackWebhook = asyncHandler(async (req, res) => {
+    try {
+      const data = await paystackWebhook.execute({
+        payload: req.body ?? {},
+        rawBody: req.rawBody,
+        signature: req.get('x-paystack-signature'),
+      });
+      res.status(200).json({ message: 'Webhook handled', data, success: true });
+    } catch (err) {
+      if (err?.code === 'BAD_SIGNATURE' || err?.code === 'UNKNOWN_REFERENCE' || err?.code === 'AMOUNT_MISMATCH') {
+        return res.status(400).json({ message: err.message, success: false, code: err.code });
+      }
+      throw err;
+    }
+  });
+  router.post('/deposit/paystack/webhook', handlePaystackWebhook);
+  // Unified alias for a cleaner dashboard configuration.
+  router.post('/paystack/webhook', handlePaystackWebhook);
+
   // Method registry for the deposit page (extensible: new gateways appear here).
   router.get('/deposit/methods', requireAuth, asyncHandler(async (_req, res) => {
     res.status(200).json({ message: 'Deposit methods retrieved successfully', data: methods(), success: true });
   }));
 
   // Manual-transfer claim (no money moves — waits for admin review).
-  // Admins get an email + in-app ping so approvals don't sit (best-effort,
-  // never fails the member's submit).
-  router.post('/deposit/manual', requireAuth, validate({ body: ManualClaimSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await submitManual.execute({ partnerId: req.auth?.partnerId, claim: body });
-    void alertAdminsOfClaim({ reference: data.reference, amountNgn: data.amountNgn });
-    res.status(200).json({ message: 'Transfer details received — your wallet will be credited after confirmation', data, success: true });
+  // Manual bank-transfer deposits are retired: the three receiving accounts
+  // are no longer advertised or accepted. Historical claims remain readable
+  // by admins below.
+  router.post('/deposit/manual', requireAuth, asyncHandler(async (_req, res) => {
+    res.status(410).json({
+      message: 'Manual bank-transfer deposits are no longer available — use card or bank payment.',
+      code: 'MANUAL_DEPOSIT_RETIRED',
+      success: false,
+    });
   }));
 
   router.get('/deposit/manual/mine', requireAuth, asyncHandler(async (req, res) => {

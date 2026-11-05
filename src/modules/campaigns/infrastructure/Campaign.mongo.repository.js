@@ -20,10 +20,15 @@ import {
   PartnerAllocationModel,
 } from './Campaign.models.js';
 import {
+  COST_PER_PROSPECT_NGN,
   DEFAULT_CAPACITY,
   DEFAULT_MAX_PER_WEEK,
   MIN_CAMPAIGN_BUDGET_NGN,
+  MIN_PROSPECTS,
+  campaignBudgetRemaining,
   campaignCapacity,
+  isActivatedPartner,
+  isKycVerified,
   ownerEligibleForCampaign,
   partnerEligibleForAllocation,
 } from '../domain/Campaign.allocation.js';
@@ -34,6 +39,14 @@ const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 const objectId = (value) => String(value ?? '');
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(objectId(value));
+
+/** Legacy partners predate accountState/kycStatus; missing values mean active + verified. */
+const activationEligibilityFilter = {
+  $and: [
+    { $or: [{ accountState: 'partner' }, { accountState: null }] },
+    { $or: [{ kycStatus: 'verified' }, { kycStatus: null }] },
+  ],
+};
 
 const publicSite = () => String(
   process.env.PUBLIC_SITE_URL ?? 'https://marketspase.com',
@@ -147,11 +160,11 @@ export class MongoCampaignRepository {
 
   async assertOwnerEligible(partner) {
     if (!partner) throw new NotFoundException('Partner account not found');
-    if (partner.accountState !== 'partner') {
+    if (!isActivatedPartner(partner)) {
       throw new ForbiddenException('Activate your partner account before funding a campaign');
     }
     if (partner.suspendedAt) throw new ForbiddenException('Suspended accounts cannot fund campaigns');
-    if (partner.kycStatus !== 'verified') {
+    if (!isKycVerified(partner)) {
       throw new ForbiddenException('Identity verification must be verified before funding a campaign');
     }
   }
@@ -174,11 +187,25 @@ export class MongoCampaignRepository {
   async createCampaign({ ownerId, input, now = new Date() }) {
     const total = Number(input.budgetAmount);
     if (!Number.isFinite(total) || total < MIN_CAMPAIGN_BUDGET_NGN) {
-      throw new ValidationException(`Minimum campaign budget is NGN ${MIN_CAMPAIGN_BUDGET_NGN.toLocaleString()}`);
+      throw new ValidationException(`Minimum campaign budget is NGN ${MIN_CAMPAIGN_BUDGET_NGN.toLocaleString()} for ${MIN_PROSPECTS} prospects`);
     }
     if (total > 10000000) {
       throw new ValidationException('Campaign budget cannot exceed NGN 10,000,000');
     }
+    const capacityTotal = Number(input.capacityTotal) || DEFAULT_CAPACITY;
+    if (!Number.isInteger(capacityTotal) || capacityTotal < MIN_PROSPECTS || capacityTotal > 20) {
+      throw new ValidationException(`Partner slots must be between ${MIN_PROSPECTS} and 20`);
+    }
+    const requiredBudget = capacityTotal * COST_PER_PROSPECT_NGN;
+    if (total < requiredBudget) {
+      throw new ValidationException(
+        `Budget must cover ${capacityTotal} partner slots at NGN ${COST_PER_PROSPECT_NGN.toLocaleString()} each (NGN ${requiredBudget.toLocaleString()})`,
+      );
+    }
+    const maxPerWeek = Math.min(
+      Math.max(Number(input.maxPerWeek) || DEFAULT_MAX_PER_WEEK, 1),
+      capacityTotal,
+    );
     const startAt = input.startAt ? new Date(input.startAt) : now;
     if (Number.isNaN(startAt.getTime())) throw new ValidationException('Invalid start date');
     const endAt = input.endAt ? new Date(input.endAt) : null;
@@ -195,10 +222,9 @@ export class MongoCampaignRepository {
       const debited = await PartnersModel.findOneAndUpdate(
         {
           _id: ownerId,
-          accountState: 'partner',
           suspendedAt: null,
-          kycStatus: 'verified',
           balance: { $gte: total },
+          ...activationEligibilityFilter,
         },
         { $inc: { balance: -total } },
         opts(session, { new: true }),
@@ -220,9 +246,9 @@ export class MongoCampaignRepository {
           budget: { total, spent: 0, refunded: 0 },
           flight: { startAt, endAt },
           capacity: {
-            total: Number(input.capacityTotal) || DEFAULT_CAPACITY,
+            total: capacityTotal,
             allocated: 0,
-            maxPerWeek: Number(input.maxPerWeek) || DEFAULT_MAX_PER_WEEK,
+            maxPerWeek,
           },
           targetAudience: {
             states: Array.isArray(input.targetStates) ? input.targetStates : [],
@@ -515,9 +541,9 @@ export class MongoCampaignRepository {
         const eligible = partnerEligibleForAllocation(partner);
         const reasons = [];
         if (!partner) reasons.push('Partner record missing');
-        if (partner && partner.accountState !== 'partner') reasons.push('Not activated');
+        if (partner && !isActivatedPartner(partner)) reasons.push('Not activated');
         if (partner?.suspendedAt) reasons.push('Suspended');
-        if (partner && partner.kycStatus !== 'verified') reasons.push(`KYC ${partner.kycStatus ?? 'not_started'}`);
+        if (partner && !isKycVerified(partner)) reasons.push(`KYC ${partner.kycStatus ?? 'not_started'}`);
         if (partner?.placementParentId) reasons.push('Already placed');
         return {
           queueEntryId: String(entry._id),
@@ -528,7 +554,7 @@ export class MongoCampaignRepository {
             email: partner.email ?? '',
             phone: partner.phone ?? '',
             state,
-            kycStatus: partner.kycStatus ?? 'not_started',
+            kycStatus: isKycVerified(partner) ? 'verified' : (partner?.kycStatus ?? 'not_started'),
           } : null,
           position: index + 1,
           status: entry.status,
@@ -724,7 +750,7 @@ export class MongoCampaignRepository {
     }
     return runInTransaction(async (session) => {
       const owner = await PartnersModel.findOne(
-        { _id: ownerId, accountState: 'partner', suspendedAt: null, kycStatus: 'verified' },
+        { _id: ownerId, suspendedAt: null, ...activationEligibilityFilter },
         null,
         opts(session),
       ).lean();
@@ -757,20 +783,40 @@ export class MongoCampaignRepository {
         {
           _id: campaignId,
           status: 'Active',
-          $expr: { $lt: ['$capacity.allocated', '$capacity.total'] },
+          $expr: {
+            $and: [
+              { $lt: ['$capacity.allocated', '$capacity.total'] },
+              {
+                $gte: [
+                  {
+                    $subtract: [
+                      '$budget.total',
+                      { $add: ['$budget.spent', '$budget.refunded'] },
+                    ],
+                  },
+                  COST_PER_PROSPECT_NGN,
+                ],
+              },
+            ],
+          },
         },
-        { $inc: { 'capacity.allocated': 1 }, $set: { lastAllocatedAt: now } },
+        {
+          $inc: {
+            'capacity.allocated': 1,
+            'budget.spent': COST_PER_PROSPECT_NGN,
+          },
+          $set: { lastAllocatedAt: now },
+        },
         opts(session, { new: true }),
       ).lean();
-      if (!campaign) throw new ConflictException('Campaign has no remaining capacity');
+      if (!campaign) throw new ConflictException('Campaign has no remaining capacity or budget');
 
       const partner = await PartnersModel.findOneAndUpdate(
         {
           _id: partnerId,
-          accountState: 'partner',
           suspendedAt: null,
-          kycStatus: 'verified',
           placementParentId: null,
+          ...activationEligibilityFilter,
         },
         {
           $set: {
@@ -798,9 +844,50 @@ export class MongoCampaignRepository {
         opts(session),
       );
 
+      // Auto-close when the last slot is filled or the remaining budget can no
+      // longer cover another allocation. Any leftover is returned immediately.
+      let finalCampaign = campaign;
+      const remainingBudget = campaignBudgetRemaining(campaign);
+      const capacityFull = Number(campaign.capacity?.allocated ?? 0)
+        >= Number(campaign.capacity?.total ?? 0);
+      if (capacityFull || remainingBudget < COST_PER_PROSPECT_NGN) {
+        const refund = remainingBudget;
+        const ended = await GrowthCampaignModel.findOneAndUpdate(
+          { _id: campaignId, status: 'Active' },
+          {
+            $set: {
+              status: 'Ended',
+              endedAt: now,
+              pausedAt: null,
+              ...(refund > 0 ? {
+                refundedAt: now,
+                refundReason: 'Campaign completed — unspent budget returned',
+              } : {}),
+            },
+            ...(refund > 0 ? { $inc: { 'budget.refunded': refund } } : {}),
+          },
+          opts(session, { new: true }),
+        ).lean();
+        if (ended) {
+          finalCampaign = ended;
+          if (refund > 0) {
+            await this.refundOwner({
+              ownerId,
+              amount: refund,
+              reference: `GCAUTO-${campaignId}-${allocation._id}`,
+              method: 'Growth Campaign Closeout',
+              note: 'Campaign completed — unspent budget returned',
+              actorId: null,
+              now,
+              session,
+            });
+          }
+        }
+      }
+
       return {
-        allocation: allocationDto(allocation.toObject(), campaign, await this.findPartner(ownerId, { session })),
-        campaign: campaignDto(campaign),
+        allocation: allocationDto(allocation.toObject(), finalCampaign, await this.findPartner(ownerId, { session })),
+        campaign: campaignDto(finalCampaign),
         partner: {
           id: String(partner._id),
           name: ownerLabel(partner),

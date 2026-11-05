@@ -50,7 +50,7 @@ const progressionSchema = new mongoose.Schema(
       note: { type: String, default: '', maxlength: 500 },
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
       at: { type: Date, default: null },
-      // Counted G8 approvals — distinct approvers, threshold in levels.js.
+      // Counted Leader approvals — distinct approvers, threshold in levels.js.
       approvals: [{
         by: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true },
         at: { type: Date, default: Date.now },
@@ -245,7 +245,7 @@ export class MongoProgressionStore {
   }
 
   /**
-   * One approval from a distinct G8/admin approver (`$ne` guard makes
+   * One approval from a distinct Leader/admin approver (`$ne` guard makes
    * concurrent double-approvals impossible). Flips to approved at the
    * required count. Returns `{doc, duplicate}` — null doc = nothing pending.
    */

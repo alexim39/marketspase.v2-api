@@ -157,9 +157,9 @@ export class HandleDepositCallbackUseCase {
 
 /** GET /v1/billing/deposit/status — owner-scoped intent + live refresh. */
 export class DepositStatusUseCase {
-  /** @param {{deposits, opay}} deps */
-  constructor({ deposits, opay }) {
-    Object.assign(this, { deposits: deposits ?? DepositIntentModel, opay });
+  /** @param {{deposits, opay, paystackStatus?}} deps */
+  constructor({ deposits, opay, paystackStatus = null }) {
+    Object.assign(this, { deposits: deposits ?? DepositIntentModel, opay, paystackStatus });
   }
 
   async execute({ partnerId, reference }) {
@@ -168,6 +168,9 @@ export class DepositStatusUseCase {
       partnerId,
     }).lean();
     if (!intent) throw new NotFoundException('Deposit not found');
+    if (intent.method === 'paystack' && this.paystackStatus) {
+      return this.paystackStatus.execute({ partnerId, reference });
+    }
     let live = null;
     if (intent.status !== 'success' && this.opay?.enabled) {
       try {

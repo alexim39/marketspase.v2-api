@@ -1,6 +1,5 @@
 import { ValidationException } from '../../../shared/domain/AppError.js';
 import { lenientRole } from './PartnerRole.js';
-import { normalizePermissions } from './Permissions.js';
 
 const text = (value, field, { min = 2, max = 80 } = {}) => {
   const v = String(value ?? '').trim();
@@ -39,9 +38,8 @@ export const PlainPassword = {
  * Domain Entity factory for signup — pure, no Express/Mongoose/bcrypt.
  * Hashing happens in infrastructure (`BcryptPasswordHasher`); the entity
  * only carries validated plain values plus derived username base.
- * Reservation codes are optional during the transition to open signup.
  *
- * @param {{name,surname,email,phone,password,reservationCode?,tnc}} input (Zod-whitelisted)
+ * @param {{name,surname,email,phone,password,tnc}} input (Zod-whitelisted)
  */
 export const createSignupEntity = (input) => {
   const entity = {
@@ -52,10 +50,6 @@ export const createSignupEntity = (input) => {
     password: PlainPassword.create(input.password),
     tnc: input.tnc ?? false,
   };
-  const reservationCode = String(input.reservationCode ?? '').trim();
-  if (reservationCode) {
-    entity.reservationCode = text(reservationCode, 'reservation code', { min: 3, max: 64 });
-  }
   const campaign = String(input.campaign ?? '').trim();
   if (campaign) {
     entity.campaignCode = text(campaign, 'campaign', { min: 3, max: 64 });
@@ -87,6 +81,5 @@ export const toSafePartner = (doc) => {
   o.role = lenientRole(o.role);
   // Suspension flag for admin tooling (timestamps stay for audit detail).
   o.suspended = !!o.suspendedAt;
-  o.permissions = normalizePermissions(o.permissions);
   return o;
 };

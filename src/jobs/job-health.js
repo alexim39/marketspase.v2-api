@@ -26,6 +26,7 @@ export const JobRunModel =
 /** Minutes between expected successful runs, per sweep. */
 export const EXPECTED_EVERY_MIN = {
   'campaign-allocation': 60,
+  'growth-campaign-allocation': 60,
   'campaign-expiry': 26 * 60,
   'leadpool-sweep': 60,
   'mentor-bonus': 90,

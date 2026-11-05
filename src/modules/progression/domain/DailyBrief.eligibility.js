@@ -18,7 +18,7 @@ export const dailyEligibility = ({ level = 'partner', candidateCount = 0, dailyO
   return { eligible: true, reason: 'actionable' };
 };
 
-const LEADERSHIP_LEVELS = ['ecl', 'cell_leader', 'g_leader', 'g8'];
+const LEADERSHIP_LEVELS = ['ecl', 'cell_leader', 'g_leader'];
 
 /** Journey stage decides brief ordering — recomputed daily, never stored. */
 export const briefFocus = (level = 'partner') => (

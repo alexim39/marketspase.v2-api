@@ -87,6 +87,8 @@ export const PaginationQuery = z.object({
   skip: z.coerce.number().int().min(0).optional().default(0),
   q: z.string().trim().max(80).optional().default(''),
   stage: z.enum(['New', 'Contacted', 'Interested', 'In Negotiation', 'Converted', 'Closed']).optional(),
+  /** Comma-separated prospect ids (stuck-filter page). */
+  ids: z.string().trim().max(20000).optional(),
 });
 
 export const StuckQuery = z.object({
@@ -95,17 +97,7 @@ export const StuckQuery = z.object({
 
 export const CommIdsParam = z.object({ prospectId: objectId, communicationId: objectId });
 
-/**
- * Enrollment-code shape — mirrors the partner signup form
- * (`partner-signup.component.ts`) so a code recorded here is guaranteed
- * usable at registration: business-issued legs (`247…` paths, `NV/NI/NR` +
- * digits, letter-led codes) plus digit-led paths like `274/test/1`.
- * Backend Zod intentionally repeats the frontend pattern (defense in depth).
- */
-export const EnrollmentCodePattern = /^[A-Za-z0-9][A-Za-z0-9/-]{2,63}$/;
-
 export const ConvertProspectSchema = z.object({
-  code: z.string().trim().min(3).max(64).regex(EnrollmentCodePattern, 'Reservation code format not recognised'),
   by: z.string().trim().max(40).optional(),
   byName: z.string().trim().max(120).optional(),
 });
@@ -173,4 +165,9 @@ export const ReassignPageLeadSchema = z.object({
 /** POST /v1/prospects/admin/leads/:leadId/push — grant a pool lead to a partner, free. */
 export const PushPoolLeadSchema = z.object({
   username: z.string().trim().min(2).max(80),
+});
+
+/** POST /v1/prospects/contact-list/resolve-phone — id-only booking match. */
+export const ResolveContactPhoneSchema = z.object({
+  phone: z.string().trim().min(7).max(20),
 });

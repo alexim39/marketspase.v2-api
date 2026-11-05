@@ -12,6 +12,7 @@ export const STARTER_PRODUCT = {
   description: 'A premium everyday clothing set, delivered nationwide. Activation includes business onboarding and access to the MarketSpase partner network.',
   price: 38000,
   currency: 'NGN',
+  imageUrl: '/img/activation-hoodi.jpeg',
   shippingCost: 3000,
   cogs: 16000,
   active: true,
@@ -20,7 +21,15 @@ export const STARTER_PRODUCT = {
 
 export const ensureStarterProduct = async () => {
   const existing = await StarterProductModel.findOne({ sku: STARTER_PRODUCT.sku }).lean();
-  if (existing) return { seeded: false, id: String(existing._id) };
+  if (existing) {
+    if (!existing.imageUrl) {
+      await StarterProductModel.updateOne(
+        { _id: existing._id },
+        { $set: { imageUrl: STARTER_PRODUCT.imageUrl } },
+      ).catch(() => null);
+    }
+    return { seeded: false, id: String(existing._id) };
+  }
   const created = await StarterProductModel.create(STARTER_PRODUCT);
   return { seeded: true, id: String(created._id) };
 };

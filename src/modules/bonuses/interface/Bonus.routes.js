@@ -5,8 +5,8 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
-  ClaimBonusUseCase, CreateBonusCampaignUseCase, GetEligibleBonusUseCase,
-  ListBonusCampaignsUseCase, UpdateBonusCampaignUseCase,
+  ClaimBonusUseCase, CreateBonusCampaignUseCase, DeleteBonusCampaignUseCase,
+  GetEligibleBonusUseCase, ListBonusCampaignsUseCase, UpdateBonusCampaignUseCase,
 } from '../application/Bonus.usecases.js';
 import { recordAudit } from '../../audit/index.js';
 
@@ -62,6 +62,7 @@ export const buildAdminBonusRouter = (deps = {}) => {
   const list = deps.list ?? new ListBonusCampaignsUseCase({});
   const create = deps.create ?? new CreateBonusCampaignUseCase({});
   const update = deps.update ?? new UpdateBonusCampaignUseCase({});
+  const remove = deps.remove ?? new DeleteBonusCampaignUseCase({});
 
   const router = express.Router();
   router.use(requireAuth, requireRole('admin'));
@@ -92,6 +93,17 @@ export const buildAdminBonusRouter = (deps = {}) => {
       detail: body,
     });
     res.status(200).json({ message: 'Bonus campaign updated successfully', data, success: true });
+  }));
+
+  router.delete('/:id', validate({ params: z.object({ id: objectId }) }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await remove.execute({ campaignId: params.id });
+    void recordAudit({
+      actorId: req.auth?.partnerId, action: 'bonus.campaign.delete',
+      targetType: 'bonus', targetId: String(params.id),
+      detail: { claims: data.claims },
+    });
+    res.status(200).json({ message: 'Bonus campaign deleted successfully', data, success: true });
   }));
 
   return router;

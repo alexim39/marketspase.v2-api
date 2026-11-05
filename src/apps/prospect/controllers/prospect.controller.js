@@ -3,6 +3,8 @@ import { ProspectSurveyModel } from "../../survey/models/survey.model.js";
 import { PartnersModel } from '../../partner/models/partner.model.js';
 import { ClaimPoolLeadUseCase } from '../../../modules/crm/application/Prospect.claim.js';
 import { buildProspectAccess, isAdminDoc } from '../../../modules/crm/application/Prospect.access.js';
+import { maskProspectContact } from '../../../modules/crm/domain/Prospect.visibility.js';
+import { stageForStatusName } from '../../../modules/crm/domain/Prospect.entity.js';
 
 // Shared paid-claim core (fee debit + atomic pool claim) — also serves v1.
 const claimPoolLead = new ClaimPoolLeadUseCase({});
@@ -132,6 +134,18 @@ export const GetContactsCreatedBy = async (req, res) => {
       });
     }
 
+    // Contact details follow the same rule as the coaching detail page:
+    // owner/admin see everything; the direct referral upline only sees
+    // consented contacts; every other upline gets names/stages without PII.
+    const requesterId = String(req.auth?.partnerId ?? '');
+    const requester = await PartnersModel.findById(requesterId).select('role email').lean().catch(() => null);
+    const isOwner = requesterId === String(createdBy);
+    const isAdmin = isAdminDoc(requester);
+    const isDirectUpline = String(partner.partnerOf ?? '') === requesterId;
+    const canViewContact = isOwner || isAdmin || isDirectUpline;
+    const bypassConsent = isOwner || isAdmin;
+    const mask = (doc) => maskProspectContact(doc, { canViewContact, bypassConsent });
+
     const q = req.query ?? {};
     const hasQuery = ['page', 'limit', 'q', 'status', 'attention', 'channel', 'sort', 'stats']
       .some((k) => q[k] !== undefined && String(q[k]).trim() !== '');
@@ -151,7 +165,7 @@ export const GetContactsCreatedBy = async (req, res) => {
 
       return res.status(200).json({
         message: "Prospects retrieved successfully!",
-        data: prospectObject,
+        data: prospectObject.map(mask),
         success: true
       });
     }
@@ -183,7 +197,7 @@ export const GetContactsCreatedBy = async (req, res) => {
 
     return res.status(200).json({
       message: "Prospects retrieved successfully!",
-      data: docs,
+      data: docs.map(mask),
       meta,
       success: true
     });
@@ -612,8 +626,9 @@ export const getProspectById = async (req, res) => {
   try {  
       const { prospectId } = req.params;  
 
+      let access;
       try {
-        await guard.requireRead(req.auth?.partnerId, prospectId);
+        access = await guard.requireRead(req.auth?.partnerId, prospectId);
       } catch (err) {
         return deny(res, err);
       }
@@ -629,9 +644,20 @@ export const getProspectById = async (req, res) => {
         });  
       }  
 
+      const isOwner = access?.relation === 'owner';
+      const isAdmin = access?.relation === 'admin';
+      const owner = access?.relation === 'upline'
+        ? await PartnersModel.findById(access.ownerId).select('partnerOf').lean().catch(() => null)
+        : null;
+      const isDirectUpline = String(owner?.partnerOf ?? '') === String(req.auth?.partnerId ?? '');
+      const data = maskProspectContact(prospect, {
+        canViewContact: isOwner || isAdmin || isDirectUpline,
+        bypassConsent: isOwner || isAdmin,
+      });
+
       res.status(200).json({  
           message: 'Prospect retrieved successfully!',  
-          data: prospect, // Send the prepared data  
+          data, // Masked for coaching viewers  
           success: true
       });  
 
@@ -653,32 +679,36 @@ export const UpdateProspectStatus = async (req, res) => {
     } catch (err) {
       return deny(res, err);
     }
-    const {
-      prospectId,
-      status: {
-        name,
-        note,
-        paydayDate,
-        expectedDecisionDate,
-        onboardingDate
-      }
-    } = req.body;
+    const { prospectId } = req.body ?? {};
+    const rawStatus = req.body?.status;
+    const status = rawStatus && typeof rawStatus === 'object' ? rawStatus : {};
+    const name = typeof status.name === 'string' ? status.name.trim() : '';
+    if (!name) {
+      return res.status(400).json({ message: 'A valid status name is required', success: false });
+    }
 
-    // Build status update object
-    const statusUpdate = {
-      name,
-      note,
-      updatedAt: new Date()
+    const now = new Date();
+    const current = await ProspectModel.findById(prospectId).select('status.stage').lean().catch(() => null);
+    const mappedStage = stageForStatusName(name);
+
+    // Dotted $set: never replace the whole status subdocument, or stage,
+    // stageEnteredAt and the Open/Closed flag are silently wiped.
+    const set = {
+      'status.name': name,
+      'status.updatedAt': now,
     };
+    if (status.note !== undefined) set['status.note'] = String(status.note).slice(0, 2000);
+    if (status.paydayDate) set['status.paydayDate'] = new Date(status.paydayDate);
+    if (status.expectedDecisionDate) set['status.expectedDecisionDate'] = new Date(status.expectedDecisionDate);
+    if (status.onboardingDate) set['status.onboardingDate'] = new Date(status.onboardingDate);
+    if (mappedStage) {
+      set['status.stage'] = mappedStage;
+      if (current?.status?.stage !== mappedStage) set['status.stageEnteredAt'] = now;
+    }
 
-    if (paydayDate) statusUpdate.paydayDate = new Date(paydayDate);
-    if (expectedDecisionDate) statusUpdate.expectedDecisionDate = new Date(expectedDecisionDate);
-    if (onboardingDate) statusUpdate.onboardingDate = new Date(onboardingDate);
-
-    // Update the prospect's status
     const prospect = await ProspectModel.findByIdAndUpdate(
       prospectId,
-      { status: statusUpdate },
+      { $set: set },
       { new: true, runValidators: true }
     );
 
@@ -751,10 +781,24 @@ export const UpdateProspectsStatusMany = async (req, res) => {
     let matched = 0;
     if (allowed.length > 0) {
       const now = new Date();
+      const mappedStage = stageForStatusName(name);
+      // Pipeline updates keep the detailed name and canonical stage in sync.
+      // A pipeline is used so stageEnteredAt only resets on a real stage move.
+      const update = mappedStage
+        ? [{
+            $set: {
+              'status.name': name,
+              'status.stage': mappedStage,
+              'status.stageEnteredAt': {
+                $cond: [{ $eq: ['$status.stage', mappedStage] }, '$status.stageEnteredAt', now],
+              },
+              'status.updatedAt': now,
+            },
+          }]
+        : { $set: { 'status.name': name, 'status.updatedAt': now } };
       const result = await ProspectModel.updateMany(
         { _id: { $in: allowed } },
-        { $set: { 'status.name': name, 'status.updatedAt': now } },
-        { runValidators: true },
+        update,
       ).catch(() => null);
       matched = result?.modifiedCount ?? result?.matchedCount ?? 0;
     }

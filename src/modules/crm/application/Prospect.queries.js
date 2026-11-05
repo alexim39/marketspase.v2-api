@@ -30,7 +30,7 @@ export class GetProspectByIdUseCase {
 export class GetProspectsByPartnerUseCase {
   /** @param {{prospects, partners}} deps */
   constructor({ prospects, partners }) { this.prospects = prospects; this.partners = partners; }
-  async execute({ partnerId, limit = 100, skip = 0, q, stage }) {
+  async execute({ partnerId, limit = 100, skip = 0, q, stage, ids }) {
     const pid = PartnerId.create(partnerId);
     if (!(await this.partners.exists(pid))) throw new NotFoundException('Partner not found');
     const lim = Math.min(Math.max(Number(limit) || 100, 1), 500);
@@ -38,6 +38,13 @@ export class GetProspectsByPartnerUseCase {
     const query = { limit: lim, skip: sk };
     if (q) query.q = String(q).trim().slice(0, 80);
     if (stage) query.stage = String(stage).trim();
+    if (ids !== undefined) {
+      query.ids = String(ids)
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => OBJECT_ID_RE.test(id))
+        .slice(0, 500);
+    }
     return this.prospects.findByPartnerId(pid, query);
   }
 }

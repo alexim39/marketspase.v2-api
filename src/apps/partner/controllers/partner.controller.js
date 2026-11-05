@@ -7,6 +7,7 @@ import dotenv  from "dotenv"
 dotenv.config()
 import mongoose from 'mongoose';
 import { buildProspectAccess } from '../../../modules/crm/application/Prospect.access.js';
+import { maskPartnerContact } from '../domain/ContactMask.js';
 
 // Session + ownership guard for this legacy router (no auth existed here).
 // Reads that must stay public (username check, referral picker) are
@@ -41,8 +42,11 @@ const safePartner = (doc) => {
   return o;
 };
 
+/** Team-facing reads can opt into masked contact details with ?maskContacts=1. */
+const wantsMaskedContacts = (req) => String(req.query?.maskContacts ?? '') === '1';
+
 // Public page fields (client PartnerInterface + landing content). Everything
-// else (password, reservationCode, settings, wallet, telemetry) stays hidden.
+// else (password, settings, wallet, telemetry) stays hidden.
 // Phone and email are private by default: only the explicit displayPhone /
 // displayEmail values a partner chooses are exposed publicly.
 const PUBLIC_PROFILE_SELECT = [
@@ -715,16 +719,21 @@ export const getPartnersOf = async (req, res) => {
       return res.status(err.statusCode ?? 403).json({ message: err.message, success: false });
     }
 
-    // Find all partners where partnerOf matches the provided partnerId.
-    // An empty downline is a healthy state (brand-new partners start here),
-    // not a 404 — the clients render their activation CTA from this page.
-    const partners = await PartnersModel.find({ partnerOf: partnerId }).exec();
+    // Direct team = referral downline plus campaign placements. A partner may
+    // appear here because they were referred, campaign-placed, or both.
+    const partners = await PartnersModel.find({
+      $or: [
+        { partnerOf: partnerId },
+        { placementParentId: partnerId },
+      ],
+    }).exec();
+    const mask = wantsMaskedContacts(req);
 
     res.status(200).json({
       message: partners.length === 0
-        ? "No partners yet — share a reservation code to grow this downline."
+        ? "No partners yet — invite someone or wait for a campaign placement."
         : "Partners retrieved successfully!",
-      data: partners.map(safePartner),
+      data: partners.map((partner) => maskPartnerContact(safePartner(partner), mask)),
       success: true
     });
   } catch (error) {
@@ -767,7 +776,7 @@ export const getPartnerById = async (req, res) => {
 
     res.status(200).json({
       message: "Partner retrieved successfully!",
-      data: safePartner(partner),
+      data: maskPartnerContact(safePartner(partner), wantsMaskedContacts(req)),
       success: true
     });
   } catch (error) {

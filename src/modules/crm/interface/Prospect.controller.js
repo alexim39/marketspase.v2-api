@@ -1,6 +1,7 @@
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { PartnersModel } from '../infrastructure/Prospect.models.js';
 import { adminBootstrapEmails, lenientRole } from '../../identity-access/domain/PartnerRole.js';
+import { maskProspectContact } from '../domain/Prospect.visibility.js';
 
 const pid = (req) => req.validated?.params?.prospectId ?? req.params.prospectId;
 
@@ -146,9 +147,19 @@ export const makeProspectController = (uc, opts = {}) => {
   }),
   getById: asyncHandler(async (req, res) => {
     // Read — owner, upline or admin (outsiders get 404, never confirm).
-    if (guard) await guard.requireRead(me(req), pid(req));
+    const access = guard ? await guard.requireRead(me(req), pid(req)) : null;
     const data = await uc.getById.execute({ prospectId: pid(req) });
-    res.status(200).json({ message: 'Prospect retrieved successfully!', data, success: true });
+    const isOwner = access?.relation === 'owner';
+    const isAdmin = access?.relation === 'admin';
+    const owner = access?.relation === 'upline'
+      ? await PartnersModel.findById(access.ownerId).select('partnerOf').lean().catch(() => null)
+      : null;
+    const isDirectUpline = String(owner?.partnerOf ?? '') === String(me(req) ?? '');
+    const masked = maskProspectContact(data, {
+      canViewContact: isOwner || isAdmin || isDirectUpline,
+      bypassConsent: isOwner || isAdmin,
+    });
+    res.status(200).json({ message: 'Prospect retrieved successfully!', data: masked, success: true });
   }),
 
   remindersMine: asyncHandler(async (req, res) => {
@@ -162,12 +173,19 @@ export const makeProspectController = (uc, opts = {}) => {
     // List read — owner, upline or admin.
     if (guard) await guard.requireListAccess(me(req), partnerId);
     const q = req.validated?.query ?? req.query;
-    const { items, total } = await uc.getByPartner.execute({ partnerId, limit: q?.limit, skip: q?.skip, q: q?.q, stage: q?.stage });
+    const { items, total, stageCounts } = await uc.getByPartner.execute({
+      partnerId,
+      limit: q?.limit,
+      skip: q?.skip,
+      q: q?.q,
+      stage: q?.stage,
+      ids: q?.ids,
+    });
     res.status(200).json({
       message: 'Prospects retrieved successfully!',
       data: items,
       success: true,
-      meta: { total, limit: q?.limit ?? 50, skip: q?.skip ?? 0 },
+      meta: { total, limit: q?.limit ?? 50, skip: q?.skip ?? 0, stageCounts: stageCounts ?? {} },
     });
   }),
 
@@ -208,12 +226,11 @@ export const makeProspectController = (uc, opts = {}) => {
     if (guard) await guard.requireOwner(me(req), pid(req), 'convert this prospect');
     const data = await uc.convert.execute({
       prospectId: pid(req),
-      code: typeof body.code === 'string' ? body.code : undefined,
       by: typeof body.by === 'string' ? body.by : undefined,
       byName: typeof body.byName === 'string' ? body.byName : undefined,
     });
     res.status(200).json({
-      message: 'Reservation code recorded. Share it with the prospect to complete signup.',
+      message: 'Prospect converted — they can now sign up through open registration.',
       data,
       success: true,
     });
@@ -237,6 +254,15 @@ export const makeProspectController = (uc, opts = {}) => {
   contactListActivation: asyncHandler(async (req, res) => {
     const data = await uc.contactListActivation.execute({ requesterId: req.auth?.partnerId });
     res.status(200).json({ message: 'Activation board retrieved successfully', data, success: true });
+  }),
+
+  contactListResolvePhone: asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await uc.contactListResolvePhone.execute({
+      requesterId: me(req),
+      phone: body.phone,
+    });
+    res.status(200).json({ message: 'Contact resolved successfully', data, success: true });
   }),
   };
 };

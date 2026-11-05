@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { ProspectModel, PartnersModel, ReservationCodeModel } from './Prospect.models.js';
+import { ProspectModel, PartnersModel } from './Prospect.models.js';
 import { ProspectMapper } from './Prospect.mapper.js';
 import { normalizePhone } from '../domain/Prospect.entity.js';
 
@@ -42,19 +42,31 @@ export class MongoProspectRepository {
     return ProspectMapper.toDomain(await ProspectModel.findById(id).lean());
   }
 
-  async findByPartnerId(partnerId, { limit = 100, skip = 0, q, stage } = {}) {
-    const filter = { partnerId };
+  async findByPartnerId(partnerId, { limit = 100, skip = 0, q, stage, ids } = {}) {
+    const base = { partnerId };
     if (q) {
       const escaped = String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(escaped, 'i');
-      filter.$or = [{ prospectName: re }, { prospectSurname: re }, { prospectPhone: re }, { prospectEmail: re }];
+      base.$or = [{ prospectName: re }, { prospectSurname: re }, { prospectPhone: re }, { prospectEmail: re }];
     }
+    if (Array.isArray(ids) && ids.length > 0) {
+      base._id = { $in: ids };
+    }
+    const filter = { ...base };
     if (stage) filter['status.stage'] = stage;
-    const [items, total] = await Promise.all([
+    const [items, total, stageRows] = await Promise.all([
       ProspectModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       ProspectModel.countDocuments(filter),
+      ProspectModel.aggregate([
+        { $match: base },
+        { $group: { _id: { $ifNull: ['$status.stage', 'New'] }, count: { $sum: 1 } } },
+      ]),
     ]);
-    return { items: items.map(ProspectMapper.toDomain), total };
+    return {
+      items: items.map(ProspectMapper.toDomain),
+      total,
+      stageCounts: Object.fromEntries(stageRows.map((row) => [row._id, row.count])),
+    };
   }
 
   /** Goal-engine counters: created + converted within a window. */
@@ -294,6 +306,18 @@ export class MongoProspectRepository {
     return docs.map(ProspectMapper.toDomain);
   }
 
+  /** Resolve a scoped prospect by phone without returning the phone itself. */
+  async findByPhoneInPartners(partnerIds, phone, limit = 3) {
+    if (!partnerIds.length) return [];
+    const normalized = normalizePhone(phone);
+    if (!normalized) return [];
+    const docs = await ProspectModel.find({
+      partnerId: { $in: matchPartnerIds(partnerIds) },
+      prospectPhone: normalized,
+    }).select('_id partnerId').limit(Math.min(Math.max(Number(limit) || 3, 1), 10)).lean();
+    return docs.map((doc) => ({ prospectId: String(doc._id), partnerId: String(doc.partnerId) }));
+  }
+
   /** Submitted batches across many partners (upline view, bounded). */
   async downlineSubmittedBatches(partnerIds, cap = 200) {
     if (partnerIds.length === 0) return [];
@@ -332,29 +356,4 @@ export class MongoPartnerLookup {
   }
 }
 
-/**
- * Minimal reservation-code writer for prospect conversion.
- * Issues partner-approved codes (upline converts own prospect, so no
- * Pending round-trip). Same `reservation-codes` collection as legacy.
- */
-export class MongoReservationCodes {
-  async existsByCode(code) {
-    return (await ReservationCodeModel.exists({ code })) !== null;
-  }
 
-  async createApproved({ code, partnerId, prospectId }) {
-    const doc = await ReservationCodeModel.create({
-      code,
-      partnerId,
-      prospectId,
-      status: 'Approved',
-    });
-    return { id: String(doc._id), code: doc.code, status: doc.status };
-  }
-
-  /** GDPR erasure helper — count of owned codes removed. */
-  async deleteByPartner(partnerId) {
-    const res = await ReservationCodeModel.deleteMany({ partnerId });
-    return res.deletedCount ?? 0;
-  }
-}

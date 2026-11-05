@@ -11,13 +11,13 @@ const {
 } = await import('./Deposit.usecases.js');
 
 const ACCOUNTS = [
-  { bank: 'Opay', number: '6102514335', name: 'ASYNC SOLUTIONS LTD' },
-  { bank: 'Opay', number: '6102513801', name: 'ASYNC SOLUTIONS LTD' },
+  { bank: 'Test Bank', number: '9000000001', name: 'QA RECEIVING LTD' },
+  { bank: 'Test Bank', number: '9000000002', name: 'QA RECEIVING LTD' },
 ];
 
 const goodClaim = (over = {}) => ({
   amountNgn: 5000,
-  destinationAccount: '6102514335',
+  destinationAccount: '9000000001',
   senderName: 'Ada Tester',
   senderAccount: '0123456789',
   paidAt: new Date(Date.now() - 3600000),
@@ -151,8 +151,8 @@ const member = (over = {}) => ({
 // --- domain ---------------------------------------------------------------
 
 test('assertManualClaim accepts a good claim and normalizes digits', () => {
-  const c = domain.assertManualClaim(goodClaim({ destinationAccount: '610-251 4335' }), ACCOUNTS);
-  assert.equal(c.destinationAccount, '6102514335');
+  const c = domain.assertManualClaim(goodClaim({ destinationAccount: '900-000 0001' }), ACCOUNTS);
+  assert.equal(c.destinationAccount, '9000000001');
   assert.equal(c.amountNgn, 5000);
 });
 
@@ -164,13 +164,13 @@ test('assertManualClaim rejects unknown accounts, senders, dates, references', (
   assert.throws(() => domain.assertManualClaim(goodClaim({ amountNgn: 50 }), ACCOUNTS), /between/);
 });
 
-test('manualAccounts parses env JSON and falls back on garbage', () => {
+test('manualAccounts parses env JSON and has no hardcoded defaults', () => {
   const parsed = domain.manualAccounts({
     MANUAL_DEPOSIT_ACCOUNTS: JSON.stringify([{ bank: 'X', number: '1234567890', name: 'N' }]),
   });
   assert.deepEqual(parsed, [{ bank: 'X', number: '1234567890', name: 'N' }]);
-  assert.ok(domain.manualAccounts({ MANUAL_DEPOSIT_ACCOUNTS: 'nope{' }).length >= 2);
-  assert.ok(domain.manualAccounts({}).length >= 2);
+  assert.deepEqual(domain.manualAccounts({ MANUAL_DEPOSIT_ACCOUNTS: 'nope{' }), []);
+  assert.deepEqual(domain.manualAccounts({}), []);
 });
 
 // --- submit + mine ---------------------------------------------------------

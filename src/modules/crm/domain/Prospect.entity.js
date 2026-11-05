@@ -132,6 +132,53 @@ export const PROSPECT_STAGES = [
 ];
 
 /**
+ * Detailed coaching statuses → canonical pipeline stage.
+ * The contact/coaching pages write `status.name`; the pipeline writes
+ * `status.stage`. This map keeps both in sync so a move on one surface is
+ * visible on the other.
+ */
+export const STATUS_STAGE_MAP = Object.freeze({
+  'New Prospect': 'New',
+  Contacted: 'Contacted',
+  'Follow-Up Scheduled': 'Contacted',
+  Engaged: 'Interested',
+  'Sent Information': 'Interested',
+  'Awaiting Response': 'Interested',
+  Interested: 'Interested',
+  Nurturing: 'Interested',
+  Closing: 'In Negotiation',
+  'Booked for Session': 'In Negotiation',
+  Member: 'Converted',
+  Partner: 'Converted',
+  'Not Interested': 'Closed',
+  Disqualified: 'Closed',
+  Inactive: 'Closed',
+  'Re-engagement': 'Contacted',
+  Archive: 'Closed',
+});
+
+export const STAGE_STATUS_NAME = Object.freeze({
+  New: 'New Prospect',
+  Contacted: 'Contacted',
+  Interested: 'Interested',
+  'In Negotiation': 'Closing',
+  Converted: 'Partner',
+  Closed: 'Not Interested',
+});
+
+const normalizeStatusName = (name) =>
+  String(name ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const STATUS_STAGE_LOOKUP = new Map(
+  Object.entries(STATUS_STAGE_MAP).map(([name, stage]) => [normalizeStatusName(name), stage]),
+);
+
+export const stageForStatusName = (name) =>
+  STATUS_STAGE_LOOKUP.get(normalizeStatusName(name)) ?? null;
+
+export const statusNameForStage = (stage) => STAGE_STATUS_NAME[stage] ?? null;
+
+/**
  * Value Object: status overlay — only provided keys change (dotted $set).
  * Legacy REPLACED the whole subdoc, silently dropping `status: Open/Closed`.
  * Every stage advance stamps `stageEnteredAt` (stuck-in-pipeline clock).
@@ -139,7 +186,16 @@ export const PROSPECT_STAGES = [
 export const createStatusOverlay = (input, now = new Date()) => {
   if (!input || typeof input !== 'object') throw new ValidationException('Invalid status data');
   const overlay = {};
-  if (input.name !== undefined) overlay.name = text(input.name, 'status name', { min: 2, max: 120 });
+  if (input.name !== undefined) {
+    overlay.name = text(input.name, 'status name', { min: 2, max: 120 });
+    // Coaching status names carry a canonical pipeline stage with them.
+    // An explicit `stage` below still wins when both are supplied.
+    const mapped = stageForStatusName(overlay.name);
+    if (mapped) {
+      overlay.stage = mapped;
+      overlay.stageEnteredAt = now instanceof Date ? now : new Date(now);
+    }
+  }
   if (input.note !== undefined) overlay.note = String(input.note).slice(0, 2000);
   for (const key of ['paydayDate', 'expectedDecisionDate', 'onboardingDate']) {
     const d = optDate(input[key], key);

@@ -38,9 +38,6 @@ const partnersSchema = mongoose.Schema(
       unique: true,
       required: [true, "Please enter phone number"]
     },
-    reservationCode: {
-      type: String,
-    },
     // Acquisition attribution — growth campaign tracking code (gc_...).
     campaignCode: {
       type: String,
@@ -158,10 +155,6 @@ const partnersSchema = mongoose.Schema(
       type: String,
       enum: ['Partner', 'Builder', 'Leader', 'Ambassador'],
       default: 'Partner',
-    },
-    permissions: {
-      type: [String],
-      default: [],
     },
     // Admin suspension — set only via PATCH /v1/admin/partners/:id/suspend.
     // Suspended partners fail signin and session checks; existing JWTs die

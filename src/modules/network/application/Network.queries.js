@@ -1,5 +1,5 @@
 import { NotFoundException } from '../../../shared/domain/AppError.js';
-import { MAX_CHILDREN_PER_NODE, clampDepth } from '../domain/Network.entity.js';
+import { MAX_CHILDREN_PER_NODE, clampChain, clampDepth } from '../domain/Network.entity.js';
 
 /**
  * Downline tree — iterative BFS, one query per level. Cycle-safe via a
@@ -12,9 +12,10 @@ export class GetDownlineTreeUseCase {
     this.network = network;
   }
 
-  async execute({ partnerId, depth }) {
+  async execute({ partnerId, depth, chain }) {
     const maxDepth = clampDepth(depth);
-    const root = await this.network.findNode(partnerId);
+    const mode = clampChain(chain);
+    const root = await this.network.findNode(partnerId, mode);
     if (!root) throw new NotFoundException('Partner not found');
 
     const visited = new Set([root.id]);
@@ -26,7 +27,7 @@ export class GetDownlineTreeUseCase {
 
     for (let level = 0; level < maxDepth && frontier.length > 0; level++) {
       const parentIds = frontier.map((n) => n.id);
-      const children = await this.network.findChildren(parentIds, MAX_CHILDREN_PER_NODE + 1);
+      const children = await this.network.findChildren(parentIds, MAX_CHILDREN_PER_NODE + 1, mode);
       const byParent = new Map(parentIds.map((id) => [id, []]));
       for (const child of children) {
         if (visited.has(child.id)) continue; // cycle guard
@@ -60,7 +61,7 @@ export class GetDownlineTreeUseCase {
 
     return {
       tree: rootNode,
-      meta: { depth: maxDepth, total, perLevel, truncated: truncatedAny },
+      meta: { depth: maxDepth, chain: mode, total, perLevel, truncated: truncatedAny },
     };
   }
 }
@@ -72,21 +73,22 @@ export class GetUplineChainUseCase {
     this.network = network;
   }
 
-  async execute({ partnerId }) {
-    const start = await this.network.findNode(partnerId);
+  async execute({ partnerId, chain: mode = 'all' }) {
+    const chainMode = clampChain(mode);
+    const start = await this.network.findNode(partnerId, chainMode);
     if (!start) throw new NotFoundException('Partner not found');
     const chain = [];
     const visited = new Set([start.id]);
     let currentParentId = start.parentId;
     while (currentParentId && !visited.has(currentParentId)) {
       visited.add(currentParentId);
-      const node = await this.network.findNode(currentParentId);
+      const node = await this.network.findNode(currentParentId, chainMode);
       if (!node) break;
       const { parentId: _up, ...projected } = node;
       chain.push(projected);
       currentParentId = node.parentId;
     }
-    return { chain, depth: chain.length };
+    return { chain, depth: chain.length, chainMode };
   }
 }
 

@@ -36,7 +36,12 @@ const candidate = (overrides = {}) => ({
 
 const allocationResult = () => ({
   allocation: { id: 'allocation-1' },
-  campaign: { id: 'campaign-1' },
+  campaign: {
+    id: 'campaign-1',
+    status: 'Active',
+    budget: { total: 100000, spent: 550, refunded: 0, remaining: 99450 },
+    capacity: { total: 1, allocated: 1, remaining: 0, maxPerWeek: 2 },
+  },
   partner: { id: 'partner-1', name: 'Ada', email: 'ada@example.com' },
 });
 
