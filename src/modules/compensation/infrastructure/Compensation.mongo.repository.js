@@ -197,7 +197,6 @@ export class MongoCompensationRepository {
 
       const alreadyAccrued = await GrowthCommissionModel.countDocuments(
         { saleId: sale._id },
-        null,
         opts(session),
       );
       if (alreadyAccrued > 0) {
