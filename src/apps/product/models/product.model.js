@@ -40,6 +40,11 @@ const productSchema = mongoose.Schema(
             min: 0,
             default: 0,
         },
+        shippingCost: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
         partnerPrice: {
             type: Number,
             min: 0,
@@ -62,7 +67,7 @@ const productSchema = mongoose.Schema(
         },
         commissionable: {
             type: Boolean,
-            default: true,
+            default: false,
         },
         featured: {
             type: Boolean,
@@ -105,13 +110,24 @@ export const ProductModel = mongoose.model('Product', productSchema);
 
 // models/Cart.js
 const CartSchema = new mongoose.Schema({  
+    orderNumber: {
+        type: String,
+        trim: true,
+        index: true,
+    },
     products: [  
         {   
             product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' }, // Reference to Product  
             quantity: {  
                 type: Number,  
                 required: [true, "Please enter quantity"] // Ensure quantity is required  
-            },  
+            },
+            // Price/cost snapshot at checkout. Commission is calculated from
+            // this, not from whatever the product costs later.
+            price: { type: Number, min: 0 },
+            cogs: { type: Number, min: 0, default: 0 },
+            shippingCost: { type: Number, min: 0, default: 0 },
+            commissionable: { type: Boolean, default: false },
         }  
     ],  
     partner: {  
@@ -122,11 +138,21 @@ const CartSchema = new mongoose.Schema({
     totalCost: {   
         type: Number,   
         required: true   
-    },  
+    },
+    grossMargin: { type: Number, min: 0, default: 0 },
+    commissionableMargin: { type: Number, min: 0, default: 0 },
+    commissionPlan: {
+        type: String,
+        enum: ['legacy', 'growth'],
+        default: 'legacy',
+    },
     orderStatus: {   
         type: String,  
         default: 'Pending' 
-    },  
+    },
+    decidedAt: { type: Date, default: null },
+    fulfilledAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
     createdAt: {   
         type: Date,   
         default: Date.now   

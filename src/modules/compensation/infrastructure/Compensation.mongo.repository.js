@@ -4,6 +4,7 @@ import {
   ValidationException,
 } from '../../../shared/domain/AppError.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
+import { CartModel, ProductModel } from '../../../apps/product/models/product.model.js';
 import {
   PartnersModel,
   runInTransaction,
@@ -13,6 +14,7 @@ import {
   CommissionSaleModel,
   GrowthCommissionModel,
   MentorBonusModel,
+  ProductCommissionSaleModel,
 } from './Compensation.models.js';
 import {
   MENTOR_BONUS_AMOUNT,
@@ -26,6 +28,7 @@ import {
   rankDepth,
   rateForLevel,
 } from '../domain/Compensation.plan.js';
+import { summarizeProductMargins, productCommissionShares } from '../domain/ProductCommission.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
@@ -43,6 +46,7 @@ const dateOrNow = (value) => {
 const publicEntry = (entry, earner, buyer) => ({
   id: String(entry._id),
   orderId: String(entry.orderId),
+  saleType: entry.saleType ?? 'activation',
   level: entry.level,
   rate: entry.rate,
   amount: entry.amount,
@@ -122,6 +126,309 @@ export class MongoCompensationRepository {
       ).lean();
 
       return { sale, bonus };
+    });
+  }
+
+  /**
+   * Accrue product-order commissions on the referral tree (`partnerOf`).
+   *
+   * Idempotent per cart. The margin snapshot lives on the cart so later
+   * product repricing cannot change an order that already shipped.
+   * Buyer is excluded; inactive/unverified uplines are skipped but the walk
+   * continues so higher active levels are still reached.
+   */
+  async accrueProductSale(cartId) {
+    if (!hasId(cartId)) throw new ValidationException('Invalid product order');
+
+    const existing = await ProductCommissionSaleModel.findOne({ cartId }).lean();
+    if (existing && existing.status !== 'accrued') {
+      return { sale: existing, entries: [], deduped: true };
+    }
+
+    const cart = await CartModel.findById(cartId).lean();
+    if (!cart) throw new NotFoundException('Product order not found');
+    if (!cart.partner) throw new ValidationException('Product order has no buyer');
+    if (!Array.isArray(cart.products) || cart.products.length === 0) {
+      throw new ValidationException('Product order has no items');
+    }
+
+    const productIds = cart.products.map((item) => item.product).filter(Boolean);
+    const products = productIds.length
+      ? await ProductModel.find({ _id: { $in: productIds } }).lean()
+      : [];
+    const productsById = new Map(products.map((product) => [String(product._id), product]));
+
+    const lines = cart.products.map((item) => {
+      const product = productsById.get(String(item.product));
+      return {
+        price: item.price ?? product?.price ?? 0,
+        quantity: item.quantity,
+        cogs: item.cogs ?? product?.cogs ?? 0,
+        shippingCost: item.shippingCost ?? product?.shippingCost ?? 0,
+        commissionable: item.commissionable ?? (
+          product?.commissionable === true && Number(product?.cogs) > 0
+        ),
+      };
+    });
+    const { grossMargin, commissionableMargin } = summarizeProductMargins(lines);
+    const now = new Date();
+
+    return runInTransaction(async (session) => {
+      const sale = await ProductCommissionSaleModel.findOneAndUpdate(
+        { cartId },
+        {
+          $setOnInsert: {
+            cartId,
+            buyerId: cart.partner,
+            orderNumber: cart.orderNumber ?? '',
+            totalCost: Number(cart.totalCost) || 0,
+            grossMargin,
+            commissionableMargin,
+            status: 'accrued',
+            accruedAt: now,
+          },
+        },
+        opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
+      ).lean();
+      if (!sale) throw new ConflictException('Product commission sale could not be created');
+      if (sale.status !== 'accrued') {
+        return { sale, entries: [], deduped: true };
+      }
+
+      const alreadyAccrued = await GrowthCommissionModel.countDocuments(
+        { saleId: sale._id },
+        null,
+        opts(session),
+      );
+      if (alreadyAccrued > 0) {
+        return { sale, entries: [], deduped: true };
+      }
+
+      const entries = [];
+      const sharesByLevel = new Map(
+        productCommissionShares(commissionableMargin).map((share) => [share.level, share]),
+      );
+      const visited = new Set([String(cart.partner)]);
+      let current = await PartnersModel.findById(
+        cart.partner,
+        'partnerOf',
+        opts(session),
+      ).lean();
+
+      for (let level = 1; level <= MAX_LEVELS; level += 1) {
+        const parentId = current?.partnerOf;
+        if (!parentId || visited.has(String(parentId))) break;
+        visited.add(String(parentId));
+
+        const earner = await PartnersModel.findById(
+          parentId,
+          'name surname username commissionRank accountState kycStatus suspendedAt partnerOf',
+          opts(session),
+        ).lean();
+        if (!earner) break;
+        if (String(earner._id) === String(cart.partner)) break;
+
+        const rank = normalizedRank(earner.commissionRank);
+        const active = earner.accountState === 'partner'
+          && !earner.suspendedAt
+          && (earner.kycStatus ?? 'verified') === 'verified';
+        const share = sharesByLevel.get(level);
+
+        if (active && depthAllows(rank, level) && share) {
+          const entry = await GrowthCommissionModel.findOneAndUpdate(
+            { saleId: sale._id, level },
+            {
+              $setOnInsert: {
+                saleId: sale._id,
+                orderId: cart._id,
+                partnerId: cart.partner,
+                earnerId: earner._id,
+                saleType: 'product',
+                level,
+                rate: share.rate,
+                amount: share.amount,
+                grossMargin: commissionableMargin,
+                rankAtAccrual: rank,
+                status: 'Pending',
+              },
+            },
+            opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
+          ).lean();
+          if (entry) entries.push(entry);
+        }
+
+        current = earner;
+      }
+
+      return { sale, entries, deduped: false };
+    });
+  }
+
+  /**
+   * Release a product order's Pending commissions and credit wallets.
+   * Safe to call more than once; already-released entries are skipped.
+   */
+  async releaseProductSale(cartId, adminId, now = new Date()) {
+    if (!hasId(cartId)) throw new ValidationException('Invalid product order');
+
+    const sale = await ProductCommissionSaleModel.findOne({ cartId }).lean();
+    if (!sale) return { released: 0, total: 0, skipped: true };
+    if (sale.status === 'released') return { released: 0, total: 0, repeated: true };
+    if (sale.status === 'voided') {
+      throw new ConflictException('Product commissions were voided');
+    }
+
+    const pending = await GrowthCommissionModel.find({
+      saleId: sale._id,
+      status: 'Pending',
+    }).lean();
+
+    if (pending.length === 0) {
+      await ProductCommissionSaleModel.updateOne(
+        { _id: sale._id },
+        { $set: { status: 'released', releasedAt: now, releasedBy: adminId ?? null } },
+      );
+      return { released: 0, total: 0, repeated: false };
+    }
+
+    return runInTransaction(async (session) => {
+      let released = 0;
+      let total = 0;
+
+      for (const entry of pending) {
+        const reference = `PCOM-${entry._id}`;
+        const claimed = await GrowthCommissionModel.findOneAndUpdate(
+          { _id: entry._id, status: 'Pending' },
+          {
+            $set: {
+              status: 'Released',
+              releasedBy: adminId ?? null,
+              releasedAt: now,
+              transactionReference: reference,
+            },
+          },
+          opts(session, { new: true }),
+        ).lean();
+        if (!claimed) continue;
+
+        const earner = await PartnersModel.findByIdAndUpdate(
+          claimed.earnerId,
+          { $inc: { balance: Number(claimed.amount) } },
+          opts(session),
+        ).lean();
+        if (!earner) throw new NotFoundException('Commission earner not found');
+
+        await TransactionModel.create(
+          [{
+            partnerId: claimed.earnerId,
+            amount: claimed.amount,
+            reference,
+            status: 'Completed',
+            paymentMethod: 'Product Commission',
+            transactionType: 'Credit',
+            date: now,
+            decidedBy: adminId ?? null,
+            decidedAt: now,
+            decisionNote: `Level ${claimed.level} product commission`,
+          }],
+          opts(session),
+        );
+
+        released += 1;
+        total += Number(claimed.amount) || 0;
+      }
+
+      await ProductCommissionSaleModel.updateOne(
+        { _id: sale._id },
+        { $set: { status: 'released', releasedAt: now, releasedBy: adminId ?? null } },
+        opts(session),
+      );
+
+      return { released, total: round(total), repeated: false };
+    });
+  }
+
+  /** Void Pending product commissions and reverse any already released. */
+  async voidProductSale(cartId, adminId, reason, now = new Date()) {
+    if (!hasId(cartId)) throw new ValidationException('Invalid product order');
+
+    const sale = await ProductCommissionSaleModel.findOne({ cartId }).lean();
+    if (!sale) return { voided: 0, reversed: 0, skipped: true };
+    if (sale.status === 'voided') return { voided: 0, reversed: 0, repeated: true };
+
+    return runInTransaction(async (session) => {
+      const pending = await GrowthCommissionModel.updateMany(
+        { saleId: sale._id, status: 'Pending' },
+        {
+          $set: {
+            status: 'Voided',
+            voidedBy: adminId ?? null,
+            voidedAt: now,
+            reversalReason: reason ?? 'Product order cancelled',
+          },
+        },
+        opts(session),
+      );
+
+      const released = await GrowthCommissionModel.find(
+        { saleId: sale._id, status: 'Released' },
+        null,
+        opts(session),
+      ).lean();
+      let reversed = 0;
+
+      for (const entry of released) {
+        const claimed = await GrowthCommissionModel.findOneAndUpdate(
+          { _id: entry._id, status: 'Released' },
+          {
+            $set: {
+              status: 'Reversed',
+              reversalReason: reason ?? 'Product order cancelled',
+            },
+          },
+          opts(session, { new: true }),
+        ).lean();
+        if (!claimed) continue;
+
+        const recovery = await this.clawbackEarner({
+          earnerId: claimed.earnerId,
+          amount: claimed.amount,
+          reference: `PCOMREV-${claimed._id}`,
+          note: reason ?? 'Product order cancelled',
+          session,
+          now,
+        });
+        await GrowthCommissionModel.updateOne(
+          { _id: claimed._id },
+          {
+            $set: {
+              recoveredAmount: recovery.recovered,
+              outstandingAmount: recovery.outstanding,
+            },
+          },
+          opts(session),
+        );
+        reversed += 1;
+      }
+
+      await ProductCommissionSaleModel.updateOne(
+        { _id: sale._id },
+        {
+          $set: {
+            status: 'voided',
+            voidedAt: now,
+            voidedBy: adminId ?? null,
+            voidReason: reason ?? 'Product order cancelled',
+          },
+        },
+        opts(session),
+      );
+
+      return {
+        voided: pending.modifiedCount ?? 0,
+        reversed,
+        repeated: false,
+      };
     });
   }
 

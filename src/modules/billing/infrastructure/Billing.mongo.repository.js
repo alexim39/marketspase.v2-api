@@ -205,6 +205,7 @@ export class MongoOrderReader {
       buyerName: `${buyer?.name ?? ''} ${buyer?.surname ?? ''}`.trim(),
       total: cart.totalCost,
       status: cart.orderStatus ?? 'Pending',
+      commissionPlan: cart.commissionPlan ?? 'legacy',
     };
   }
 

@@ -23,6 +23,15 @@ export class AccrueCommissionsUseCase {
     const cart = await this.orders.findCart(cartId);
     if (!cart) throw new NotFoundException('Order not found');
     if (!cart.buyerId) throw new NotFoundException('Order has no buyer');
+    if (cart.commissionPlan === 'growth') {
+      return {
+        accrued: 0,
+        entries: [],
+        deduped: true,
+        skipped: true,
+        reason: 'Order uses the product growth commission plan',
+      };
+    }
 
     const plan = await this.ledger.getActivePlan();
     const shares = computeShares(cart.total, plan.rates);

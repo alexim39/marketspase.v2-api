@@ -28,6 +28,7 @@ const growthCommissionSchema = new mongoose.Schema(
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActivationOrder', required: true, index: true },
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
     earnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
+    saleType: { type: String, enum: ['activation', 'product'], default: 'activation', index: true },
     level: { type: Number, required: true, min: 1, max: 5 },
     rate: { type: Number, required: true, min: 0, max: 1 },
     amount: { type: Number, required: true, min: 0 },
@@ -55,6 +56,35 @@ const growthCommissionSchema = new mongoose.Schema(
   { timestamps: true, collection: 'growth_commissions' },
 );
 
+/**
+ * Snapshot of the product-order margin used for one product commission run.
+ * Kept separate from activation `commission_sales` so mentor bonuses and
+ * activation placement never mix with retail orders.
+ */
+const productCommissionSaleSchema = new mongoose.Schema(
+  {
+    cartId: { type: mongoose.Schema.Types.ObjectId, ref: 'Cart', required: true, unique: true },
+    buyerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
+    orderNumber: { type: String, default: '', trim: true },
+    totalCost: { type: Number, default: 0, min: 0 },
+    grossMargin: { type: Number, required: true, min: 0 },
+    commissionableMargin: { type: Number, required: true, min: 0 },
+    status: {
+      type: String,
+      enum: ['accrued', 'released', 'voided'],
+      default: 'accrued',
+      index: true,
+    },
+    accruedAt: { type: Date, default: null },
+    releasedAt: { type: Date, default: null },
+    releasedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
+    voidedAt: { type: Date, default: null },
+    voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
+    voidReason: { type: String, default: null, trim: true },
+  },
+  { timestamps: true, collection: 'product_commission_sales' },
+);
+
 const mentorBonusSchema = new mongoose.Schema(
   {
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActivationOrder', required: true, unique: true },
@@ -79,15 +109,21 @@ const mentorBonusSchema = new mongoose.Schema(
 );
 
 commissionSaleSchema.index({ status: 1, activatedAt: 1 });
+productCommissionSaleSchema.index({ status: 1, createdAt: 1 });
 growthCommissionSchema.index({ saleId: 1, level: 1 }, { unique: true });
 growthCommissionSchema.index({ earnerId: 1, status: 1, createdAt: -1 });
 growthCommissionSchema.index({ status: 1, createdAt: 1 });
+growthCommissionSchema.index({ saleType: 1, createdAt: -1 });
 mentorBonusSchema.index({ status: 1, dueAt: 1 });
 mentorBonusSchema.index({ mentorId: 1, status: 1, createdAt: -1 });
 
 export const CommissionSaleModel =
   mongoose.models.CommissionSale
   || mongoose.model('CommissionSale', commissionSaleSchema);
+
+export const ProductCommissionSaleModel =
+  mongoose.models.ProductCommissionSale
+  || mongoose.model('ProductCommissionSale', productCommissionSaleSchema);
 
 export const GrowthCommissionModel =
   mongoose.models.GrowthCommission

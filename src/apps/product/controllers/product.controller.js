@@ -5,6 +5,23 @@ import { PartnersModel } from '../../partner/models/partner.model.js';
 import { NotifyUseCase } from '../../../modules/notifications/application/NotificationsCenter.usecases.js';
 import { MongoStoredNotificationStore } from '../../../modules/notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { recordAudit } from '../../../modules/audit/index.js';
+import { MongoCompensationRepository } from '../../../modules/compensation/infrastructure/Compensation.mongo.repository.js';
+import {
+  AccrueProductCommissionsUseCase,
+  ReleaseProductCommissionsUseCase,
+  VoidProductCommissionsUseCase,
+} from '../../../modules/compensation/application/ProductCommission.usecases.js';
+import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
+
+const productCommissionPlan = () => (
+  process.env.PRODUCT_COMMISSION_PLAN === 'legacy' ? 'legacy' : 'growth'
+);
+
+const productOrderNumber = () => (
+  `PRD-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`
+);
+
+const productCommissionRepo = () => new MongoCompensationRepository();
 
 // Admin queue: every order by status, oldest first (money already debited).
 export const listOrdersForAdmin = async (req, res) => {
@@ -75,7 +92,30 @@ export const decideOrder = async (req, res) => {
       return res.status(409).json({ message: `Cannot decide a ${order.orderStatus} order`, success: false });
     }
     order.orderStatus = status;
+    order.decidedAt = new Date();
+    if (status === 'Fulfilled') order.fulfilledAt = order.decidedAt;
+    else order.cancelledAt = order.decidedAt;
     await order.save();
+
+    // Product commissions: growth carts accrue on the product margin and
+    // release only after fulfilment. Legacy carts keep their old flow.
+    let commission = null;
+    if (order.commissionPlan === 'growth') {
+      const repo = productCommissionRepo();
+      try {
+        if (status === 'Fulfilled') {
+          await new AccrueProductCommissionsUseCase({ repo }).execute(order._id);
+          commission = await new ReleaseProductCommissionsUseCase({ repo })
+            .execute(order._id, req.auth?.partnerId);
+        } else {
+          commission = await new VoidProductCommissionsUseCase({ repo })
+            .execute(order._id, req.auth?.partnerId, 'Product order cancelled');
+        }
+      } catch (commissionError) {
+        console.error('Product commission update failed:', commissionError?.message ?? commissionError);
+        commission = { error: true };
+      }
+    }
 
     if (status === 'Cancelled') {
       const owner = await PartnersModel.findById(order.partner);
@@ -101,11 +141,16 @@ export const decideOrder = async (req, res) => {
       orderId: String(order._id),
       status,
     });
-    res.status(200).json({ message: `Order marked as ${status.toLowerCase()}!`, data: order, success: true });
+    res.status(200).json({ message: `Order marked as ${status.toLowerCase()}!`, data: order, commission, success: true });
     void recordAudit({
       actorId: req.auth?.partnerId, action: 'order.decide',
       targetType: 'order', targetId: String(order._id),
-      detail: { status, amount: Number(order.totalCost) ?? null, owner: String(order.partner) },
+      detail: {
+        status,
+        amount: Number(order.totalCost) ?? null,
+        owner: String(order.partner),
+        commission: commission ? { released: commission.released ?? 0, voided: commission.voided ?? 0, error: !!commission.error } : null,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: 'Error deciding order', error: error.message, success: false });
@@ -151,6 +196,7 @@ const cleanProductFields = (body = {}) => {
   if (body.howToUse !== undefined) out.howToUse = cleanText(body.howToUse, 1200);
   if (body.deliveryNote !== undefined) out.deliveryNote = cleanText(body.deliveryNote, 1200);
   if (body.cogs !== undefined) out.cogs = cleanNumber(body.cogs, 'Cost price');
+  if (body.shippingCost !== undefined) out.shippingCost = cleanNumber(body.shippingCost, 'Shipping cost');
   if (body.partnerPrice !== undefined) out.partnerPrice = cleanNumber(body.partnerPrice, 'Partner price');
   if (body.retailPrice !== undefined) out.retailPrice = cleanNumber(body.retailPrice, 'Retail price');
   if (body.stock !== undefined) {
@@ -174,7 +220,7 @@ const cleanProductFields = (body = {}) => {
 
 /**
  * Admin product catalog (role-gated at the route). Whitelisted fields
- * only — unlike legacy `updateProduct`, this never duplicates the row.
+ * only; updates never duplicate the row.
  */
 export const adminCreateProduct = async (req, res) => {
   try {
@@ -224,7 +270,10 @@ export const getAllProducts = async (req, res) => {
       // in the member/partner catalog.
       const products = await ProductModel.find({
         status: { $nin: ['inactive', 'archived'] },
-      }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+      })
+        .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
+        .sort({ sortOrder: 1, createdAt: -1 })
+        .lean();
 
       res.status(200).json({
         message: 'Products retrieved successfully!',
@@ -241,6 +290,24 @@ export const getAllProducts = async (req, res) => {
     }
   };
 
+// Admin catalog: full docs including cost/commission fields.
+export const listProductsForAdmin = async (req, res) => {
+  try {
+    const products = await ProductModel.find({}).sort({ createdAt: -1 }).lean();
+    res.status(200).json({
+      message: 'Products retrieved successfully!',
+      data: products,
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error retrieving products',
+      error: error.message,
+      success: false,
+    });
+  }
+};
+
 // get one product for the full product page
 export const getProductById = async (req, res) => {
   try {
@@ -251,7 +318,9 @@ export const getProductById = async (req, res) => {
     const product = await ProductModel.findOne({
       _id: id,
       status: { $nin: ['inactive', 'archived'] },
-    }).lean();
+    })
+      .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
+      .lean();
     if (!product) {
       return res.status(404).json({ message: 'Product not found', success: false });
     }
@@ -270,38 +339,18 @@ export const getProductById = async (req, res) => {
 };
 
 
-// Update a product
-export const updateProduct = async (req, res) => {
-  try {
-      const {id} = req.params;
-      const product = await ProductModel.findByIdAndUpdate(id, req.body);
-      if (!product) {
-          return res.status(404).json({
-              message: `Product not found`,
-              success: false,
-          })
-      }
-      const updatedProduct = await ProductModel.create(req.body);
-      res.status(200).json({
-        message: 'Products retrieved successfully!',
-        data: updatedProduct,
-        success: true,
-      });
-
-  } catch (error) {
-      console.error(error.message);
-      res.status(500).json({
-          error: error.message,
-          message: 'Error updating product',
-          success: false,
-      })
-  }
-}
- 
 // Save cart  
 export const Savecart = async (req, res) => {  
   try {  
-    const { products, partnerId } = req.body;  
+    const { products } = req.body;
+    const partnerId = req.auth?.partnerId;
+
+    if (!partnerId) {
+      return res.status(401).json({
+        message: 'Sign in to place an order',
+        success: false,
+      });
+    }
 
     // Find the partner by ID  
     const partner = await PartnersModel.findById(partnerId);  
@@ -312,9 +361,19 @@ export const Savecart = async (req, res) => {
       });  
     }  
 
-    const cartProducts = [];  
+    const commissionPlan = productCommissionPlan();
+    const orderNumber = productOrderNumber();
+    const cartProducts = [];
+    const marginLines = [];
     let totalCost = 0;  
-  
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({
+        message: 'Your cart is empty',
+        success: false,
+      });
+    }
+
     for (const productData of products) {  
       const product = await ProductModel.findOne({ _id: productData._id });  
       if (!product) {  
@@ -334,8 +393,20 @@ export const Savecart = async (req, res) => {
       }
 
       if (!isNaN(price) && !isNaN(quantity) && quantity > 0) {  
-        totalCost += price * quantity; // Calculate total cost based on price and quantity  
-        cartProducts.push({ product: product._id, quantity }); // Add product ID and quantity to cartProducts  
+        const cogs = Math.max(Number(product.cogs) || 0, 0);
+        const shippingCost = Math.max(Number(product.shippingCost) || 0, 0);
+        const commissionable = product.commissionable === true && cogs > 0;
+
+        totalCost += price * quantity;
+        cartProducts.push({
+          product: product._id,
+          quantity,
+          price,
+          cogs,
+          shippingCost,
+          commissionable,
+        });
+        marginLines.push({ price, quantity, cogs, shippingCost, commissionable });
       }  
     }  
 
@@ -345,6 +416,8 @@ export const Savecart = async (req, res) => {
         success: false,
       });
     }
+
+    const { grossMargin, commissionableMargin } = summarizeProductMargins(marginLines);
 
     // Check if the partner has sufficient balance  
     if (partner.balance >= totalCost) {  
@@ -361,19 +434,40 @@ export const Savecart = async (req, res) => {
         status: 'Completed',  
         paymentMethod: 'Product Purchase',  
         transactionType: 'Debit',  
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString() // Generate a random 9-digit number as string  
+        reference: orderNumber,
       });  
 
       await transaction.save();  
 
-      // Create a new cart with products and total cost  
+      // Create a new cart with the price/cost snapshot used for commission.
       const cart = new CartModel({  
+        orderNumber,
         products: cartProducts,  
         totalCost: totalCost,  
+        grossMargin,
+        commissionableMargin,
+        commissionPlan,
         partner: partnerId,  
       });  
     
       await cart.save();  
+
+      // Growth-plan orders accrue here. A failure never blocks the paid
+      // order; fulfilment retries the accrual before releasing.
+      let commission = null;
+      if (commissionPlan === 'growth') {
+        try {
+          const result = await new AccrueProductCommissionsUseCase({ repo: productCommissionRepo() })
+            .execute(cart._id);
+          commission = {
+            entries: result.entries?.length ?? 0,
+            deduped: !!result.deduped,
+          };
+        } catch (commissionError) {
+          console.error('Product commission accrual failed:', commissionError?.message ?? commissionError);
+          commission = { error: true };
+        }
+      }
 
       // Send email after successfully submitting the records  
       const emailSubject = 'Product Order Confirmation';  
@@ -395,11 +489,14 @@ export const Savecart = async (req, res) => {
       }
 
         res.status(200).json({ 
-            message: 'Cart saved successfully', 
+            message: 'Order placed successfully',
             success: true,
-            // Phase D glue: expose the order id so clients can accrue
-            // commissions idempotently via POST /v1/billing/accrue/:cartId.
-            data: { cartId: cart._id },
+            data: {
+              cartId: cart._id,
+              orderNumber,
+              commissionPlan,
+              commission,
+            },
         });   
 
     } else {  
@@ -421,12 +518,21 @@ export const Savecart = async (req, res) => {
 export const GetAllCartsBy = async (req, res) => {  
   try {  
     const { partnerId } = req.params;   
+    if (!req.auth?.partnerId || String(req.auth.partnerId) !== String(partnerId)) {
+      return res.status(403).json({
+        message: 'You can only view your own orders',
+        success: false,
+      });
+    }
 
-    // Fetch carts and populate the products field  
-    const carts = await CartModel.find({ partner: partnerId })  
+    // Fetch carts and populate the products field. Cost/margin snapshots are
+    // internal — the buyer sees what they paid, not what the platform paid.
+    const carts = await CartModel.find({ partner: partnerId })
+      .select('-grossMargin -commissionableMargin -commissionPlan -products.cogs -products.shippingCost -products.commissionable')
       .populate({  
         path: 'products.product', // Populate the product field within products  
-        model: 'Product' // Specify the model to populate  
+        model: 'Product', // Specify the model to populate
+        select: 'name price img category desc',
       });  
 
     res.status(200).json({
