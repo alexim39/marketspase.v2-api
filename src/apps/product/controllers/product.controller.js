@@ -325,12 +325,26 @@ export const Savecart = async (req, res) => {
       // Ensure price and quantity are valid numbers before calculating total cost  
       const price = Number(product.price);  
       const quantity = Number(productData.quantity);  
-  
+
+      if (!Number.isFinite(price) || price <= 0) {
+        return res.status(400).json({
+          message: `Product "${product.name ?? 'item'}" is price-on-request. Contact support before ordering.`,
+          success: false,
+        });
+      }
+
       if (!isNaN(price) && !isNaN(quantity) && quantity > 0) {  
         totalCost += price * quantity; // Calculate total cost based on price and quantity  
         cartProducts.push({ product: product._id, quantity }); // Add product ID and quantity to cartProducts  
       }  
     }  
+
+    if (totalCost <= 0 || cartProducts.length === 0) {
+      return res.status(400).json({
+        message: 'Order total must be greater than zero',
+        success: false,
+      });
+    }
 
     // Check if the partner has sufficient balance  
     if (partner.balance >= totalCost) {  
