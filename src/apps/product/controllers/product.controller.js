@@ -13,6 +13,7 @@ import {
 } from '../../../modules/compensation/application/ProductCommission.usecases.js';
 import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
 import { cleanShipping } from '../domain/Shipping.js';
+import { canBuyResale, cartSaleMode, resalePrices } from '../domain/Resale.js';
 
 const productCommissionPlan = () => (
   process.env.PRODUCT_COMMISSION_PLAN === 'legacy' ? 'legacy' : 'growth'
@@ -309,6 +310,41 @@ export const listProductsForAdmin = async (req, res) => {
   }
 };
 
+// Partner-only resale catalog: partner price and suggested retail.
+export const listResaleProducts = async (req, res) => {
+  try {
+    const partner = await PartnersModel.findById(req.auth?.partnerId)
+      .select('accountState kycStatus suspendedAt')
+      .lean();
+    if (!partner || !canBuyResale(partner)) {
+      return res.status(403).json({
+        message: 'Resale pricing is available to verified partners',
+        success: false,
+      });
+    }
+
+    const products = await ProductModel.find({
+      status: 'active',
+      partnerPrice: { $gt: 0 },
+    })
+      .select('name img category shortDesc price partnerPrice retailPrice stock featured sortOrder')
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      message: 'Resale products retrieved successfully!',
+      data: products,
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error retrieving resale products',
+      error: error.message,
+      success: false,
+    });
+  }
+};
+
 // get one product for the full product page
 export const getProductById = async (req, res) => {
   try {
@@ -403,31 +439,45 @@ export const Savecart = async (req, res) => {
       }  
   
       // Ensure price and quantity are valid numbers before calculating total cost  
-      const price = Number(product.price);  
       const quantity = Number(productData.quantity);  
+      const lineMode = productData.saleMode === 'resale' ? 'resale' : 'personal';
+      const prices = resalePrices(product);
+      const unitPrice = lineMode === 'resale' ? prices.partnerPrice : Number(product.price);
+      const retailPrice = lineMode === 'resale' ? prices.retailPrice : 0;
 
-      if (!Number.isFinite(price) || price <= 0) {
-        return res.status(400).json({
-          message: `Product "${product.name ?? 'item'}" is price-on-request. Contact support before ordering.`,
+      if (lineMode === 'resale' && !canBuyResale(partner)) {
+        return res.status(403).json({
+          message: 'Resale pricing is available to verified partners',
           success: false,
         });
       }
 
-      if (!isNaN(price) && !isNaN(quantity) && quantity > 0) {  
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return res.status(400).json({
+          message: lineMode === 'resale'
+            ? `Product "${product.name ?? 'item'}" does not have a resale price yet. Contact support.`
+            : `Product "${product.name ?? 'item'}" is price-on-request. Contact support before ordering.`,
+          success: false,
+        });
+      }
+
+      if (!isNaN(quantity) && quantity > 0) {
         const cogs = Math.max(Number(product.cogs) || 0, 0);
         const shippingCost = Math.max(Number(product.shippingCost) || 0, 0);
         const commissionable = product.commissionable === true && cogs > 0;
 
-        totalCost += price * quantity;
+        totalCost += unitPrice * quantity;
         cartProducts.push({
           product: product._id,
           quantity,
-          price,
+          price: unitPrice,
           cogs,
           shippingCost,
           commissionable,
+          saleMode: lineMode,
+          retailPrice,
         });
-        marginLines.push({ price, quantity, cogs, shippingCost, commissionable });
+        marginLines.push({ price: unitPrice, quantity, cogs, shippingCost, commissionable });
       }  
     }  
 
@@ -437,6 +487,8 @@ export const Savecart = async (req, res) => {
         success: false,
       });
     }
+
+    const saleMode = cartSaleMode(cartProducts);
 
     const { grossMargin, commissionableMargin } = summarizeProductMargins(marginLines);
 
@@ -468,6 +520,7 @@ export const Savecart = async (req, res) => {
         grossMargin,
         commissionableMargin,
         commissionPlan,
+        saleMode,
         shipping,
         paymentMethod: 'Wallet',
         paymentReference: orderNumber,

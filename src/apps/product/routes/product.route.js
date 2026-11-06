@@ -5,6 +5,7 @@ import {
     getAllProducts,
     getProductById,
     listProductsForAdmin,
+    listResaleProducts,
     Savecart,
     GetAllCartsBy,
     listOrdersForAdmin,
@@ -27,6 +28,8 @@ ProductRouter.get('/orders', requireAuth, requireRole('admin'), listOrdersForAdm
 ProductRouter.patch('/orders/:id', requireAuth, requireRole('admin'), decideOrder);
 // Admin catalog rows include cost and commission fields
 ProductRouter.get('/admin/list', requireAuth, requireRole('admin'), listProductsForAdmin);
+// Partner-only resale catalog
+ProductRouter.get('/resale/catalog', requireAuth, listResaleProducts);
 // Admin product catalog (role-gated; updates are whitelisted)
 ProductRouter.post('/', requireAuth, requireRole('admin'), adminCreateProduct);
 ProductRouter.patch('/:id', requireAuth, requireRole('admin'), adminUpdateProduct);

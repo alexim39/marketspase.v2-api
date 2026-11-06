@@ -155,6 +155,14 @@ const CartSchema = new mongoose.Schema({
             cogs: { type: Number, min: 0, default: 0 },
             shippingCost: { type: Number, min: 0, default: 0 },
             commissionable: { type: Boolean, default: false },
+            saleMode: {
+                type: String,
+                enum: ['personal', 'resale'],
+                default: 'personal',
+            },
+            // Suggested retail price snapshot for a resale line. The partner's
+            // direct margin is retailPrice − price; it is not a platform cost.
+            retailPrice: { type: Number, min: 0, default: 0 },
         }  
     ],  
     partner: {  
@@ -165,6 +173,11 @@ const CartSchema = new mongoose.Schema({
     totalCost: {   
         type: Number,   
         required: true   
+    },
+    saleMode: {
+        type: String,
+        enum: ['personal', 'resale', 'mixed'],
+        default: 'personal',
     },
     grossMargin: { type: Number, min: 0, default: 0 },
     commissionableMargin: { type: Number, min: 0, default: 0 },
