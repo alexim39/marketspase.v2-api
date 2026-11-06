@@ -30,19 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    services:
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --replSet rs0
-          --bind_ip_all
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-
     env:
       MONGODB_URI: mongodb://127.0.0.1:27017/marketspaseV2_e2e?replicaSet=rs0
       MONGODB_ADMIN_URI: mongodb://127.0.0.1:27017/admin?directConnection=true
@@ -72,8 +59,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Initialize Mongo replica set
-        run: node scripts/ci-init-mongo-replica.js
+      - name: Start Mongo replica set
+        run: |
+          docker run -d --name mongo-ci -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          mongo_ready=0
+          for i in $(seq 1 30); do
+            if docker exec mongo-ci mongosh --quiet --eval "db.adminCommand({ ping: 1 })" > /dev/null; then mongo_ready=1; break; fi
+            sleep 1
+          done
+          if [ "$mongo_ready" != "1" ]; then
+            echo 'Mongo did not start.'
+            docker logs mongo-ci || true
+            exit 1
+          fi
+          node scripts/ci-init-mongo-replica.js
 
       - name: Run commerce smoke
         run: |
@@ -139,3 +138,7 @@ jobs:
           echo '--- mock Paystack log ---'
           tail -n 200 /tmp/mock-paystack.log || true
           tail -n 40 /tmp/api.log 2>/dev/null | while IFS= read -r line; do echo "::error::api: $line"; done || true
+
+      - name: Stop Mongo
+        if: always()
+        run: docker rm -f mongo-ci || true
