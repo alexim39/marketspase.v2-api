@@ -101,8 +101,19 @@ jobs:
             exit 1
           fi
 
-          node scripts/seed-store-e2e.js
-          node scripts/smoke-store-flow.js
+          node scripts/seed-store-e2e.js > /tmp/seed.log 2>&1 || {
+            tail -n 40 /tmp/seed.log | while IFS= read -r line; do echo "::error::$line"; done
+            cat /tmp/seed.log
+            exit 1
+          }
+
+          node scripts/smoke-store-flow.js > /tmp/smoke.log 2>&1 || {
+            tail -n 60 /tmp/smoke.log | while IFS= read -r line; do echo "::error::$line"; done
+            cat /tmp/smoke.log
+            echo '--- API log ---'
+            tail -n 100 /tmp/api.log || true
+            exit 1
+          }
 
       - name: Publish logs on failure
         if: failure()
@@ -121,3 +132,4 @@ jobs:
           tail -n 200 /tmp/api.log || true
           echo '--- mock Paystack log ---'
           tail -n 200 /tmp/mock-paystack.log || true
+          tail -n 40 /tmp/api.log 2>/dev/null | while IFS= read -r line; do echo "::error::api: $line"; done || true
