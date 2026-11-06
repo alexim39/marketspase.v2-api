@@ -141,6 +141,14 @@ export const INDEXES = [
   { collection: 'store_products', keys: { partnerId: 1, status: 1 }, options: {} },
   { collection: 'store_inventory', keys: { partnerId: 1, productId: 1 }, options: { unique: true } },
   { collection: 'store_stock_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
+  { collection: 'store_orders', keys: { reference: 1 }, options: { unique: true } },
+  { collection: 'store_orders', keys: { orderNumber: 1 }, options: { unique: true } },
+  { collection: 'store_orders', keys: { partnerId: 1, createdAt: -1 }, options: {} },
+  { collection: 'store_orders', keys: { storeId: 1, createdAt: -1 }, options: {} },
+  { collection: 'store_orders', keys: { status: 1, expiresAt: 1 }, options: {} },
+  { collection: 'store_orders', keys: { status: 1, 'escrow.status': 1, 'escrow.releaseAt': 1 }, options: {} },
+  { collection: 'store_escrow_ledger', keys: { orderId: 1, type: 1 }, options: { unique: true } },
+  { collection: 'store_escrow_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
 ];
 
 /**

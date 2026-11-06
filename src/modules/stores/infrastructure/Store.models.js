@@ -34,6 +34,7 @@ const storeSchema = new mongoose.Schema(
     phone: { type: String, default: '', trim: true },
     ...socialSchema,
     deliveryNote: { type: String, default: '', trim: true },
+    deliveryFee: { type: Number, min: 0, default: 0 },
     returnPolicy: { type: String, default: '', trim: true },
     autoPublish: { type: Boolean, default: false },
     status: {
@@ -131,10 +132,173 @@ const storeStockLedgerSchema = new mongoose.Schema(
   { timestamps: true, collection: 'store_stock_ledger' },
 );
 
+const storeOrderItemSchema = new mongoose.Schema(
+  {
+    storeProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'StoreProduct',
+      required: true,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true,
+    },
+    name: { type: String, required: true, trim: true },
+    image: { type: String, default: '', trim: true },
+    category: { type: String, default: 'Essentials', trim: true },
+    unitPriceKobo: { type: Number, min: 0, required: true },
+    quantity: { type: Number, min: 1, required: true },
+    lineTotalKobo: { type: Number, min: 0, required: true },
+  },
+  { _id: false },
+);
+
+const storeCustomerSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+    phone: { type: String, required: true, trim: true },
+    street: { type: String, required: true, trim: true },
+    city: { type: String, required: true, trim: true },
+    state: { type: String, required: true, trim: true },
+    country: { type: String, default: 'Nigeria', trim: true },
+    note: { type: String, default: '', trim: true },
+  },
+  { _id: false },
+);
+
+const storeOrderEventSchema = new mongoose.Schema(
+  {
+    type: { type: String, required: true, trim: true },
+    at: { type: Date, default: Date.now },
+    note: { type: String, default: '', trim: true },
+  },
+  { _id: false },
+);
+
+const storeOrderSchema = new mongoose.Schema(
+  {
+    reference: { type: String, required: true, unique: true, index: true },
+    orderNumber: { type: String, required: true, unique: true, index: true },
+    storeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Store',
+      required: true,
+      index: true,
+    },
+    partnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'partner',
+      required: true,
+      index: true,
+    },
+    storeSlug: { type: String, required: true, trim: true },
+    storeName: { type: String, required: true, trim: true },
+    customer: { type: storeCustomerSchema, required: true },
+    items: { type: [storeOrderItemSchema], default: [] },
+    amounts: {
+      merchandiseKobo: { type: Number, min: 0, default: 0 },
+      deliveryKobo: { type: Number, min: 0, default: 0 },
+      totalKobo: { type: Number, min: 0, default: 0 },
+      serviceFeeKobo: { type: Number, min: 0, default: 0 },
+      serviceFeePercent: { type: Number, min: 0, default: 0 },
+      paymentFeeKobo: { type: Number, min: 0, default: 0 },
+      partnerPendingKobo: { type: Number, min: 0, default: 0 },
+    },
+    payment: {
+      provider: { type: String, default: 'paystack', trim: true },
+      status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed', 'refunded'],
+        default: 'pending',
+        index: true,
+      },
+      reference: { type: String, default: '', trim: true, index: true },
+      authorizationUrl: { type: String, default: '', trim: true },
+      accessCode: { type: String, default: '', trim: true },
+      paidAt: { type: Date, default: null },
+      channel: { type: String, default: '', trim: true },
+      currency: { type: String, default: 'NGN', trim: true },
+      gatewayResponse: { type: String, default: '', trim: true },
+    },
+    status: {
+      type: String,
+      enum: ['pending_payment', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+      default: 'pending_payment',
+      index: true,
+    },
+    stockReserved: { type: Boolean, default: false },
+    stockReleased: { type: Boolean, default: false },
+    expiresAt: { type: Date, default: null, index: true },
+    paidAt: { type: Date, default: null },
+    processingAt: { type: Date, default: null },
+    shippedAt: { type: Date, default: null },
+    deliveredAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+    settledAt: { type: Date, default: null },
+    escrow: {
+      status: {
+        type: String,
+        enum: ['none', 'held', 'released', 'refunded'],
+        default: 'none',
+        index: true,
+      },
+      releaseAt: { type: Date, default: null },
+      releasedAt: { type: Date, default: null },
+    },
+    fulfilment: {
+      courier: { type: String, default: '', trim: true },
+      trackingNumber: { type: String, default: '', trim: true },
+      trackingUrl: { type: String, default: '', trim: true },
+      note: { type: String, default: '', trim: true },
+    },
+    events: { type: [storeOrderEventSchema], default: [] },
+  },
+  { timestamps: true, collection: 'store_orders' },
+);
+
+const storeEscrowLedgerSchema = new mongoose.Schema(
+  {
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'StoreOrder',
+      required: true,
+      index: true,
+    },
+    reference: { type: String, required: true, trim: true, index: true },
+    partnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'partner',
+      required: true,
+      index: true,
+    },
+    type: {
+      type: String,
+      enum: ['customer_payment', 'service_fee', 'payment_fee', 'partner_pending', 'partner_release', 'refund'],
+      required: true,
+    },
+    amountKobo: { type: Number, required: true },
+    status: {
+      type: String,
+      enum: ['posted', 'released', 'void'],
+      default: 'posted',
+    },
+    note: { type: String, default: '', trim: true },
+  },
+  { timestamps: true, collection: 'store_escrow_ledger' },
+);
+
 storeProductSchema.index({ storeId: 1, productId: 1 }, { unique: true });
 storeProductSchema.index({ storeId: 1, status: 1, createdAt: -1 });
 storeInventorySchema.index({ partnerId: 1, productId: 1 }, { unique: true });
 storeStockLedgerSchema.index({ partnerId: 1, createdAt: -1 });
+storeOrderSchema.index({ partnerId: 1, createdAt: -1 });
+storeOrderSchema.index({ storeId: 1, createdAt: -1 });
+storeOrderSchema.index({ status: 1, expiresAt: 1 });
+storeOrderSchema.index({ status: 1, 'escrow.status': 1, 'escrow.releaseAt': 1 });
+storeEscrowLedgerSchema.index({ orderId: 1, type: 1 }, { unique: true });
+storeEscrowLedgerSchema.index({ partnerId: 1, createdAt: -1 });
 
 export const StoreModel = mongoose.models.Store || mongoose.model('Store', storeSchema);
 export const StoreProductModel =
@@ -143,3 +307,7 @@ export const StoreInventoryModel =
   mongoose.models.StoreInventory || mongoose.model('StoreInventory', storeInventorySchema);
 export const StoreStockLedgerModel =
   mongoose.models.StoreStockLedger || mongoose.model('StoreStockLedger', storeStockLedgerSchema);
+export const StoreOrderModel =
+  mongoose.models.StoreOrder || mongoose.model('StoreOrder', storeOrderSchema);
+export const StoreEscrowLedgerModel =
+  mongoose.models.StoreEscrowLedger || mongoose.model('StoreEscrowLedger', storeEscrowLedgerSchema);

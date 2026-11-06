@@ -50,6 +50,28 @@ test('HandlePaystackWebhookUseCase rejects a bad signature before any work', asy
   );
 });
 
+test('HandlePaystackWebhookUseCase hands unknown references to the store handler', async () => {
+  const payload = { event: 'charge.success', data: { reference: 'MS-STORE-1' } };
+  const rawBody = Buffer.from(JSON.stringify(payload));
+  const signature = crypto.createHmac('sha512', 'sk_test').update(rawBody).digest('hex');
+  let received = null;
+  const uc = new HandlePaystackWebhookUseCase({
+    deposits: { findOne: () => ({ lean: async () => null }) },
+    paystack: { secretKey: 'sk_test', verify: async () => ({ status: 'success' }) },
+    storeOrderHandler: {
+      execute: async (input) => {
+        received = input;
+        return { handled: true, status: 'paid', reference: input.payload.data.reference };
+      },
+    },
+  });
+
+  const out = await uc.execute({ payload, rawBody, signature });
+  assert.equal(received.payload.data.reference, 'MS-STORE-1');
+  assert.equal(out.handled, true);
+  assert.equal(out.status, 'paid');
+});
+
 test('creditPaystackIntent treats an already-credited intent as a no-op', async () => {
   const deposits = { findOneAndUpdate: () => ({ lean: async () => null }) };
   const out = await creditPaystackIntent({

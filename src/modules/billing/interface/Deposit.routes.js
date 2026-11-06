@@ -17,6 +17,7 @@ import {
 } from '../application/PaystackDeposit.usecases.js';
 import { HandlePaystackTransferUseCase } from '../application/PaystackPayout.usecases.js';
 import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
+import { StoreOrderRepository } from '../../stores/infrastructure/StoreOrder.mongo.repository.js';
 import { NotifyUseCase } from '../../notifications/application/NotificationsCenter.usecases.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import {
@@ -130,10 +131,13 @@ export const buildDepositRouter = (deps = {}) => {
   const paystackTransferWebhook = deps.paystackTransferWebhook ?? new HandlePaystackTransferUseCase({
     notifier: notifyPayoutOutcome,
   });
+  const storeOrderWebhook = deps.storeOrderWebhook
+    ?? new StoreOrderRepository({ paystack });
   const paystackWebhook = deps.paystackWebhook ?? new HandlePaystackWebhookUseCase({
     paystack,
     notifier: notifyCredit('Paystack deposit'),
     transferHandler: paystackTransferWebhook,
+    storeOrderHandler: storeOrderWebhook,
   });
   const paystackStatus = deps.paystackStatus ?? new PaystackDepositStatusUseCase({
     paystack,

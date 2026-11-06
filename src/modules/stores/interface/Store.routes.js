@@ -5,9 +5,14 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { recordAudit } from '../../audit/index.js';
 import { StoreRepository } from '../infrastructure/Store.mongo.repository.js';
+import { StoreOrderRepository } from '../infrastructure/StoreOrder.mongo.repository.js';
 import {
   StoreListQuerySchema,
+  StoreOrderCreateSchema,
+  StoreOrderListQuerySchema,
   StoreOrderParamsSchema,
+  StoreOrderReferenceSchema,
+  StoreOrderUpdateSchema,
   StoreProductParamsSchema,
   StoreProductUpdateSchema,
   StorePublicProductParamsSchema,
@@ -17,6 +22,7 @@ import {
 
 export const buildStoreRouter = (deps = {}) => {
   const repo = deps.repo ?? new StoreRepository();
+  const orderRepo = deps.orderRepo ?? new StoreOrderRepository();
   const auth = deps.auth ?? requireAuth;
   const audit = deps.audit ?? recordAudit;
   const router = express.Router();
@@ -41,6 +47,42 @@ export const buildStoreRouter = (deps = {}) => {
         detail: { status: data.status, autoPublish: data.autoPublish },
       });
       return sendSuccess(res, { message: 'Store updated', data });
+    }),
+  );
+
+  router.get(
+    '/me/orders',
+    auth,
+    validate({ query: StoreOrderListQuerySchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.listPartnerOrders(req.auth.partnerId, req.validated.query);
+      return sendSuccess(res, { data });
+    }),
+  );
+
+  router.get('/me/earnings', auth, asyncHandler(async (req, res) => {
+    const data = await orderRepo.getPartnerEarnings(req.auth.partnerId);
+    return sendSuccess(res, { data });
+  }));
+
+  router.patch(
+    '/me/orders/:orderId',
+    auth,
+    validate({ params: StoreOrderParamsSchema, body: StoreOrderUpdateSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.updatePartnerOrder(
+        req.auth.partnerId,
+        req.validated.params.orderId,
+        req.validated.body,
+      );
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'store.order.update',
+        targetType: 'store-order',
+        targetId: req.validated.params.orderId,
+        detail: { status: data.status },
+      });
+      return sendSuccess(res, { message: `Order marked ${data.status}`, data });
     }),
   );
 
@@ -102,6 +144,55 @@ export const buildStoreRouter = (deps = {}) => {
     asyncHandler(async (req, res) => {
       const data = await repo.listPublicStores(req.validated.query);
       return sendSuccess(res, { data });
+    }),
+  );
+
+  router.post(
+    '/payments/webhook',
+    asyncHandler(async (req, res) => {
+      try {
+        const data = await orderRepo.handleWebhook({
+          payload: req.body ?? {},
+          rawBody: req.rawBody,
+          signature: req.get('x-paystack-signature'),
+        });
+        return sendSuccess(res, { message: 'Webhook handled', data });
+      } catch (error) {
+        if (error?.code === 'BAD_SIGNATURE' || error?.code === 'AMOUNT_MISMATCH') {
+          return res.status(400).json({ message: error.message, success: false, code: error.code });
+        }
+        throw error;
+      }
+    }),
+  );
+
+  router.post(
+    '/:slug/orders',
+    validate({ params: StoreSlugParamsSchema, body: StoreOrderCreateSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.createOrder(req.validated.params.slug, req.validated.body);
+      return sendSuccess(res, {
+        message: 'Checkout opened — complete payment with Paystack',
+        data,
+      });
+    }),
+  );
+
+  router.get(
+    '/orders/:reference',
+    validate({ params: StoreOrderReferenceSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.getOrder(req.validated.params.reference);
+      return sendSuccess(res, { data });
+    }),
+  );
+
+  router.post(
+    '/orders/:reference/verify',
+    validate({ params: StoreOrderReferenceSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.verifyOrder(req.validated.params.reference);
+      return sendSuccess(res, { message: 'Payment status checked', data });
     }),
   );
 

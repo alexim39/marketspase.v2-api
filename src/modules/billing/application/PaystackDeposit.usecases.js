@@ -131,11 +131,12 @@ export class InitPaystackDepositUseCase {
  * gets a non-2xx response.
  */
 export class HandlePaystackWebhookUseCase {
-  constructor({ deposits, paystack, notifier = null, transferHandler = null } = {}) {
+  constructor({ deposits, paystack, notifier = null, transferHandler = null, storeOrderHandler = null } = {}) {
     this.deposits = deposits ?? DepositIntentModel;
     this.paystack = paystack;
     this.notifier = notifier;
     this.transferHandler = transferHandler;
+    this.storeOrderHandler = storeOrderHandler;
   }
 
   async execute({ payload, rawBody, signature }) {
@@ -155,6 +156,17 @@ export class HandlePaystackWebhookUseCase {
     const reference = String(data.reference ?? '');
     const intent = await this.deposits.findOne({ reference, method: 'paystack' }).lean();
     if (!intent) {
+      // Paystack has one account-wide webhook URL. Store orders and wallet
+      // deposits share it, so hand unknown references to the store handler
+      // before treating the event as an error.
+      if (this.storeOrderHandler) {
+        const storeResult = await this.storeOrderHandler.execute({
+          payload,
+          rawBody,
+          signature,
+        });
+        if (storeResult?.handled) return storeResult;
+      }
       const err = new Error(`Unknown Paystack reference ${reference}`);
       err.code = 'UNKNOWN_REFERENCE';
       throw err;

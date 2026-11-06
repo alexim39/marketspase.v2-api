@@ -51,6 +51,7 @@ const publicStore = (store, productCount = 0, categories = []) => ({
   x: store.x ?? '',
   youtube: store.youtube ?? '',
   deliveryNote: store.deliveryNote ?? '',
+  deliveryFee: Number(store.deliveryFee) || 0,
   returnPolicy: store.returnPolicy ?? '',
   status: store.status,
   productCount,
@@ -138,6 +139,13 @@ export class StoreRepository {
       ['returnPolicy', 2000],
     ]) {
       if (body[key] !== undefined) fields[key] = text(body[key], max);
+    }
+    if (body.deliveryFee !== undefined) {
+      const fee = Number(body.deliveryFee);
+      if (!Number.isFinite(fee) || fee < 0) {
+        throw new ValidationException('Delivery fee must be zero or more');
+      }
+      fields.deliveryFee = money(fee);
     }
     if (body.autoPublish !== undefined) fields.autoPublish = body.autoPublish === true;
     if (body.status !== undefined) {
