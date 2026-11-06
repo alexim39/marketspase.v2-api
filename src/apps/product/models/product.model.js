@@ -197,6 +197,7 @@ const CartSchema = new mongoose.Schema({
     cancelledAt: { type: Date, default: null },
     stockRestored: { type: Boolean, default: false },
     stockRestoredAt: { type: Date, default: null },
+    storeReceivedAt: { type: Date, default: null },
     createdAt: {   
         type: Date,   
         default: Date.now   

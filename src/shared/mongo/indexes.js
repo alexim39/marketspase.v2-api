@@ -133,6 +133,14 @@ export const INDEXES = [
   { collection: 'mentor_bonuses', keys: { orderId: 1 }, options: { unique: true } },
   { collection: 'mentor_bonuses', keys: { status: 1, dueAt: 1 }, options: {} },
   { collection: 'mentor_bonuses', keys: { mentorId: 1, status: 1, createdAt: -1 }, options: {} },
+  { collection: 'stores', keys: { partnerId: 1 }, options: { unique: true } },
+  { collection: 'stores', keys: { slug: 1 }, options: { unique: true } },
+  { collection: 'stores', keys: { status: 1, updatedAt: -1 }, options: {} },
+  { collection: 'store_products', keys: { storeId: 1, productId: 1 }, options: { unique: true } },
+  { collection: 'store_products', keys: { storeId: 1, status: 1, createdAt: -1 }, options: {} },
+  { collection: 'store_products', keys: { partnerId: 1, status: 1 }, options: {} },
+  { collection: 'store_inventory', keys: { partnerId: 1, productId: 1 }, options: { unique: true } },
+  { collection: 'store_stock_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
 ];
 
 /**
