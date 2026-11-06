@@ -25,3 +25,20 @@ export const SetCommissionRankSchema = z.object({
   identifier: z.string().trim().min(3).max(254),
   rank: z.enum(RANKS),
 });
+
+const isoDate = z.string().trim().refine(
+  (value) => !Number.isNaN(Date.parse(value)),
+  'Invalid date',
+);
+
+export const ProductCommissionReportQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+
+export const ProductCommissionReconcileSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+  apply: z.boolean().default(false),
+});

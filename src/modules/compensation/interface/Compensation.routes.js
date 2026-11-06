@@ -7,6 +7,7 @@ import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { recordAudit } from '../../audit/index.js';
 import { planSummary } from '../domain/Compensation.plan.js';
 import { MongoCompensationRepository } from '../infrastructure/Compensation.mongo.repository.js';
+import { ProductCommissionReporting } from '../infrastructure/ProductCommission.reporting.js';
 import {
   GetMyCompensationUseCase,
   ListAdminCommissionEntriesUseCase,
@@ -20,6 +21,8 @@ import {
   CompensationEntryQuerySchema,
   EntryParamsSchema,
   MentorBonusQuerySchema,
+  ProductCommissionReconcileSchema,
+  ProductCommissionReportQuerySchema,
   SetCommissionRankSchema,
   VoidCommissionSchema,
 } from './Compensation.validator.js';
@@ -41,6 +44,7 @@ export const buildCompensationRouter = (deps = {}) => {
 
 export const buildAdminCompensationRouter = (deps = {}) => {
   const repo = deps.repo ?? new MongoCompensationRepository();
+  const reporting = deps.reporting ?? new ProductCommissionReporting({ repo });
   const listEntries = deps.listEntries ?? new ListAdminCommissionEntriesUseCase({ repo });
   const release = deps.release ?? new ReleaseCommissionUseCase({ repo });
   const voidEntry = deps.voidEntry ?? new VoidCommissionUseCase({ repo });
@@ -93,6 +97,42 @@ export const buildAdminCompensationRouter = (deps = {}) => {
       return sendSuccess(res, {
         message: result.repeated ? 'Commission already voided' : 'Commission voided',
         data: result,
+      });
+    }),
+  );
+
+  router.get(
+    '/product-report',
+    validate({ query: ProductCommissionReportQuerySchema }),
+    asyncHandler(async (req, res) => {
+      const data = await reporting.report(req.validated.query);
+      return sendSuccess(res, { data });
+    }),
+  );
+
+  router.post(
+    '/product-reconcile',
+    validate({ body: ProductCommissionReconcileSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await reporting.reconcile(req.validated.body);
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'commission.product_reconcile',
+        targetType: 'commission',
+        targetId: 'product',
+        detail: {
+          dryRun: data.dryRun,
+          scanned: data.scanned,
+          missing: data.missing,
+          repaired: data.repaired,
+          failed: data.failed,
+        },
+      });
+      return sendSuccess(res, {
+        message: data.dryRun
+          ? 'Product commission scan complete'
+          : 'Product commission reconciliation complete',
+        data,
       });
     }),
   );

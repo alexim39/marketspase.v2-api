@@ -17,6 +17,8 @@ const auth = (req, _res, next) => {
 
 let releasedId = null;
 let rankInput = null;
+let reportInput = null;
+let reconcileInput = null;
 
 const app = express();
 app.use(express.json());
@@ -64,6 +66,33 @@ app.use('/v1/admin/compensation', buildAdminCompensationRouter({
     execute: async (identifier, rank) => {
       rankInput = { identifier, rank };
       return { id: partnerId, commissionRank: rank };
+    },
+  },
+  reporting: {
+    report: async (query) => {
+      reportInput = query;
+      return {
+        range: { from: '2026-01-01T00:00:00.000Z', to: '2026-03-01T00:00:00.000Z' },
+        summary: { orders: 2, revenue: 30000, released: 1200 },
+        bySaleMode: [],
+        byProduct: [],
+        problems: [],
+        problemCounts: { missing_accrual: 0, fulfilled_not_released: 0, cancelled_not_voided: 0 },
+        meta: { orders: 2, truncated: false },
+      };
+    },
+    reconcile: async (body) => {
+      reconcileInput = body;
+      return {
+        dryRun: !body.apply,
+        scanned: 5,
+        missing: 2,
+        missingTotal: 2,
+        repaired: body.apply ? 2 : 0,
+        failed: 0,
+        failures: [],
+        samples: [],
+      };
     },
   },
 }));
@@ -146,5 +175,28 @@ describe('compensation admin routes', () => {
     assert.equal(ok.status, 200);
     assert.equal(rankInput.rank, 'Leader');
     assert.equal(bad.status, 400);
+  });
+
+  it('serves the product commission report and validates dates', async () => {
+    const ok = await request('/v1/admin/compensation/product-report?from=2026-01-01&to=2026-03-01');
+    const bad = await request('/v1/admin/compensation/product-report?from=not-a-date');
+
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.data.summary.orders, 2);
+    assert.equal(reportInput.from, '2026-01-01');
+    assert.equal(bad.status, 400);
+  });
+
+  it('runs product reconciliation as a dry run unless apply is true', async () => {
+    const scan = await request('/v1/admin/compensation/product-reconcile', 'POST', {});
+    const apply = await request('/v1/admin/compensation/product-reconcile', 'POST', { apply: true });
+
+    assert.equal(scan.status, 200);
+    assert.equal(scan.body.data.dryRun, true);
+    assert.equal(scan.body.data.repaired, 0);
+    assert.equal(apply.status, 200);
+    assert.equal(apply.body.data.dryRun, false);
+    assert.equal(apply.body.data.repaired, 2);
+    assert.equal(reconcileInput.apply, true);
   });
 });
