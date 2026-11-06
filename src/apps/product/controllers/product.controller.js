@@ -12,6 +12,7 @@ import {
   VoidProductCommissionsUseCase,
 } from '../../../modules/compensation/application/ProductCommission.usecases.js';
 import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
+import { cleanShipping } from '../domain/Shipping.js';
 
 const productCommissionPlan = () => (
   process.env.PRODUCT_COMMISSION_PLAN === 'legacy' ? 'legacy' : 'growth'
@@ -361,6 +362,21 @@ export const Savecart = async (req, res) => {
       });  
     }  
 
+    const shipping = cleanShipping(req.body.shipping) ?? cleanShipping({
+      fullName: [partner.name, partner.surname].filter(Boolean).join(' '),
+      phone: partner.phone,
+      street: partner.address?.street,
+      city: partner.address?.city,
+      state: partner.address?.state,
+      country: partner.address?.country,
+    });
+    if (!shipping) {
+      return res.status(400).json({
+        message: 'Add a delivery address before placing this order',
+        success: false,
+      });
+    }
+
     const commissionPlan = productCommissionPlan();
     const orderNumber = productOrderNumber();
     const cartProducts = [];
@@ -375,10 +391,15 @@ export const Savecart = async (req, res) => {
     }
 
     for (const productData of products) {  
-      const product = await ProductModel.findOne({ _id: productData._id });  
+      const product = await ProductModel.findOne({
+        _id: productData._id,
+        status: { $nin: ['inactive', 'archived'] },
+      });
       if (!product) {  
-        console.warn(`Product with ID ${productData._id} not found. Skipping.`);  
-        continue;  
+        return res.status(400).json({
+          message: 'One of the products in your cart is no longer available. Remove it and try again.',
+          success: false,
+        });
       }  
   
       // Ensure price and quantity are valid numbers before calculating total cost  
@@ -447,6 +468,9 @@ export const Savecart = async (req, res) => {
         grossMargin,
         commissionableMargin,
         commissionPlan,
+        shipping,
+        paymentMethod: 'Wallet',
+        paymentReference: orderNumber,
         partner: partnerId,  
       });  
     
@@ -529,6 +553,7 @@ export const GetAllCartsBy = async (req, res) => {
     // internal — the buyer sees what they paid, not what the platform paid.
     const carts = await CartModel.find({ partner: partnerId })
       .select('-grossMargin -commissionableMargin -commissionPlan -products.cogs -products.shippingCost -products.commissionable')
+      .sort({ createdAt: -1 })
       .populate({  
         path: 'products.product', // Populate the product field within products  
         model: 'Product', // Specify the model to populate

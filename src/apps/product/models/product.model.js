@@ -109,11 +109,38 @@ export const ProductModel = mongoose.model('Product', productSchema);
 
 
 // models/Cart.js
+const shippingSchema = new mongoose.Schema(
+    {
+        fullName: { type: String, required: true, trim: true },
+        phone: { type: String, required: true, trim: true },
+        street: { type: String, required: true, trim: true },
+        city: { type: String, required: true, trim: true },
+        state: { type: String, required: true, trim: true },
+        country: { type: String, default: 'Nigeria', trim: true },
+        notes: { type: String, default: '', trim: true },
+    },
+    { _id: false },
+);
+
 const CartSchema = new mongoose.Schema({  
     orderNumber: {
         type: String,
         trim: true,
         index: true,
+    },
+    shipping: {
+        type: shippingSchema,
+        default: null,
+    },
+    paymentMethod: {
+        type: String,
+        default: 'Wallet',
+        trim: true,
+    },
+    paymentReference: {
+        type: String,
+        default: '',
+        trim: true,
     },
     products: [  
         {   
