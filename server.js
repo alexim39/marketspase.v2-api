@@ -260,7 +260,9 @@ app.use(errorMiddleware);
 }
 
 /* DB connection */
-mongoose.connect(`mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0.ab5nviz.mongodb.net/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`)
+const mongoUri = process.env.MONGODB_URI
+  || `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0.ab5nviz.mongodb.net/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`;
+mongoose.connect(mongoUri)
 .then(async () => {
     // Application Starts Only when MongoDB is connected
     console.log('Connected to mongoDB')

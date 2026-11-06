@@ -30,7 +30,8 @@ if (!/e2e|test/i.test(database)) {
 const username = encodeURIComponent(process.env.MONGODB_USERNAME ?? '');
 const password = encodeURIComponent(process.env.MONGODB_PASSWORD ?? '');
 const host = process.env.MONGODB_HOST ?? 'cluster0.ab5nviz.mongodb.net';
-const mongoUri = `mongodb+srv://${username}:${password}@${host}/${database}?retryWrites=true&w=majority`;
+const mongoUri = process.env.MONGODB_URI
+  || `mongodb+srv://${username}:${password}@${host}/${database}?retryWrites=true&w=majority`;
 
 const OWNER_EMAIL = 'store.owner.e2e@marketspase.test';
 const ADMIN_EMAIL = 'store.admin.e2e@marketspase.test';

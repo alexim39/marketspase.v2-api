@@ -68,6 +68,7 @@ const signIn = async (email, password) => {
 };
 
 const mongoUri = () => {
+  if (process.env.MONGODB_URI) return process.env.MONGODB_URI;
   const username = encodeURIComponent(process.env.MONGODB_USERNAME ?? '');
   const password = encodeURIComponent(process.env.MONGODB_PASSWORD ?? '');
   const host = process.env.MONGODB_HOST ?? 'cluster0.ab5nviz.mongodb.net';

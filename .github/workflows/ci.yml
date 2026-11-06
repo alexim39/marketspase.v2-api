@@ -25,3 +25,75 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  commerce-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      MONGODB_URI: mongodb://127.0.0.1:27017/marketspaseV2_e2e
+      MONGODB_DATABASE: marketspaseV2_e2e
+      JWTTOKENSECRET: ci-test-secret
+      PAYSTACKTOKEN: sk_test_e2e
+      PAYSTACK_BASE_URL: http://localhost:4010
+      PAYSTACK_PUBLIC_KEY: pk_test_e2e
+      PAYSTACK_AUTO_PAYOUT: 'false'
+      PORT: '3000'
+      STORE_CHECKOUT_RETURN_URL: http://localhost:4201/checkout/result
+      EMAIL_HOST: ''
+      EMAIL_USER: ''
+      SMS_PROVIDER: disabled
+      DEEPSEEK_API_KEY: ''
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start mock Paystack
+        run: |
+          node scripts/mock-paystack-server.js > /tmp/mock-paystack.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:4010/health && break
+            sleep 1
+          done
+
+      - name: Start API
+        run: |
+          node server.js > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:3000/ && break
+            sleep 1
+          done
+
+      - name: Seed and run commerce smoke
+        run: |
+          node scripts/seed-store-e2e.js
+          node scripts/smoke-store-flow.js
+
+      - name: Print logs on failure
+        if: failure()
+        run: |
+          echo '--- API log ---'
+          cat /tmp/api.log || true
+          echo '--- mock Paystack log ---'
+          cat /tmp/mock-paystack.log || true
