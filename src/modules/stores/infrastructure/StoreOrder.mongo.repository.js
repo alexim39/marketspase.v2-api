@@ -12,6 +12,7 @@ import {
   verifyPaystackSignature,
 } from '../../billing/infrastructure/PaystackClient.js';
 import {
+  PlatformSettingModel,
   StoreEscrowLedgerModel,
   StoreInventoryModel,
   StoreModel,
@@ -27,16 +28,18 @@ import {
   storeEscrowHoldDays,
   storeOrderTtlMinutes,
   storePricing,
+  storeServiceFeePercent,
   toKobo,
 } from '../domain/StorePricing.js';
 
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value ?? ''));
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const lower = (value, max) => text(value, max).toLowerCase();
+const escapeRegex = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const now = () => new Date();
 const terminalPaymentFailure = new Set(['failed', 'abandoned', 'reversed']);
 
-const publicOrder = (order) => ({
+export const publicOrder = (order) => ({
   id: String(order._id),
   reference: order.reference,
   orderNumber: order.orderNumber,
@@ -160,6 +163,42 @@ export class StoreOrderRepository {
     this.returnUrl = returnUrl;
   }
 
+  async getStoreSettings() {
+    const doc = await PlatformSettingModel.findOne({ key: 'store' }).lean().catch(() => null);
+    return {
+      serviceFeePercent: Number(doc?.storeServiceFeePercent ?? storeServiceFeePercent()),
+      escrowHoldDays: Number(doc?.storeEscrowHoldDays ?? storeEscrowHoldDays()),
+      currency: 'NGN',
+    };
+  }
+
+  async updateStoreSettings({ serviceFeePercent, escrowHoldDays }) {
+    const fee = Number(serviceFeePercent);
+    const days = Number(escrowHoldDays);
+    if (!Number.isFinite(fee) || fee < 0 || fee > 20) {
+      throw new ValidationException('Store service fee must be between 0 and 20 percent');
+    }
+    if (!Number.isFinite(days) || days < 0 || days > 60) {
+      throw new ValidationException('Escrow hold days must be between 0 and 60');
+    }
+    const doc = await PlatformSettingModel.findOneAndUpdate(
+      { key: 'store' },
+      {
+        $set: {
+          storeServiceFeePercent: Math.round(fee * 100) / 100,
+          storeEscrowHoldDays: Math.round(days),
+        },
+        $setOnInsert: { key: 'store' },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean();
+    return {
+      serviceFeePercent: Number(doc.storeServiceFeePercent) || 0,
+      escrowHoldDays: Number(doc.storeEscrowHoldDays) || 0,
+      currency: 'NGN',
+    };
+  }
+
   async createOrder(slug, body = {}) {
     const cleanSlug = lower(slug, 80);
     if (!cleanSlug) throw new NotFoundException('Store not found');
@@ -207,9 +246,11 @@ export class StoreOrderRepository {
 
     const customer = cleanCustomer(body.customer);
     assertCustomer(customer);
+    const settings = await this.getStoreSettings();
     const amounts = storePricing({
       merchandiseKobo,
       deliveryKobo: toKobo(store.deliveryFee),
+      percent: settings.serviceFeePercent,
     });
     if (amounts.totalKobo <= 0) throw new ValidationException('Order total must be above zero');
 
@@ -544,6 +585,7 @@ export class StoreOrderRepository {
       ]),
     ]);
     const row = totals[0] ?? {};
+    const settings = await this.getStoreSettings();
     return {
       pending: fromKobo(row.pendingKobo),
       released: fromKobo(row.releasedKobo),
@@ -551,7 +593,7 @@ export class StoreOrderRepository {
       pendingOrders: Number(row.pendingOrders) || 0,
       awaitingDelivery: Number(row.awaitingDelivery) || 0,
       counts: Object.fromEntries((counts ?? []).map((entry) => [entry._id, entry.count])),
-      escrowHoldDays: storeEscrowHoldDays(),
+      escrowHoldDays: settings.escrowHoldDays,
       currency: 'NGN',
     };
   }
@@ -576,12 +618,13 @@ export class StoreOrderRepository {
     }
 
     const at = now();
+    const settings = await this.getStoreSettings();
     const set = { status: nextStatus };
     if (nextStatus === 'processing') set.processingAt = at;
     if (nextStatus === 'shipped') set.shippedAt = at;
     if (nextStatus === 'delivered') {
       set.deliveredAt = at;
-      set['escrow.releaseAt'] = new Date(at.getTime() + storeEscrowHoldDays() * 24 * 60 * 60 * 1000);
+      set['escrow.releaseAt'] = new Date(at.getTime() + settings.escrowHoldDays * 24 * 60 * 60 * 1000);
     }
     for (const [key, max] of [
       ['courier', 120],
@@ -715,18 +758,19 @@ export class StoreOrderRepository {
     return { checked: due.length, released };
   }
 
-  async releaseOrder(orderId) {
+  async releaseOrder(orderId, { force = false } = {}) {
     if (!hasId(orderId)) throw new ValidationException('Invalid order');
     return runInTransaction(async (session) => {
       const opts = session ? { session } : {};
       const at = now();
+      const match = {
+        _id: orderId,
+        status: 'delivered',
+        'escrow.status': 'held',
+      };
+      if (!force) match['escrow.releaseAt'] = { $lte: at };
       const claimed = await StoreOrderModel.findOneAndUpdate(
-        {
-          _id: orderId,
-          status: 'delivered',
-          'escrow.status': 'held',
-          'escrow.releaseAt': { $lte: at },
-        },
+        match,
         {
           $set: {
             'escrow.status': 'released',
@@ -781,6 +825,86 @@ export class StoreOrderRepository {
         currency: 'NGN',
       };
     });
+  }
+
+  async listAllOrders({ status, q, storeId, partnerId, limit = 100 } = {}) {
+    const filter = {};
+    if (status) filter.status = status;
+    if (storeId && hasId(storeId)) filter.storeId = new mongoose.Types.ObjectId(storeId);
+    if (partnerId && hasId(partnerId)) filter.partnerId = new mongoose.Types.ObjectId(partnerId);
+    const query = text(q, 120);
+    if (query) {
+      const regex = new RegExp(escapeRegex(query), 'i');
+      filter.$or = [
+        { orderNumber: regex },
+        { reference: regex },
+        { storeName: regex },
+        { storeSlug: regex },
+        { 'customer.name': regex },
+        { 'customer.email': regex },
+        { 'customer.phone': regex },
+      ];
+    }
+    const orders = await StoreOrderModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(Number(limit) || 100, 1), 200))
+      .lean();
+    return orders.map(publicOrder);
+  }
+
+  async getAdminOrder(orderId) {
+    if (!hasId(orderId)) throw new ValidationException('Invalid order');
+    const order = await StoreOrderModel.findById(orderId).lean();
+    if (!order) throw new NotFoundException('Store order not found');
+    return publicOrder(order);
+  }
+
+  async getAdminSettlements() {
+    const [held, released, paid, awaiting] = await Promise.all([
+      StoreOrderModel.aggregate([
+        { $match: { 'escrow.status': 'held' } },
+        {
+          $group: {
+            _id: null,
+            amountKobo: { $sum: '$amounts.partnerPendingKobo' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      StoreOrderModel.aggregate([
+        { $match: { 'escrow.status': 'released' } },
+        {
+          $group: {
+            _id: null,
+            amountKobo: { $sum: '$amounts.partnerPendingKobo' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      StoreOrderModel.aggregate([
+        { $match: { 'payment.status': 'paid' } },
+        {
+          $group: {
+            _id: null,
+            serviceFeeKobo: { $sum: '$amounts.serviceFeeKobo' },
+            paymentFeeKobo: { $sum: '$amounts.paymentFeeKobo' },
+          },
+        },
+      ]),
+      StoreOrderModel.countDocuments({ status: 'delivered', 'escrow.status': 'held' }),
+    ]);
+    const settings = await this.getStoreSettings();
+    return {
+      heldAmount: fromKobo(held[0]?.amountKobo),
+      releasedAmount: fromKobo(released[0]?.amountKobo),
+      serviceFees: fromKobo(paid[0]?.serviceFeeKobo),
+      paymentFees: fromKobo(paid[0]?.paymentFeeKobo),
+      heldOrders: Number(held[0]?.count) || 0,
+      releasedOrders: Number(released[0]?.count) || 0,
+      deliveredAwaitingRelease: Number(awaiting) || 0,
+      escrowHoldDays: settings.escrowHoldDays,
+      currency: 'NGN',
+    };
   }
 
   async handleWebhook({ payload, rawBody, signature }) {

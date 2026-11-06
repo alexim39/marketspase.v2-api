@@ -43,6 +43,8 @@ const storeSchema = new mongoose.Schema(
       default: 'draft',
       index: true,
     },
+    suspendedAt: { type: Date, default: null },
+    suspensionReason: { type: String, default: '', trim: true },
   },
   { timestamps: true, collection: 'stores' },
 );
@@ -289,10 +291,20 @@ const storeEscrowLedgerSchema = new mongoose.Schema(
   { timestamps: true, collection: 'store_escrow_ledger' },
 );
 
+const platformSettingSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, trim: true, default: 'store' },
+    storeServiceFeePercent: { type: Number, min: 0, max: 20, default: 2 },
+    storeEscrowHoldDays: { type: Number, min: 0, max: 60, default: 7 },
+  },
+  { timestamps: true, collection: 'platform_settings' },
+);
+
 storeProductSchema.index({ storeId: 1, productId: 1 }, { unique: true });
 storeProductSchema.index({ storeId: 1, status: 1, createdAt: -1 });
 storeInventorySchema.index({ partnerId: 1, productId: 1 }, { unique: true });
 storeStockLedgerSchema.index({ partnerId: 1, createdAt: -1 });
+platformSettingSchema.index({ key: 1 }, { unique: true });
 storeOrderSchema.index({ partnerId: 1, createdAt: -1 });
 storeOrderSchema.index({ storeId: 1, createdAt: -1 });
 storeOrderSchema.index({ status: 1, expiresAt: 1 });
@@ -311,3 +323,5 @@ export const StoreOrderModel =
   mongoose.models.StoreOrder || mongoose.model('StoreOrder', storeOrderSchema);
 export const StoreEscrowLedgerModel =
   mongoose.models.StoreEscrowLedger || mongoose.model('StoreEscrowLedger', storeEscrowLedgerSchema);
+export const PlatformSettingModel =
+  mongoose.models.PlatformSetting || mongoose.model('PlatformSetting', platformSettingSchema);

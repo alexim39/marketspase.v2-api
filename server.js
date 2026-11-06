@@ -52,6 +52,7 @@ import EventsRouter from './src/modules/events/index.js';
 import OraRouter from './src/modules/ora/index.js';
 import SettingsV1Router from './src/modules/settings/index.js';
 import StoresRouter from './src/modules/stores/index.js';
+import AdminStoreRouter from './src/modules/stores/interface/AdminStore.routes.js';
 import OutreachRouter from './src/modules/outreach/index.js';
 import SubscriptionsRouter from './src/modules/subscriptions/index.js';
 import { buildAdminBonusRouter, buildBonusRouter } from './src/modules/bonuses/interface/Bonus.routes.js';
@@ -110,6 +111,7 @@ app.use(cors({
         'https://www.c21fg.online',
         'https://marketspase.com',
         'https://www.marketspase.com',
+        'https://admin.marketspase.com',
         'https://survey.c21fg.online',
         'https://shop.c21fg.online',
         'https://diamondproject.c21fg.online',
@@ -147,6 +149,7 @@ app.use('/v1/admin/campaigns', buildAdminCampaignRouter());
 app.use('/v1/compensation', CompensationRouter);
 app.use('/v1/admin/compensation', buildAdminCompensationRouter());
 app.use('/v1/admin', AdminRouter);
+app.use('/v1/admin', AdminStoreRouter);
 app.use('/v1/network', NetworkRouter);
 app.use('/v1/billing', DepositRouter);
 app.use('/v1/billing', BillingRouter);

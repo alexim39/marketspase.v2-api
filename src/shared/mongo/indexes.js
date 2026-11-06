@@ -149,6 +149,7 @@ export const INDEXES = [
   { collection: 'store_orders', keys: { status: 1, 'escrow.status': 1, 'escrow.releaseAt': 1 }, options: {} },
   { collection: 'store_escrow_ledger', keys: { orderId: 1, type: 1 }, options: { unique: true } },
   { collection: 'store_escrow_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
+  { collection: 'platform_settings', keys: { key: 1 }, options: { unique: true } },
 ];
 
 /**
