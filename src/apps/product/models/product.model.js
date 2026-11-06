@@ -163,6 +163,8 @@ const CartSchema = new mongoose.Schema({
             // Suggested retail price snapshot for a resale line. The partner's
             // direct margin is retailPrice − price; it is not a platform cost.
             retailPrice: { type: Number, min: 0, default: 0 },
+            // True when checkout decremented numeric stock for this line.
+            stockTracked: { type: Boolean, default: false },
         }  
     ],  
     partner: {  
@@ -193,6 +195,8 @@ const CartSchema = new mongoose.Schema({
     decidedAt: { type: Date, default: null },
     fulfilledAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
+    stockRestored: { type: Boolean, default: false },
+    stockRestoredAt: { type: Date, default: null },
     createdAt: {   
         type: Date,   
         default: Date.now   

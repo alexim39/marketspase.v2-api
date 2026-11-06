@@ -12,8 +12,11 @@ import {
   VoidProductCommissionsUseCase,
 } from '../../../modules/compensation/application/ProductCommission.usecases.js';
 import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
+import { runInTransaction } from '../../../modules/identity-access/infrastructure/Auth.models.js';
+import { AppError } from '../../../shared/domain/AppError.js';
 import { cleanShipping } from '../domain/Shipping.js';
 import { canBuyResale, cartSaleMode, resalePrices } from '../domain/Resale.js';
+import { aggregateStockRequirements, isStockTracked } from '../domain/Stock.js';
 
 const productCommissionPlan = () => (
   process.env.PRODUCT_COMMISSION_PLAN === 'legacy' ? 'legacy' : 'growth'
@@ -86,32 +89,101 @@ export const decideOrder = async (req, res) => {
     if (!['Fulfilled', 'Cancelled'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status', success: false });
     }
-    const order = await CartModel.findById(id);
-    if (!order) {
+
+    const existing = await CartModel.findById(id).select('orderStatus').lean();
+    if (!existing) {
       return res.status(404).json({ message: 'Order not found', success: false });
     }
-    if ((order.orderStatus ?? 'Pending') !== 'Pending') {
-      return res.status(409).json({ message: `Cannot decide a ${order.orderStatus} order`, success: false });
+    if ((existing.orderStatus ?? 'Pending') !== 'Pending') {
+      return res.status(409).json({ message: `Cannot decide a ${existing.orderStatus} order`, success: false });
     }
-    order.orderStatus = status;
-    order.decidedAt = new Date();
-    if (status === 'Fulfilled') order.fulfilledAt = order.decidedAt;
-    else order.cancelledAt = order.decidedAt;
-    await order.save();
+
+    const now = new Date();
+    const updated = await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      const claimed = await CartModel.findOneAndUpdate(
+        {
+          _id: id,
+          $or: [
+            { orderStatus: 'Pending' },
+            { orderStatus: { $exists: false } },
+            { orderStatus: null },
+          ],
+        },
+        {
+          $set: {
+            orderStatus: status,
+            decidedAt: now,
+            ...(status === 'Fulfilled' ? { fulfilledAt: now } : { cancelledAt: now }),
+          },
+        },
+        { new: true, ...opts },
+      ).lean();
+      if (!claimed) {
+        throw new AppError('Order was already decided', 409, 'ORDER_ALREADY_DECIDED');
+      }
+
+      if (status === 'Cancelled') {
+        if (Number(claimed.totalCost) > 0) {
+          const owner = await PartnersModel.findByIdAndUpdate(
+            claimed.partner,
+            { $inc: { balance: Number(claimed.totalCost) } },
+            { new: true, ...opts },
+          ).lean();
+          if (!owner) {
+            throw new AppError('Order buyer not found', 404, 'NOT_FOUND');
+          }
+          await TransactionModel.create(
+            [{
+              partnerId: claimed.partner,
+              amount: Number(claimed.totalCost),
+              status: 'Completed',
+              paymentMethod: 'Order Refund',
+              transactionType: 'Credit',
+              reference: `REF-${claimed.orderNumber || String(claimed._id).slice(-6)}-${Date.now().toString(36)}`,
+              date: now,
+            }],
+            opts,
+          );
+        }
+
+        if (!claimed.stockRestored) {
+          for (const item of claimed.products ?? []) {
+            if (!item.stockTracked) continue;
+            const quantity = Number(item.quantity) || 0;
+            if (quantity <= 0) continue;
+            await ProductModel.updateOne(
+              { _id: item.product, stock: { $type: 'number' } },
+              { $inc: { stock: quantity } },
+              opts,
+            );
+          }
+          await CartModel.updateOne(
+            { _id: claimed._id },
+            { $set: { stockRestored: true, stockRestoredAt: now } },
+            opts,
+          );
+          claimed.stockRestored = true;
+          claimed.stockRestoredAt = now;
+        }
+      }
+
+      return claimed;
+    });
 
     // Product commissions: growth carts accrue on the product margin and
     // release only after fulfilment. Legacy carts keep their old flow.
     let commission = null;
-    if (order.commissionPlan === 'growth') {
+    if (updated.commissionPlan === 'growth') {
       const repo = productCommissionRepo();
       try {
         if (status === 'Fulfilled') {
-          await new AccrueProductCommissionsUseCase({ repo }).execute(order._id);
+          await new AccrueProductCommissionsUseCase({ repo }).execute(updated._id);
           commission = await new ReleaseProductCommissionsUseCase({ repo })
-            .execute(order._id, req.auth?.partnerId);
+            .execute(updated._id, req.auth?.partnerId);
         } else {
           commission = await new VoidProductCommissionsUseCase({ repo })
-            .execute(order._id, req.auth?.partnerId, 'Product order cancelled');
+            .execute(updated._id, req.auth?.partnerId, 'Product order cancelled');
         }
       } catch (commissionError) {
         console.error('Product commission update failed:', commissionError?.message ?? commissionError);
@@ -119,42 +191,35 @@ export const decideOrder = async (req, res) => {
       }
     }
 
-    if (status === 'Cancelled') {
-      const owner = await PartnersModel.findById(order.partner);
-      if (owner && Number(order.totalCost) > 0) {
-        owner.balance = Number(owner.balance ?? 0) + Number(order.totalCost);
-        await owner.save();
-        await TransactionModel.create({
-          partnerId: owner._id,
-          amount: Number(order.totalCost),
-          status: 'Completed',
-          paymentMethod: 'Order Refund',
-          transactionType: 'Credit',
-          reference: Math.floor(100000000 + Math.random() * 900000000).toString(),
-        });
-      }
-    }
-
-    await notifyBuyer(order.partner, {
+    await notifyBuyer(updated.partner, {
       title: status === 'Fulfilled' ? 'Your order is on its way' : 'Your order was cancelled',
       body: status === 'Fulfilled'
-        ? `Order worth ₦${Number(order.totalCost).toLocaleString()} has been fulfilled.`
-        : `Your order was cancelled and ₦${Number(order.totalCost).toLocaleString()} was refunded in full.`,
-      orderId: String(order._id),
+        ? `Order worth ₦${Number(updated.totalCost).toLocaleString()} has been fulfilled.`
+        : `Your order was cancelled and ₦${Number(updated.totalCost).toLocaleString()} was refunded in full.`,
+      orderId: String(updated._id),
       status,
     });
-    res.status(200).json({ message: `Order marked as ${status.toLowerCase()}!`, data: order, commission, success: true });
+
+    res.status(200).json({ message: `Order marked as ${status.toLowerCase()}!`, data: updated, commission, success: true });
     void recordAudit({
       actorId: req.auth?.partnerId, action: 'order.decide',
-      targetType: 'order', targetId: String(order._id),
+      targetType: 'order', targetId: String(updated._id),
       detail: {
         status,
-        amount: Number(order.totalCost) ?? null,
-        owner: String(order.partner),
+        amount: Number(updated.totalCost) ?? null,
+        owner: String(updated.partner),
+        stockRestored: !!updated.stockRestored,
         commission: commission ? { released: commission.released ?? 0, voided: commission.voided ?? 0, error: !!commission.error } : null,
       },
     });
   } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        code: error.code,
+        success: false,
+      });
+    }
     res.status(500).json({ message: 'Error deciding order', error: error.message, success: false });
   }
 };
@@ -413,18 +478,19 @@ export const Savecart = async (req, res) => {
       });
     }
 
-    const commissionPlan = productCommissionPlan();
-    const orderNumber = productOrderNumber();
-    const cartProducts = [];
-    const marginLines = [];
-    let totalCost = 0;  
-
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({
         message: 'Your cart is empty',
         success: false,
       });
     }
+
+    const commissionPlan = productCommissionPlan();
+    const orderNumber = productOrderNumber();
+    const cartProducts = [];
+    const marginLines = [];
+    const productNames = new Map();
+    let totalCost = 0;
 
     for (const productData of products) {  
       const product = await ProductModel.findOne({
@@ -437,9 +503,15 @@ export const Savecart = async (req, res) => {
           success: false,
         });
       }  
-  
-      // Ensure price and quantity are valid numbers before calculating total cost  
+
       const quantity = Number(productData.quantity);  
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return res.status(400).json({
+          message: 'Every cart item needs a quantity of at least one',
+          success: false,
+        });
+      }
+
       const lineMode = productData.saleMode === 'resale' ? 'resale' : 'personal';
       const prices = resalePrices(product);
       const unitPrice = lineMode === 'resale' ? prices.partnerPrice : Number(product.price);
@@ -461,25 +533,30 @@ export const Savecart = async (req, res) => {
         });
       }
 
-      if (!isNaN(quantity) && quantity > 0) {
-        const cogs = Math.max(Number(product.cogs) || 0, 0);
-        const shippingCost = Math.max(Number(product.shippingCost) || 0, 0);
-        const commissionable = product.commissionable === true && cogs > 0;
+      const cogs = Math.max(Number(product.cogs) || 0, 0);
+      const shippingCost = Math.max(Number(product.shippingCost) || 0, 0);
+      const commissionable = product.commissionable === true && cogs > 0;
+      const stockTracked = isStockTracked(product);
+      const productId = String(product._id);
 
-        totalCost += unitPrice * quantity;
-        cartProducts.push({
-          product: product._id,
-          quantity,
-          price: unitPrice,
-          cogs,
-          shippingCost,
-          commissionable,
-          saleMode: lineMode,
-          retailPrice,
-        });
-        marginLines.push({ price: unitPrice, quantity, cogs, shippingCost, commissionable });
-      }  
+      totalCost += unitPrice * quantity;
+      cartProducts.push({
+        product: product._id,
+        quantity,
+        price: unitPrice,
+        cogs,
+        shippingCost,
+        commissionable,
+        saleMode: lineMode,
+        retailPrice,
+        stockTracked,
+      });
+      marginLines.push({ price: unitPrice, quantity, cogs, shippingCost, commissionable });
+
+      productNames.set(productId, product.name ?? 'Product');
     }  
+
+    const stockRequired = aggregateStockRequirements(cartProducts);
 
     if (totalCost <= 0 || cartProducts.length === 0) {
       return res.status(400).json({
@@ -489,106 +566,130 @@ export const Savecart = async (req, res) => {
     }
 
     const saleMode = cartSaleMode(cartProducts);
-
     const { grossMargin, commissionableMargin } = summarizeProductMargins(marginLines);
+    const now = new Date();
 
-    // Check if the partner has sufficient balance  
-    if (partner.balance >= totalCost) {  
-      // Deduct the total cost from partner's balance  
-      partner.balance -= totalCost;  
+    // Stock, wallet debit, ledger row and order commit together. If any step
+    // fails the whole transaction rolls back, so stock cannot leak and money
+    // cannot be debited without an order.
+    const { cart } = await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
 
-      // Save the updated partner balance  
-      await partner.save();  
-
-      // Record the transaction  
-      const transaction = new TransactionModel({  
-        partnerId: partner._id,  
-        amount: totalCost,  
-        status: 'Completed',  
-        paymentMethod: 'Product Purchase',  
-        transactionType: 'Debit',  
-        reference: orderNumber,
-      });  
-
-      await transaction.save();  
-
-      // Create a new cart with the price/cost snapshot used for commission.
-      const cart = new CartModel({  
-        orderNumber,
-        products: cartProducts,  
-        totalCost: totalCost,  
-        grossMargin,
-        commissionableMargin,
-        commissionPlan,
-        saleMode,
-        shipping,
-        paymentMethod: 'Wallet',
-        paymentReference: orderNumber,
-        partner: partnerId,  
-      });  
-    
-      await cart.save();  
-
-      // Growth-plan orders accrue here. A failure never blocks the paid
-      // order; fulfilment retries the accrual before releasing.
-      let commission = null;
-      if (commissionPlan === 'growth') {
-        try {
-          const result = await new AccrueProductCommissionsUseCase({ repo: productCommissionRepo() })
-            .execute(cart._id);
-          commission = {
-            entries: result.entries?.length ?? 0,
-            deduped: !!result.deduped,
-          };
-        } catch (commissionError) {
-          console.error('Product commission accrual failed:', commissionError?.message ?? commissionError);
-          commission = { error: true };
+      for (const [productId, quantity] of stockRequired) {
+        const reserved = await ProductModel.findOneAndUpdate(
+          { _id: productId, stock: { $gte: quantity } },
+          { $inc: { stock: -quantity } },
+          { new: true, ...opts },
+        );
+        if (!reserved) {
+          throw new AppError(
+            `Not enough stock for ${productNames.get(productId) ?? 'a product'}. Reduce the quantity or remove it.`,
+            409,
+            'INSUFFICIENT_STOCK',
+          );
         }
       }
 
-      // Send email after successfully submitting the records  
-      const emailSubject = 'Product Order Confirmation';  
-      const emailMessage = `  
-          <h1>Product Orders</h1>  
-          <p>A partner just made an order on the platform</p>  
-          <p>You may have to follow up on partner to close out the order.</p>  
-
-      `;  
-
-      // Use the found user's email to send the email  
-      //await sendEmail(user.email, emailSubject, emailMessage);  
-
-      //const emailsToSend = [partner.email, 'ago.fnc@gmail.com'];
-      const emailsToSend = ['ago.fnc@gmail.com'];
-
-      for (const email of emailsToSend) {
-          await sendEmail(email, emailSubject, emailMessage);
+      const buyer = await PartnersModel.findOneAndUpdate(
+        { _id: partnerId, balance: { $gte: totalCost } },
+        { $inc: { balance: -totalCost } },
+        { new: true, ...opts },
+      ).lean();
+      if (!buyer) {
+        throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
       }
 
-        res.status(200).json({ 
-            message: 'Order placed successfully',
-            success: true,
-            data: {
-              cartId: cart._id,
-              orderNumber,
-              commissionPlan,
-              commission,
-            },
-        });   
+      await TransactionModel.create(
+        [{
+          partnerId,
+          amount: totalCost,
+          status: 'Completed',
+          paymentMethod: 'Product Purchase',
+          transactionType: 'Debit',
+          reference: orderNumber,
+          date: now,
+        }],
+        opts,
+      );
 
-    } else {  
-      return res.status(401).json({  
-        message: 'Insufficient balance for transaction',  
+      const [created] = await CartModel.create(
+        [{
+          orderNumber,
+          products: cartProducts,
+          totalCost,
+          grossMargin,
+          commissionableMargin,
+          commissionPlan,
+          saleMode,
+          shipping,
+          paymentMethod: 'Wallet',
+          paymentReference: orderNumber,
+          partner: partnerId,
+        }],
+        opts,
+      );
+
+      return { cart: created, buyer };
+    });
+
+    // Growth-plan orders accrue here. A failure never blocks the paid order;
+    // fulfilment retries the accrual before releasing.
+    let commission = null;
+    if (commissionPlan === 'growth') {
+      try {
+        const result = await new AccrueProductCommissionsUseCase({ repo: productCommissionRepo() })
+          .execute(cart._id);
+        commission = {
+          entries: result.entries?.length ?? 0,
+          deduped: !!result.deduped,
+        };
+      } catch (commissionError) {
+        console.error('Product commission accrual failed:', commissionError?.message ?? commissionError);
+        commission = { error: true };
+      }
+    }
+
+    // Mail is best-effort: a provider failure must not make the client think
+    // the paid order failed.
+    try {
+      const emailSubject = `Product order ${orderNumber}`;
+      const emailMessage = `
+          <h1>New product order</h1>
+          <p>Order ${orderNumber} has been paid from the wallet.</p>
+          <p>Buyer: ${shipping.fullName} (${shipping.phone})</p>
+          <p>Deliver to: ${shipping.street}, ${shipping.city}, ${shipping.state}, ${shipping.country}</p>
+      `;
+      for (const email of ['ago.fnc@gmail.com']) {
+        await sendEmail(email, emailSubject, emailMessage);
+      }
+    } catch (emailError) {
+      console.error('Product order email failed:', emailError?.message ?? emailError);
+    }
+
+    res.status(200).json({
+        message: 'Order placed successfully',
+        success: true,
+        data: {
+          cartId: cart._id,
+          orderNumber,
+          commissionPlan,
+          commission,
+        },
+    });
+  } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        code: error.code,
         success: false,
-      });   
-    }   
-  } catch (error) {  
-    res.status(500).json({ 
-        message: 'Failed to save cart', 
+      });
+    }
+    res.status(500).json({
+        message: 'Failed to save cart',
         error: error.message,
         success: false,
-    });  
-  }  
+    });
+  }
 }
 
 // Fetch all carts
