@@ -21,8 +21,26 @@ test('PaystackClient initializes a hosted checkout', async () => {
   assert.equal(calls[0].options.headers.Authorization, 'Bearer sk_test');
 });
 
-test('PaystackClient verifies, resolves and lists banks', async () => {
+test('PaystackClient requests a refund', async () => {
+  const calls = [];
   const http = {
+    post: async (url, body, options) => {
+      calls.push({ url, body, options });
+      return { data: { data: { id: 91, status: 'pending', amount: body.amount } } };
+    },
+  };
+  const client = new PaystackClient({ secretKey: 'sk_test', http });
+  const refund = await client.refund({ reference: 'MS-1', amountKobo: 115000, reason: 'Item returned' });
+  assert.equal(calls[0].url, 'https://api.paystack.co/refund');
+  assert.equal(calls[0].body.transaction, 'MS-1');
+  assert.equal(calls[0].body.amount, 115000);
+  assert.equal(calls[0].body.merchant_note, 'Item returned');
+  assert.equal(refund.reference, '91');
+  assert.equal(refund.status, 'pending');
+  assert.equal(refund.amountKobo, 115000);
+});
+
+test('PaystackClient verifies, resolves and lists banks', async () => {  const http = {
     get: async (url, options) => {
       if (url.endsWith('/transaction/verify/REF')) return { data: { data: { status: 'success', amount: 10000 } } };
       if (url.endsWith('/bank/resolve')) return { data: { data: { account_name: 'Ada Obi', account_number: options.params.account_number } } };

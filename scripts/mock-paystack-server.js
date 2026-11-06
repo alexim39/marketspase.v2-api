@@ -177,6 +177,23 @@ const server = http.createServer(async (req, res) => {
     return res.end(html);
   }
 
+  if (req.method === 'POST' && path === '/refund') {
+    const body = await readBody(req);
+    const reference = String(body.transaction || '');
+    const tx = transactions.get(reference);
+    if (tx) tx.refunded = true;
+    return json(res, 200, {
+      status: true,
+      message: 'Refund queued',
+      data: {
+        id: `mock-refund-${reference || Date.now()}`,
+        status: 'pending',
+        amount: Number(body.amount || tx?.amount || 0),
+        transaction: reference,
+      },
+    });
+  }
+
   if (req.method === 'POST' && path.startsWith('/checkout/') && path.endsWith('/pay')) {
     const reference = path.slice('/checkout/'.length, -'/pay'.length);
     const tx = transactions.get(reference);

@@ -16,14 +16,21 @@ import {
   GetCampaignQueueUseCase,
   GetMyAllocationUseCase,
   GetMyGrowthCampaignUseCase,
+  ListAdminAllocationsUseCase,
   ListAdminGrowthCampaignsUseCase,
   ListMyGrowthCampaignsUseCase,
   ListMyPlacedPartnersUseCase,
+  OverrideAllocationUseCase,
   PauseGrowthCampaignUseCase,
   RejectGrowthCampaignUseCase,
   ResumeGrowthCampaignUseCase,
+  ReverseAllocationUseCase,
 } from '../application/Campaign.usecases.js';
 import {
+  AllocationIdParamsSchema,
+  AllocationListQuerySchema,
+  AllocationOverrideSchema,
+  AllocationReverseSchema,
   AllocatePartnersSchema,
   CampaignIdParamsSchema,
   CancelGrowthCampaignSchema,
@@ -136,6 +143,9 @@ export const buildAdminCampaignRouter = (deps = {}) => {
   const queue = deps.queue ?? new GetCampaignQueueUseCase({ repo });
   const attribution = deps.attribution ?? new GetCampaignAttributionUseCase({ repo });
   const allocate = deps.allocate ?? new AllocatePartnersUseCase({ repo, events: deps.events });
+  const allocations = deps.allocations ?? new ListAdminAllocationsUseCase({ repo });
+  const override = deps.override ?? new OverrideAllocationUseCase({ repo, events: deps.events });
+  const reverse = deps.reverse ?? new ReverseAllocationUseCase({ repo, events: deps.events });
   const auth = deps.auth ?? requireAuth;
   const admin = deps.admin ?? requireRole('admin');
   const audit = deps.recordAudit ?? recordAudit;
@@ -185,6 +195,53 @@ export const buildAdminCampaignRouter = (deps = {}) => {
       data: result,
     });
   }));
+
+  router.get('/allocations', validate({ query: AllocationListQuerySchema }), asyncHandler(async (req, res) => {
+    const data = await allocations.execute(req.validated.query);
+    return sendSuccess(res, { data });
+  }));
+
+  router.post('/allocations/override', validate({ body: AllocationOverrideSchema }), asyncHandler(async (req, res) => {
+    const data = await override.execute({
+      ...req.validated.body,
+      actorId: req.auth.partnerId,
+    });
+    void audit({
+      actorId: req.auth.partnerId,
+      action: 'campaign.allocation.override',
+      targetType: 'campaign',
+      targetId: req.validated.body.campaignId,
+      detail: {
+        partnerId: req.validated.body.partnerId,
+        reason: req.validated.body.reason,
+        allocationId: data.allocation?.id,
+      },
+    });
+    return sendSuccess(res, { message: 'Partner placed manually', data });
+  }));
+
+  router.post(
+    '/allocations/:allocationId/reverse',
+    validate({ params: AllocationIdParamsSchema, body: AllocationReverseSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await reverse.execute({
+        allocationId: req.validated.params.allocationId,
+        actorId: req.auth.partnerId,
+        reason: req.validated.body.reason,
+      });
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'campaign.allocation.reverse',
+        targetType: 'campaign-allocation',
+        targetId: req.validated.params.allocationId,
+        detail: {
+          reason: req.validated.body.reason,
+          alreadyReversed: data.alreadyReversed === true,
+        },
+      });
+      return sendSuccess(res, { message: 'Allocation reversed and partner returned to the queue', data });
+    }),
+  );
 
   router.get('/', validate({ query: GrowCampaignQuerySchema }), asyncHandler(async (req, res) => {
     const result = await list.execute(req.validated.query);

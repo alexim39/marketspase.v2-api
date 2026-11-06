@@ -71,6 +71,33 @@ export class PaystackClient {
     return data;
   }
 
+  /** Refund a successful charge (full or partial) through Paystack. */
+  async refund({ reference, amountKobo, reason }) {
+    if (!this.enabled) throw new Error('Paystack is not configured');
+    let response;
+    try {
+      response = await this.http.post(
+        `${this.baseUrl}/refund`,
+        {
+          transaction: String(reference ?? '').trim(),
+          ...(amountKobo ? { amount: Math.round(Number(amountKobo)) } : {}),
+          ...(reason ? { merchant_note: String(reason).slice(0, 200) } : {}),
+        },
+        { headers: this.headers(), timeout: 30000 },
+      );
+    } catch (error) {
+      throw new Error(providerMessage(error, 'Paystack could not start the refund'));
+    }
+    const data = response?.data?.data ?? response?.data;
+    if (!data) throw new Error('Paystack returned no refund');
+    return {
+      reference: String(data.reference ?? data.id ?? reference ?? '').trim(),
+      status: String(data.status ?? 'pending').toLowerCase(),
+      amountKobo: Number(data.amount ?? amountKobo ?? 0),
+      raw: data,
+    };
+  }
+
   /** NUBAN account-name lookup. */
   async resolveAccount(accountNumber, bankCode) {
     if (!this.enabled) throw new Error('Paystack is not configured');

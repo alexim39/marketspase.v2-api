@@ -153,6 +153,51 @@ export class GetCampaignQueueUseCase {
   }
 }
 
+export class ListAdminAllocationsUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute(query) {
+    return this.repo.listAdminAllocations(query);
+  }
+}
+
+export class OverrideAllocationUseCase {
+  constructor({ repo, events = domainEvents }) {
+    this.repo = repo;
+    this.events = events;
+  }
+
+  async execute({ campaignId, partnerId, actorId, reason }) {
+    const result = await this.repo.overrideAllocation({ campaignId, partnerId, actorId, reason });
+    await this.events.emit('campaign.allocation.overridden', {
+      campaignId,
+      partnerId,
+      actorId: String(actorId),
+      reason,
+    }).catch(() => null);
+    return result;
+  }
+}
+
+export class ReverseAllocationUseCase {
+  constructor({ repo, events = domainEvents }) {
+    this.repo = repo;
+    this.events = events;
+  }
+
+  async execute({ allocationId, actorId, reason }) {
+    const result = await this.repo.reverseAllocation({ allocationId, actorId, reason });
+    await this.events.emit('campaign.allocation.reversed', {
+      allocationId,
+      actorId: String(actorId),
+      reason,
+    }).catch(() => null);
+    return result;
+  }
+}
+
 export class GetMyAllocationUseCase {
   constructor({ repo }) {
     this.repo = repo;

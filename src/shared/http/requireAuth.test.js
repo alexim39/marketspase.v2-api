@@ -82,4 +82,24 @@ describe('requireAuth transports', () => {
     assert.match(err?.message ?? '', /revoked/);
     setRevocationChecker(async () => false);
   });
+
+  it('selects the admin cookie only for admin-scoped requests', async () => {
+    const partnerToken = jwt.sign({ id: 'partner-cookie' }, process.env.JWTTOKENSECRET);
+    const adminToken = jwt.sign({ id: 'admin-cookie' }, process.env.JWTTOKENSECRET);
+    const cookies = { jwt: partnerToken, admin_jwt: adminToken };
+
+    const partnerReq = { cookies, headers: {} };
+    assert.equal(await run(partnerReq), null);
+    assert.deepEqual(partnerReq.auth, { partnerId: 'partner-cookie' });
+
+    const adminReq = { cookies, headers: { 'x-client': 'admin' } };
+    assert.equal(await run(adminReq), null);
+    assert.deepEqual(adminReq.auth, { partnerId: 'admin-cookie' });
+  });
+
+  it('does not fall back to the partner cookie in admin scope', async () => {
+    const partnerToken = jwt.sign({ id: 'partner-only' }, process.env.JWTTOKENSECRET);
+    const err = await run({ cookies: { jwt: partnerToken }, headers: { 'x-client': 'admin' } });
+    assert.match(err?.message ?? '', /No authentication token/);
+  });
 });

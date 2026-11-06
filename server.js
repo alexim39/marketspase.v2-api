@@ -252,6 +252,7 @@ app.use(errorMiddleware);
     events: domainEvents,
     delivery: lifecycleDelivery,
     partners: lifecyclePartners,
+    mail: sendEmail,
   });
   subscribeCompensation({ events: domainEvents });
   // Allocation is automatic: a newly activated partner or newly activated

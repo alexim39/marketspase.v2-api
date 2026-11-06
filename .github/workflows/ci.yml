@@ -43,6 +43,7 @@ jobs:
       STORE_CHECKOUT_RETURN_URL: http://localhost:4201/checkout/result
       EMAIL_HOST: ''
       EMAIL_USER: ''
+      MAIL_DISABLED: 'true'
       SMS_PROVIDER: disabled
       DEEPSEEK_API_KEY: ''
 

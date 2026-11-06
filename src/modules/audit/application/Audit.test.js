@@ -29,6 +29,7 @@ describe('AUDIT_ACTIONS vocabulary', () => {
       'account.view-as',
       'payout.release', 'payout.void', 'wallet.credit',
       'campaign.decide', 'order.decide',
+      'campaign.allocation.override', 'campaign.allocation.reverse',
       'training.quiz.save', 'training.media.save', 'training.media.revert',
       'ticket.decide', 'moderation.remove', 'moderation.dismiss',
       'broadcast.send', 'broadcast.campaign.queue', 'broadcast.campaign.cancel',
@@ -38,7 +39,7 @@ describe('AUDIT_ACTIONS vocabulary', () => {
       'subscription.delete', 'subscription.status',
       'billing.plan.update', 'product.create', 'product.update',
       'store.update', 'store.order.update', 'store.product.update', 'store.receipt.confirm',
-      'admin.store.status', 'admin.store-order.escrow.release', 'admin.store.settings.update',
+      'admin.store.status', 'admin.store-order.escrow.release', 'admin.store-order.refund', 'admin.store.settings.update',
       'bonus.claim', 'bonus.campaign.create', 'bonus.campaign.update', 'bonus.campaign.delete',
       'tutorial.create', 'tutorial.update', 'tutorial.delete',
     ]) {

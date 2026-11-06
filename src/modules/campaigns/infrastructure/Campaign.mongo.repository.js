@@ -897,6 +897,200 @@ export class MongoCampaignRepository {
     });
   }
 
+  async listAdminAllocations({ status = 'active', limit = 100 } = {}) {
+    const filter = status ? { status } : {};
+    const rows = await PartnerAllocationModel.find(filter)
+      .sort({ allocatedAt: -1 })
+      .limit(Math.min(Math.max(Number(limit) || 100, 1), 200))
+      .lean();
+    if (!rows.length) return [];
+    const partnerIds = rows.map((row) => row.partnerId);
+    const campaignIds = [...new Set(rows.map((row) => String(row.campaignId)))];
+    const ownerIds = [...new Set(rows.map((row) => String(row.ownerId)))];
+    const [partners, campaigns, owners] = await Promise.all([
+      PartnersModel.find({ _id: { $in: partnerIds } }).select(partnerProjection).lean(),
+      GrowthCampaignModel.find({ _id: { $in: campaignIds } }).select('name status').lean(),
+      PartnersModel.find({ _id: { $in: ownerIds } }).select(ownerProjection).lean(),
+    ]);
+    const partnerMap = new Map(partners.map((row) => [String(row._id), row]));
+    const campaignMap = new Map(campaigns.map((row) => [String(row._id), row]));
+    const ownerMap = new Map(owners.map((row) => [String(row._id), row]));
+    return rows.map((row) => {
+      const partner = partnerMap.get(String(row.partnerId));
+      return {
+        ...allocationDto(row, campaignMap.get(String(row.campaignId)), ownerMap.get(String(row.ownerId))),
+        partner: partner ? {
+          id: String(partner._id),
+          name: ownerLabel(partner),
+          username: partner.username ?? '',
+          email: partner.email ?? '',
+          phone: partner.phone ?? '',
+          state: partner.address?.state ?? '',
+        } : null,
+      };
+    });
+  }
+
+  async overrideAllocation({ campaignId, partnerId, actorId, reason, now = new Date() }) {
+    if (!hasId(campaignId)) throw new ValidationException('Invalid campaign id');
+    if (!hasId(partnerId)) throw new ValidationException('Invalid partner id');
+    const cleanReason = String(reason ?? '').trim().slice(0, 500);
+    if (cleanReason.length < 3) throw new ValidationException('Add a reason for the manual placement');
+
+    const campaign = await GrowthCampaignModel.findOne({ _id: campaignId, status: 'Active' }).lean();
+    if (!campaign) {
+      const exists = await GrowthCampaignModel.findById(campaignId).lean();
+      if (!exists) throw new NotFoundException('Campaign not found');
+      throw new ConflictException('Only active campaigns can receive a manual placement');
+    }
+    const owner = await this.findPartner(campaign.ownerId);
+    await this.assertOwnerEligible(owner);
+    if (String(partnerId) === String(campaign.ownerId)) {
+      throw new ConflictException('Self-placement is not allowed');
+    }
+    const [queue, partner] = await Promise.all([
+      ActivationQueueEntryModel.findOne({ partnerId, status: 'queued' }).lean(),
+      this.findPartner(partnerId),
+    ]);
+    if (!queue) throw new ConflictException('Partner is not in the allocation queue');
+    if (!partnerEligibleForAllocation(partner)) {
+      throw new ConflictException('Partner is not eligible for placement');
+    }
+
+    const waitDays = Math.max((now.getTime() - new Date(queue.enteredAt).getTime()) / DAY_MS, 0);
+    const capacity = campaignCapacity(campaign);
+    const result = await this.allocatePair({
+      campaignId,
+      ownerId: campaign.ownerId,
+      queueEntryId: queue._id,
+      partnerId,
+      score: { fairness: 0, contribution: 0, fit: 0, capacitySupport: 0, total: 0 },
+      components: {
+        waitDays: round(waitDays),
+        budgetTotal: Number(campaign.budget?.total ?? 0),
+        supportQuality: Number(campaign.supportQuality ?? 0),
+        capacityRemaining: capacity.remaining,
+        partnerState: partner.address?.state ?? '',
+      },
+      explanation: [
+        'Manual admin override',
+        `Placed by admin: ${cleanReason}`,
+      ],
+      weeklyCap: campaign.capacity?.maxPerWeek ?? DEFAULT_MAX_PER_WEEK,
+      now,
+    });
+
+    void actorId;
+    return result;
+  }
+
+  async reverseAllocation({ allocationId, actorId, reason, now = new Date() }) {
+    if (!hasId(allocationId)) throw new ValidationException('Invalid allocation id');
+    const cleanReason = String(reason ?? '').trim().slice(0, 500);
+    if (cleanReason.length < 3) throw new ValidationException('Add a reason for the reversal');
+
+    const allocation = await PartnerAllocationModel.findById(allocationId).lean();
+    if (!allocation) throw new NotFoundException('Allocation not found');
+    if (allocation.status === 'reversed') {
+      const campaign = await GrowthCampaignModel.findById(allocation.campaignId).lean();
+      const owner = await this.findPartner(allocation.ownerId);
+      return { allocation: allocationDto(allocation, campaign, owner), alreadyReversed: true };
+    }
+    if (allocation.status !== 'active') throw new ConflictException('Only active allocations can be reversed');
+
+    const campaign = await GrowthCampaignModel.findById(allocation.campaignId).lean();
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    if (!['Active', 'Paused'].includes(campaign.status)) {
+      throw new ConflictException('Only allocations on active or paused campaigns can be reversed');
+    }
+    const queue = await ActivationQueueEntryModel.findOne({
+      partnerId: allocation.partnerId,
+      status: 'allocated',
+      campaignId: allocation.campaignId,
+    }).lean();
+    if (!queue) {
+      throw new ConflictException('The partner queue entry is no longer available for restoration');
+    }
+
+    return runInTransaction(async (session) => {
+      const reversed = await PartnerAllocationModel.findOneAndUpdate(
+        { _id: allocationId, status: 'active' },
+        {
+          $set: {
+            status: 'reversed',
+            endedAt: now,
+            explanation: [
+              ...(allocation.explanation ?? []),
+              `Reversed by admin: ${cleanReason}`,
+            ],
+          },
+        },
+        opts(session, { new: true }),
+      ).lean();
+      if (!reversed) throw new ConflictException('Allocation changed. Refresh and try again');
+
+      await PartnersModel.updateOne(
+        {
+          _id: allocation.partnerId,
+          placementCampaignId: allocation.campaignId,
+        },
+        {
+          $set: {
+            placementParentId: null,
+            placementCampaignId: null,
+            placedAt: null,
+          },
+        },
+        opts(session),
+      );
+
+      await ActivationQueueEntryModel.updateOne(
+        { _id: queue._id, status: 'allocated' },
+        {
+          $set: {
+            status: 'queued',
+            allocatedAt: null,
+            campaignId: null,
+            placementParentId: null,
+            cancelledAt: null,
+          },
+        },
+        opts(session),
+      );
+
+      const updatedCampaign = await GrowthCampaignModel.findByIdAndUpdate(
+        allocation.campaignId,
+        [{
+          $set: {
+            'capacity.allocated': {
+              $max: [0, { $subtract: ['$capacity.allocated', 1] }],
+            },
+            'budget.spent': {
+              $max: [0, { $subtract: ['$budget.spent', COST_PER_PROSPECT_NGN] }],
+            },
+          },
+        }],
+        opts(session, { new: true }),
+      ).lean();
+
+      const [owner, partner] = await Promise.all([
+        this.findPartner(allocation.ownerId, { session }),
+        this.findPartner(allocation.partnerId, { session }),
+      ]);
+      void actorId;
+      return {
+        allocation: allocationDto(reversed, updatedCampaign, owner),
+        partner: partner ? {
+          id: String(partner._id),
+          name: ownerLabel(partner),
+          email: partner.email ?? '',
+        } : null,
+        queueRestored: true,
+        reason: cleanReason,
+      };
+    });
+  }
+
   async findAdminCampaign(campaignId) {
     if (!hasId(campaignId)) throw new ValidationException('Invalid campaign id');
     const campaign = await GrowthCampaignModel.findById(campaignId).lean();

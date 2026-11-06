@@ -66,6 +66,24 @@ app.use('/v1/admin/campaigns', buildAdminCampaignRouter({
       context: { campaigns: id ? 1 : 2, candidates: 3, remainingCandidates: 3, limit },
     }),
   },
+  allocations: {
+    execute: async ({ status }) => ([
+      { id: 'alloc-1', status, partner: { id: partnerId, name: 'Bola' }, campaign: { id: campaignId, name: 'Lagos growth' } },
+    ]),
+  },
+  override: {
+    execute: async ({ campaignId: id, partnerId: pid, reason }) => ({
+      allocation: { id: 'alloc-2', campaignId: id, partnerId: pid, status: 'active' },
+      reason,
+    }),
+  },
+  reverse: {
+    execute: async ({ allocationId, reason }) => ({
+      allocation: { id: allocationId, status: 'reversed' },
+      queueRestored: true,
+      reason,
+    }),
+  },
   activate: {
     execute: async () => ({ id: campaignId, status: 'Active', owner: { id: partnerId, name: 'Ada' } }),
   },
@@ -208,6 +226,29 @@ describe('growth campaign admin routes', () => {
     const result = await post(`/v1/admin/campaigns/${campaignId}/allocate`, { limit: 5 });
     assert.equal(result.status, 200);
     assert.equal(result.body.data.context.campaigns, 1);
+  });
+
+  it('lists, overrides and reverses allocations', async () => {
+    const list = await fetch(`${baseUrl}/v1/admin/campaigns/allocations?status=active`);
+    const listBody = await list.json();
+    assert.equal(list.status, 200);
+    assert.equal(listBody.data[0].partner.name, 'Bola');
+
+    const override = await post('/v1/admin/campaigns/allocations/override', {
+      campaignId,
+      partnerId,
+      reason: 'Phone placement correction',
+    });
+    assert.equal(override.status, 200);
+    assert.equal(override.body.data.allocation.id, 'alloc-2');
+
+    const allocationId = '507f1f77bcf86cd799439099';
+    const reverse = await post(`/v1/admin/campaigns/allocations/${allocationId}/reverse`, {
+      reason: 'Wrong campaign owner',
+    });
+    assert.equal(reverse.status, 200);
+    assert.equal(reverse.body.data.allocation.status, 'reversed');
+    assert.equal(reverse.body.data.queueRestored, true);
   });
 
   it('requires a reason to reject and a spent amount to end', async () => {

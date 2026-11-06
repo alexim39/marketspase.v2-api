@@ -104,13 +104,13 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-const post = async (path, body) => {
+const post = async (path, body, headers = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await response.json(), headers: response.headers };
 };
 
 const signupBody = {
@@ -150,6 +150,15 @@ describe('open signup + email verification route flow', () => {
     assert.equal(signedIn.status, 200);
     assert.equal(signedIn.body.success, true);
     assert.equal(signedIn.body.data.token, 'jwt-token');
+    assert.match(signedIn.headers.get('set-cookie') ?? '', /(?:^|,\s*)jwt=/);
+
+    const adminSignedIn = await post(
+      '/signin',
+      { email: signupBody.email, password: signupBody.password },
+      { 'x-client': 'admin' },
+    );
+    assert.equal(adminSignedIn.status, 200);
+    assert.match(adminSignedIn.headers.get('set-cookie') ?? '', /(?:^|,\s*)admin_jwt=/);
   });
 
   it('rejects duplicate registration with a conflict envelope', async () => {

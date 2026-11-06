@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from '../domain/AppError.js';
 import { isSessionRevoked } from '../../modules/identity-access/infrastructure/SessionRevocation.js';
+import { sessionCookieName } from './sessionScope.js';
 
 /**
  * Decoupled auth middleware (Infrastructure/Interface boundary).
@@ -28,7 +29,7 @@ export const bearerToken = (req) => {
 export const requireAuth = (req, _res, next) => {
   (async () => {
     try {
-      const token = req.cookies?.jwt ?? bearerToken(req);
+      const token = req.cookies?.[sessionCookieName(req)] ?? bearerToken(req);
       if (!token) throw new UnauthorizedException('No authentication token provided');
       const claims = jwt.verify(token, process.env.JWTTOKENSECRET);
       if (!claims?.id) throw new UnauthorizedException('User unauthenticated');
@@ -51,7 +52,7 @@ export const requireAuth = (req, _res, next) => {
 /** Same as requireAuth but never rejects — attaches req.auth when possible. */
 export const optionalAuth = (req, _res, next) => {
   try {
-    const token = req.cookies?.jwt;
+    const token = req.cookies?.[sessionCookieName(req)];
     if (!token) return next();
     const claims = jwt.verify(token, process.env.JWTTOKENSECRET);
     if (claims?.id) req.auth = { partnerId: String(claims.id) };

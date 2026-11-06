@@ -60,6 +60,16 @@ describe('sendEmail transport', () => {
     Object.assign(process.env, keep);
   });
 
+  it('resolves { sent: false } when disabled explicitly', async () => {
+    process.env.MAIL_DISABLED = 'true';
+    const { sendEmail } = await import('./emailService.js');
+    const res = await sendEmail('a@x.test', 'Hi', '<p>body</p>');
+    assert.equal(res.sent, false);
+    assert.match(res.error ?? '', /disabled/i);
+    delete process.env.MAIL_DISABLED;
+    Object.assign(process.env, keep);
+  });
+
   it('defaults to port 465 implicit TLS and honors explicit overrides', async () => {
     const { env } = await import('../shared/config/env.js');
     delete process.env.EMAIL_PORT;

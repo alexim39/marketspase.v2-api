@@ -175,6 +175,11 @@ export class StoreAdminRepository {
     return this.orders.getAdminOrder(orderId);
   }
 
+  async refundOrder(orderId, { reason }) {
+    await this.orders.refundOrder(orderId, { reason });
+    return this.orders.getAdminOrder(orderId);
+  }
+
   settlements() {
     return this.orders.getAdminSettlements();
   }

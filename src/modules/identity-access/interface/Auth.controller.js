@@ -1,4 +1,5 @@
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
+import { sessionCookieName } from '../../../shared/http/sessionScope.js';
 
 const isProd = () => process.env.NODE_ENV === 'production';
 
@@ -42,7 +43,7 @@ export const makeAuthController = ({
       ip: req.ip ?? req.headers?.['x-forwarded-for'] ?? null,
       agent: req.headers?.['user-agent'] ?? null,
     });
-    res.cookie('jwt', token, sessionCookieFlags());
+    res.cookie(sessionCookieName(req), token, sessionCookieFlags());
     // Legacy shape preserved; `data` is additive for new clients.
     // `token` ships in the body as a fallback transport: cross-site
     // third-party-cookie blocking can drop the Set-Cookie while the login
@@ -51,8 +52,8 @@ export const makeAuthController = ({
     res.status(200).json({ message: 'Login successful', success: true, data: { user, token } });
   }),
 
-  signout: asyncHandler(async (_req, res) => {
-    res.cookie('jwt', '', { ...sessionCookieFlags(), maxAge: 0 });
+  signout: asyncHandler(async (req, res) => {
+    res.cookie(sessionCookieName(req), '', { ...sessionCookieFlags(), maxAge: 0 });
     res.status(200).json({ message: 'Logged out successfully', success: true });
   }),
 

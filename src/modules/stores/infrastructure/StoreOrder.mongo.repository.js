@@ -99,6 +99,9 @@ export const publicOrder = (order) => ({
   shippedAt: order.shippedAt ?? null,
   deliveredAt: order.deliveredAt ?? null,
   cancelledAt: order.cancelledAt ?? null,
+  refundedAt: order.refundedAt ?? null,
+  refundReference: order.refundReference ?? '',
+  refundReason: order.refundReason ?? '',
   settledAt: order.settledAt ?? null,
   escrow: {
     status: order.escrow?.status ?? 'none',
@@ -846,6 +849,169 @@ export class StoreOrderRepository {
         currency: 'NGN',
       };
     });
+  }
+
+  /**
+   * Refund a paid store order through Paystack and reverse its escrow/stock
+   * effects. Restocking is automatic only while the order is still being
+   * prepared; shipped/delivered refunds leave stock for the admin to adjust.
+   */
+  async refundOrder(orderId, { reason = '' } = {}) {
+    if (!hasId(orderId)) throw new ValidationException('Invalid order');
+    const cleanReason = text(reason, 500);
+    if (cleanReason.length < 3) throw new ValidationException('Add a reason for the refund');
+
+    const order = await StoreOrderModel.findById(orderId).lean();
+    if (!order) throw new NotFoundException('Store order not found');
+    if (order.status === 'refunded') return publicOrder(order);
+    if (order.status === 'cancelled') throw new ConflictException('Cancelled orders cannot be refunded');
+    if (order.payment?.status !== 'paid') throw new ConflictException('Only a paid order can be refunded');
+    if (!this.paystack?.enabled) throw new ValidationException('Refunds are not available right now');
+
+    const released = order.escrow?.status === 'released';
+    const partnerPendingNgn = fromKobo(order.amounts?.partnerPendingKobo ?? 0);
+    if (released) {
+      const partner = await PartnersModel.findById(order.partnerId).select('balance').lean();
+      if (!partner) throw new NotFoundException('Partner not found');
+      if (Number(partner.balance ?? 0) < partnerPendingNgn) {
+        throw new ConflictException(
+          'Partner wallet balance is too low to recover this refund. Top up the partner wallet or process the refund manually.',
+        );
+      }
+    }
+
+    let providerRefund;
+    try {
+      providerRefund = await this.paystack.refund({
+        reference: order.payment?.reference ?? order.reference,
+        amountKobo: order.amounts?.totalKobo,
+        reason: cleanReason,
+      });
+    } catch (error) {
+      throw new ValidationException(`Could not refund with Paystack: ${error?.message ?? 'provider error'}`);
+    }
+
+    const at = now();
+    const refundReference = providerRefund.reference || `REF-${order.reference}`;
+    const result = await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      const claimed = await StoreOrderModel.findOneAndUpdate(
+        { _id: orderId, status: { $ne: 'refunded' }, 'payment.status': 'paid' },
+        {
+          $set: {
+            status: 'refunded',
+            refundedAt: at,
+            refundReference,
+            refundReason: cleanReason,
+            'payment.status': 'refunded',
+            'escrow.status': 'refunded',
+          },
+          $push: {
+            events: {
+              type: 'order_refunded',
+              at,
+              note: `Refunded: ${cleanReason}`,
+            },
+          },
+        },
+        { new: true, ...opts },
+      ).lean();
+      if (!claimed) return { deduped: true };
+
+      // Put stock back only while the order is still being prepared. A shipped
+      // or delivered refund may be a partial return; the admin adjusts stock.
+      if (['paid', 'processing'].includes(order.status) && !order.stockReleased) {
+        for (const item of claimed.items ?? []) {
+          const quantity = Number(item.quantity) || 0;
+          if (quantity <= 0) continue;
+          await StoreProductModel.updateOne(
+            { _id: item.storeProductId, partnerId: claimed.partnerId },
+            { $inc: { stock: quantity, soldCount: -quantity } },
+            opts,
+          );
+          await StoreInventoryModel.updateOne(
+            { partnerId: claimed.partnerId, productId: item.productId },
+            { $inc: { quantity } },
+            opts,
+          );
+          await StoreStockLedgerModel.create(
+            [{
+              partnerId: claimed.partnerId,
+              productId: item.productId,
+              quantity,
+              type: 'store_cancel',
+              reference: claimed.reference,
+              note: 'Stock returned after a refund',
+            }],
+            opts,
+          );
+        }
+        await StoreOrderModel.updateOne(
+          { _id: claimed._id },
+          { $set: { stockReleased: true } },
+          opts,
+        );
+      }
+
+      await StoreEscrowLedgerModel.updateOne(
+        { orderId: claimed._id, type: 'partner_pending', status: 'posted' },
+        { $set: { status: 'void', note: 'Voided by refund' } },
+        opts,
+      );
+      await StoreEscrowLedgerModel.create(
+        [{
+          orderId: claimed._id,
+          reference: claimed.reference,
+          partnerId: claimed.partnerId,
+          type: 'refund',
+          amountKobo: -Number(claimed.amounts?.totalKobo ?? 0),
+          note: `Refunded: ${cleanReason}`,
+        }],
+        opts,
+      );
+
+      if (released && partnerPendingNgn > 0) {
+        const debited = await PartnersModel.findByIdAndUpdate(
+          claimed.partnerId,
+          { $inc: { balance: -partnerPendingNgn } },
+          { new: true, ...opts },
+        );
+        if (!debited) throw new NotFoundException('Partner not found');
+        await TransactionModel.create(
+          [{
+            partnerId: claimed.partnerId,
+            amount: -partnerPendingNgn,
+            status: 'Completed',
+            paymentMethod: 'Store refund',
+            transactionType: 'Debit',
+            reference: `STORE-REFUND-${claimed.reference}`,
+          }],
+          opts,
+        );
+      }
+
+      return { deduped: false, order: claimed };
+    });
+
+    if (result.deduped) {
+      const fresh = await StoreOrderModel.findById(orderId).lean();
+      return publicOrder(fresh);
+    }
+
+    void this.events?.emit?.(STORE_EVENTS.ORDER_REFUNDED, {
+      orderId: String(result.order._id),
+      partnerId: String(result.order.partnerId),
+      reference: result.order.reference,
+      orderNumber: result.order.orderNumber,
+      customerName: result.order.customer?.name ?? 'A customer',
+      customerEmail: result.order.customer?.email ?? '',
+      total: fromKobo(result.order.amounts?.totalKobo),
+      currency: 'NGN',
+      reason: cleanReason,
+      refundReference,
+    });
+
+    return publicOrder(result.order);
   }
 
   async listAllOrders({ status, q, storeId, partnerId, limit = 100 } = {}) {

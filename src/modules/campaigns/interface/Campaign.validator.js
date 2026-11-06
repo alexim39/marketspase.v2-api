@@ -50,6 +50,23 @@ export const AllocatePartnersSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+export const AllocationOverrideSchema = z.object({
+  campaignId: id,
+  partnerId: id,
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const AllocationReverseSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const AllocationIdParamsSchema = z.object({ allocationId: id });
+
+export const AllocationListQuerySchema = z.object({
+  status: z.enum(['active', 'ended', 'reversed']).default('active'),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
 export const QueueQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(200),
 });

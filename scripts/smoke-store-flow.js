@@ -10,7 +10,7 @@ import { StoreOrderModel } from '../src/modules/stores/infrastructure/Store.mode
  * Prerequisites (from api/):
  *   1. MONGODB_DATABASE=marketspaseV2_e2e node scripts/seed-store-e2e.js
  *   2. PAYSTACKTOKEN=sk_test_e2e PAYSTACK_BASE_URL=http://localhost:4010 node scripts/mock-paystack-server.js
- *   3. PAYSTACKTOKEN=sk_test_e2e PAYSTACK_BASE_URL=http://localhost:4010 MONGODB_DATABASE=marketspaseV2_e2e npm start
+ *   3. PAYSTACKTOKEN=sk_test_e2e PAYSTACK_BASE_URL=http://localhost:4010 MONGODB_DATABASE=marketspaseV2_e2e MAIL_DISABLED=true npm start
  *   4. node scripts/smoke-store-flow.js
  *
  * The script never talks to the real Paystack API and refuses to run against a
@@ -80,11 +80,11 @@ const markPaidOnMockGateway = async (checkoutUrl) => {
   assert.ok([302, 303].includes(response.status), `mock checkout pay returned ${response.status}`);
 };
 
-const waitForStoreNotification = async (token, orderId) => {
+const waitForStoreNotification = async (token, key) => {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const response = await request('/v1/notifications/list?limit=50', { token });
     const items = response.body?.data?.stored ?? [];
-    if (items.some((item) => item.key === `store-order-paid:${orderId}`)) return true;
+    if (items.some((item) => item.key === key)) return true;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return false;
@@ -152,7 +152,7 @@ const main = async () => {
 
   step('Partner notification');
   assert.equal(
-    await waitForStoreNotification(ownerToken, first.id),
+    await waitForStoreNotification(ownerToken, `store-order-paid:${first.id}`),
     true,
     'paid order should create an in-app partner notification',
   );
@@ -253,6 +253,26 @@ const main = async () => {
   const finalEarnings = await request('/v1/stores/me/earnings', { token: ownerToken });
   assert.ok(finalEarnings.body.data.released > earningsAfter.body.data.released);
   ok(`final released earnings: ${ngn(finalEarnings.body.data.released)}`);
+
+  step('Admin refund path');
+  const third = await createPaidOrder('three');
+  const refunded = await request(`/v1/admin/store-orders/${third.id}/refund`, {
+    method: 'POST',
+    token: adminToken,
+    body: { reason: 'Commerce smoke test refund' },
+  });
+  assert.equal(refunded.status, 200, JSON.stringify(refunded.body));
+  assert.equal(refunded.body.data.status, 'refunded');
+  assert.equal(refunded.body.data.payment.status, 'refunded');
+  assert.equal(refunded.body.data.escrow.status, 'refunded');
+  ok(`order refunded (${refunded.body.data.refundReference || 'provider pending'})`);
+
+  assert.equal(
+    await waitForStoreNotification(ownerToken, `store-order-refunded:${third.id}`),
+    true,
+    'refund should create an in-app partner notification',
+  );
+  ok('refund appears in the partner notification center');
 
   console.log('\nCommerce smoke test passed.');
 };

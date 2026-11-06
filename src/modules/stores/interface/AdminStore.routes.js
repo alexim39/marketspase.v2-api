@@ -35,6 +35,10 @@ const OrderListQuery = z.object({
 
 const OrderParams = z.object({ orderId: objectId });
 
+const RefundBody = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
 const StoreSettingsBody = z.object({
   serviceFeePercent: z.coerce.number().min(0).max(20),
   escrowHoldDays: z.coerce.number().int().min(0).max(60),
@@ -120,10 +124,29 @@ export const buildAdminStoreRouter = (deps = {}) => {
     }),
   );
 
+  router.post(
+    '/store-orders/:orderId/refund',
+    validate({ params: OrderParams, body: RefundBody }),
+    asyncHandler(async (req, res) => {
+      const data = await repo.refundOrder(req.validated.params.orderId, req.validated.body);
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'admin.store-order.refund',
+        targetType: 'store-order',
+        targetId: req.validated.params.orderId,
+        detail: {
+          orderNumber: data.orderNumber,
+          total: data.amounts?.total,
+          reason: req.validated.body.reason,
+        },
+      });
+      return sendSuccess(res, { message: 'Order refunded to the customer', data });
+    }),
+  );
+
   router.get(
     '/store-settlements',
-    asyncHandler(async (_req, res) => {
-      const data = await repo.settlements();
+    asyncHandler(async (_req, res) => {      const data = await repo.settlements();
       return sendSuccess(res, { data });
     }),
   );

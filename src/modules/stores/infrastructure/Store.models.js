@@ -238,6 +238,9 @@ const storeOrderSchema = new mongoose.Schema(
     shippedAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
+    refundedAt: { type: Date, default: null },
+    refundReference: { type: String, default: '', trim: true },
+    refundReason: { type: String, default: '', trim: true },
     settledAt: { type: Date, default: null },
     escrow: {
       status: {

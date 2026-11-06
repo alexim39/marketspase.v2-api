@@ -65,14 +65,12 @@ describe('StoreOrderFanoutUseCase', () => {
     assert.deepEqual(result, { status: 'notified', deduped: true });
   });
 
-  it('subscribes to store.order.paid', async () => {
-    let handler = null;
-    const off = () => {};
+  it('subscribes to store.order.paid and store.order.refunded', async () => {
+    const handlers = new Map();
     const events = {
       on: (name, fn) => {
-        assert.equal(name, 'store.order.paid');
-        handler = fn;
-        return off;
+        handlers.set(name, fn);
+        return () => handlers.delete(name);
       },
     };
     const delivery = makeDelivery();
@@ -81,8 +79,48 @@ describe('StoreOrderFanoutUseCase', () => {
       delivery,
       partners: { findById: async () => partner },
     });
-    assert.equal(unsubscribe, off);
-    await handler({ partnerId: 'p1', orderId: 'o1', orderNumber: 'MS-1', customerName: 'Ada', total: 1 });
+    assert.equal(typeof unsubscribe, 'function');
+    assert.ok(handlers.has('store.order.paid'));
+    assert.ok(handlers.has('store.order.refunded'));
+    await handlers.get('store.order.paid')({
+      partnerId: 'p1', orderId: 'o1', orderNumber: 'MS-1', customerName: 'Ada', total: 1,
+    });
     assert.equal(delivery.calls.length, 1);
+    unsubscribe();
+    assert.equal(handlers.size, 0);
+  });
+
+  it('notifies the partner and emails the customer on a refund', async () => {
+    const delivery = makeDelivery();
+    const mails = [];
+    const fanout = new StoreOrderFanoutUseCase({
+      delivery,
+      partners: { findById: async () => partner },
+      mail: async (...args) => {
+        mails.push(args);
+        return { sent: true };
+      },
+    });
+    const result = await fanout.notifyRefunded({
+      partnerId: 'p1',
+      orderId: 'o1',
+      orderNumber: 'MS-1',
+      customerName: 'Ada <Obi>',
+      customerEmail: 'ada@example.com',
+      total: 11500,
+      currency: 'NGN',
+      reason: 'Item returned',
+      refundReference: 'REF-1',
+    });
+    assert.equal(result.status, 'notified');
+    assert.equal(result.emailed, true);
+    assert.equal(delivery.calls[0].item.key, 'store-order-refunded:o1');
+    assert.match(delivery.calls[0].item.title, /refunded/i);
+    assert.equal(mails.length, 1);
+    assert.equal(mails[0][0], 'ada@example.com');
+    assert.match(mails[0][1], /MS-1/);
+    assert.match(mails[0][2], /Ada &lt;Obi&gt;/);
+    assert.match(mails[0][2], /Item returned/);
+    assert.match(mails[0][2], /REF-1/);
   });
 });
