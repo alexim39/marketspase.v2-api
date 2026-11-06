@@ -36,13 +36,16 @@ jobs:
         ports:
           - 27017:27017
         options: >-
+          --replSet rs0
+          --bind_ip_all
           --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
 
     env:
-      MONGODB_URI: mongodb://127.0.0.1:27017/marketspaseV2_e2e
+      MONGODB_URI: mongodb://127.0.0.1:27017/marketspaseV2_e2e?replicaSet=rs0
+      MONGODB_ADMIN_URI: mongodb://127.0.0.1:27017/admin?directConnection=true
       MONGODB_DATABASE: marketspaseV2_e2e
       JWTTOKENSECRET: ci-test-secret
       PAYSTACKTOKEN: sk_test_e2e
@@ -68,6 +71,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Initialize Mongo replica set
+        run: node scripts/ci-init-mongo-replica.js
 
       - name: Run commerce smoke
         run: |
