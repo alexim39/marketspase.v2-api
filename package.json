@@ -5,12 +5,15 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "start": "node server.js",
     "dev": "nodemon server.js",
     "simulate:economics": "node scripts/marketspase-economics-simulation.js",
     "verify:attribution": "node scripts/verify-attribution.js",
-    "smoke:compensation": "node scripts/smoke-compensation-flow.js"
+    "smoke:compensation": "node scripts/smoke-compensation-flow.js",
+    "smoke:paystack": "node scripts/mock-paystack-server.js",
+    "smoke:store:seed": "node scripts/seed-store-e2e.js",
+    "smoke:store": "node scripts/smoke-store-flow.js"
   },
   "author": "Imenwo Alex",
   "license": "ISC",

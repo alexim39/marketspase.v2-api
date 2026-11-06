@@ -37,6 +37,8 @@ describe('AUDIT_ACTIONS vocabulary', () => {
       'partnersurvey.delete', 'page.reset',
       'subscription.delete', 'subscription.status',
       'billing.plan.update', 'product.create', 'product.update',
+      'store.update', 'store.order.update', 'store.product.update', 'store.receipt.confirm',
+      'admin.store.status', 'admin.store-order.escrow.release', 'admin.store.settings.update',
       'bonus.claim', 'bonus.campaign.create', 'bonus.campaign.update', 'bonus.campaign.delete',
       'tutorial.create', 'tutorial.update', 'tutorial.delete',
     ]) {

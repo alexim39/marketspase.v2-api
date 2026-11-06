@@ -12,7 +12,7 @@ const providerMessage = (error, fallback) =>
  * real network call is made.
  */
 export class PaystackClient {
-  constructor({ secretKey = process.env.PAYSTACKTOKEN, baseUrl = BASE, http = axios } = {}) {
+  constructor({ secretKey = process.env.PAYSTACKTOKEN, baseUrl = process.env.PAYSTACK_BASE_URL || BASE, http = axios } = {}) {
     this.secretKey = String(secretKey ?? '').trim();
     this.baseUrl = String(baseUrl ?? BASE).replace(/\/+$/, '');
     this.http = http;
