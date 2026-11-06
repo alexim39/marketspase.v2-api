@@ -274,6 +274,23 @@ const main = async () => {
   );
   ok('refund appears in the partner notification center');
 
+  step('Refund after escrow release');
+  const beforeClawback = await request('/v1/auth/me', { token: ownerToken });
+  const releasedRefund = await request(`/v1/admin/store-orders/${first.id}/refund`, {
+    method: 'POST',
+    token: adminToken,
+    body: { reason: 'Commerce smoke released-escrow refund' },
+  });
+  assert.equal(releasedRefund.status, 200, JSON.stringify(releasedRefund.body));
+  assert.equal(releasedRefund.body.data.status, 'refunded');
+  assert.equal(releasedRefund.body.data.escrow.status, 'refunded');
+  const afterClawback = await request('/v1/auth/me', { token: ownerToken });
+  assert.ok(
+    Number(afterClawback.body.data.balance) < Number(beforeClawback.body.data.balance),
+    'released escrow refund must debit the partner wallet',
+  );
+  ok(`partner wallet clawed back (${ngn(afterClawback.body.data.balance)})`);
+
   console.log('\nCommerce smoke test passed.');
 };
 
