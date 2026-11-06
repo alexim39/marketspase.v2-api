@@ -80,6 +80,16 @@ const markPaidOnMockGateway = async (checkoutUrl) => {
   assert.ok([302, 303].includes(response.status), `mock checkout pay returned ${response.status}`);
 };
 
+const waitForStoreNotification = async (token, orderId) => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const response = await request('/v1/notifications/list?limit=50', { token });
+    const items = response.body?.data?.stored ?? [];
+    if (items.some((item) => item.key === `store-order-paid:${orderId}`)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+};
+
 const createPaidOrder = async (customerSuffix = 'one') => {
   step(`Create and pay order (${customerSuffix})`);
   const store = await request(`/v1/stores/${SLUG}`);
@@ -139,6 +149,14 @@ const main = async () => {
   ok('owner and admin sign-in work');
 
   const first = await createPaidOrder('one');
+
+  step('Partner notification');
+  assert.equal(
+    await waitForStoreNotification(ownerToken, first.id),
+    true,
+    'paid order should create an in-app partner notification',
+  );
+  ok('new paid order appears in the partner notification center');
 
   step('Partner list and fulfil');
   const partnerOrders = await request('/v1/stores/me/orders', { token: ownerToken });

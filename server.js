@@ -65,6 +65,7 @@ import { subscribePromotionFanout } from './src/modules/notifications/applicatio
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
 import { subscribeContactListFanout } from './src/modules/notifications/application/ContactListFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
+import { subscribeStoreOrderFanout } from './src/modules/notifications/application/StoreOrderFanout.js';
 import { domainEvents } from './src/shared/events/DomainEvents.js';
 import { env } from './src/shared/config/env.js';
 import { sendEmail } from './src/services/emailService.js';
@@ -244,6 +245,11 @@ app.use(errorMiddleware);
   subscribeProspectWorkedFanout({
     events: domainEvents,
     stored: lifecycleStore,
+    delivery: lifecycleDelivery,
+    partners: lifecyclePartners,
+  });
+  subscribeStoreOrderFanout({
+    events: domainEvents,
     delivery: lifecycleDelivery,
     partners: lifecyclePartners,
   });

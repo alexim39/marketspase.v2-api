@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ValidationException,
 } from '../../../shared/domain/AppError.js';
+import { domainEvents } from '../../../shared/events/DomainEvents.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
 import { PartnersModel, runInTransaction } from '../../identity-access/infrastructure/Auth.models.js';
 import { creditPartnerWallet } from '../../billing/application/Deposit.usecases.js';
@@ -31,6 +32,7 @@ import {
   storeServiceFeePercent,
   toKobo,
 } from '../domain/StorePricing.js';
+import { STORE_EVENTS } from '../domain/StoreEvents.js';
 
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value ?? ''));
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -158,9 +160,14 @@ const normaliseItems = (items = []) => {
 };
 
 export class StoreOrderRepository {
-  constructor({ paystack = new PaystackClient(), returnUrl = storeCheckoutReturnUrl() } = {}) {
+  constructor({
+    paystack = new PaystackClient(),
+    returnUrl = storeCheckoutReturnUrl(),
+    events = domainEvents,
+  } = {}) {
     this.paystack = paystack;
     this.returnUrl = returnUrl;
+    this.events = events;
   }
 
   async getStoreSettings() {
@@ -430,7 +437,7 @@ export class StoreOrderRepository {
     const partnerPendingKobo = Math.max(totalKobo - serviceFeeKobo - paymentFeeKobo, 0);
     const paidAt = new Date();
 
-    return runInTransaction(async (session) => {
+    const result = await runInTransaction(async (session) => {
       const opts = session ? { session } : {};
       const claimed = await StoreOrderModel.findOneAndUpdate(
         {
@@ -529,6 +536,20 @@ export class StoreOrderRepository {
 
       return { deduped: false, paymentFeeKobo, partnerPendingKobo };
     });
+
+    if (!result.deduped) {
+      void this.events?.emit?.(STORE_EVENTS.ORDER_PAID, {
+        orderId: String(order._id),
+        partnerId: String(order.partnerId),
+        reference: order.reference,
+        orderNumber: order.orderNumber,
+        customerName: order.customer?.name ?? 'A customer',
+        total: fromKobo(order.amounts?.totalKobo),
+        currency: 'NGN',
+      });
+    }
+
+    return result;
   }
 
   async listPartnerOrders(partnerId, { status, limit = 100 } = {}) {
