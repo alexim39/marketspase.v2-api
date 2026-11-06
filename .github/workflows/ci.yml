@@ -69,31 +69,55 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Start mock Paystack
+      - name: Run commerce smoke
         run: |
+          set -euo pipefail
+
           node scripts/mock-paystack-server.js > /tmp/mock-paystack.log 2>&1 &
-          for i in $(seq 1 20); do
-            curl -fsS http://localhost:4010/health && break
-            sleep 1
-          done
-
-      - name: Start API
-        run: |
+          MOCK_PID=$!
           node server.js > /tmp/api.log 2>&1 &
-          for i in $(seq 1 60); do
-            curl -fsS http://localhost:3000/ && break
+          API_PID=$!
+          trap 'kill "$MOCK_PID" "$API_PID" 2>/dev/null || true' EXIT
+
+          mock_ready=0
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:4010/health > /dev/null; then mock_ready=1; break; fi
             sleep 1
           done
+          if [ "$mock_ready" != "1" ]; then
+            echo 'Mock Paystack did not start.'
+            cat /tmp/mock-paystack.log || true
+            exit 1
+          fi
 
-      - name: Seed and run commerce smoke
-        run: |
+          api_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/ > /dev/null; then api_ready=1; break; fi
+            sleep 1
+          done
+          if [ "$api_ready" != "1" ]; then
+            echo 'API did not start.'
+            cat /tmp/api.log || true
+            exit 1
+          fi
+
           node scripts/seed-store-e2e.js
           node scripts/smoke-store-flow.js
 
-      - name: Print logs on failure
+      - name: Publish logs on failure
         if: failure()
         run: |
+          {
+            echo '### API log'
+            echo '```'
+            tail -n 200 /tmp/api.log || true
+            echo '```'
+            echo '### Mock Paystack log'
+            echo '```'
+            tail -n 200 /tmp/mock-paystack.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           echo '--- API log ---'
-          cat /tmp/api.log || true
+          tail -n 200 /tmp/api.log || true
           echo '--- mock Paystack log ---'
-          cat /tmp/mock-paystack.log || true
+          tail -n 200 /tmp/mock-paystack.log || true
