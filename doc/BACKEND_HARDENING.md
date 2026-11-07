@@ -172,6 +172,10 @@ backoff and marked `failed` after five attempts for inspection.
 ### Key rotation
 
 1. Add the new secret to `PII_ENCRYPTION_KEYS` and keep the old key id there.
+   If existing rows were sealed before the keyring, their key id is `default`;
+   either add `"default": "<old PII_ENCRYPTION_KEY value>"` or keep
+   `PII_ENCRYPTION_KEY` set. The keyring auto-adds the env-derived `default`
+   key so the first rotation can read those rows.
 2. Set `PII_ACTIVE_KEY_ID` to the new id and deploy the API.
 3. Run `npm run migrate:pii` (dry run), confirm counts, then
    `APPLY=1 npm run migrate:pii`.
