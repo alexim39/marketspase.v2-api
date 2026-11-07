@@ -154,21 +154,36 @@ backoff and marked `failed` after five attempts for inspection.
 ## PII at rest
 
 - Bank account numbers, KYC address fields, partner address fields and
-  date-of-birth values are AES-256-GCM sealed with `PII_ENCRYPTION_KEY`
-  (fallback `KYC_HASH_SECRET`, then `JWTTOKENSECRET`).
-- `enc:v1:` values are transparently read by the API; legacy plaintext rows
-  keep working. Partner address/DOB getters open on documents and a find hook
-  opens lean results used by analytics and campaign matching.
-- Run `APPLY=1 npm run migrate:pii` once against a backed-up database to seal
-  existing rows. Without `APPLY=1` it is a dry run that only reports counts.
-  Partner counts are reported as `partnersToSeal`; rerun the dry run and expect
-  `0` to confirm idempotency.
+  date-of-birth values are AES-256-GCM sealed.
+- New values carry a key id: `enc:v2:<keyId>:<iv>:<tag>:<ciphertext>`.
+  Legacy `enc:v1:` values remain readable and are re-wrapped by the migration.
+- Key material comes from `PII_ENCRYPTION_KEY` by default. For rotation, set
+  `PII_ENCRYPTION_KEYS` to a JSON map of key id → secret and
+  `PII_ACTIVE_KEY_ID` to the key used for new writes.
+- Partner address/DOB getters open on documents and a find hook opens lean
+  results used by analytics and campaign matching.
+- `npm run migrate:pii` seals plaintext rows **and** re-wraps values that are
+  not using the active key. Without `APPLY=1` it is a dry run that only reports
+  counts; `activeKeyId`, `errorCount` and per-collection counts are printed.
 - Deploy the API code before applying the migration: the new DOB field reads
   both legacy dates and sealed strings, while the old schema cannot read sealed
   values.
 
+### Key rotation
+
+1. Add the new secret to `PII_ENCRYPTION_KEYS` and keep the old key id there.
+2. Set `PII_ACTIVE_KEY_ID` to the new id and deploy the API.
+3. Run `npm run migrate:pii` (dry run), confirm counts, then
+   `APPLY=1 npm run migrate:pii`.
+4. Rerun the dry run and expect all counts and `errorCount` to be `0`.
+5. After the backup/retention window, remove the old key id from
+   `PII_ENCRYPTION_KEYS`.
+
+Removing a key before the re-wrap finishes makes those values unreadable;
+`rewrap` throws with the missing key id instead of silently dropping data.
+
 ## Environment
 
 See `.env.example` for `TRUST_PROXY_HOPS`, `ACCESS_TOKEN_TTL`,
-`REFRESH_TOKEN_TTL_MS`, `MONGO_QUERY_TIMEOUT_MS`, `JSON_BODY_LIMIT` and
-`LOG_LEVEL`.
+`REFRESH_TOKEN_TTL_MS`, `MONGO_QUERY_TIMEOUT_MS`, `JSON_BODY_LIMIT`,
+`LOG_LEVEL`, `PII_ENCRYPTION_KEYS` and `PII_ACTIVE_KEY_ID`.

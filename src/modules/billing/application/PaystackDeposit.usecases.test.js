@@ -110,7 +110,7 @@ test('CreateWithdrawalUseCase (manual mode) debits and stores the resolved name'
   });
   assert.equal(out.status, 'Pending');
   assert.equal(out.payoutMode, 'manual');
-  assert.ok(created[0].accountNumber.startsWith('enc:v1:'));
+  assert.match(created[0].accountNumber, /^enc:v2:[A-Za-z0-9._-]+:/);
   assert.equal(created[0].accountLast4, '6789');
   assert.equal(out.accountNumber, '0123456789');
   assert.equal(out.accountName, 'Ada Obi');

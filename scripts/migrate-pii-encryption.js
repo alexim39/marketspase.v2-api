@@ -4,7 +4,7 @@ import { TransactionModel } from '../src/apps/transaction/models/transaction.mod
 import { DepositIntentModel } from '../src/modules/billing/infrastructure/Deposit.mongo.model.js';
 import { KycSubmissionModel } from '../src/modules/onboarding/infrastructure/Onboarding.models.js';
 import { PartnersModel } from '../src/apps/partner/models/partner.model.js';
-import { isSealed, seal } from '../src/shared/security/fieldCrypto.js';
+import { activeKeyId, open, rewrap } from '../src/shared/security/fieldCrypto.js';
 
 const APPLY = process.env.APPLY === '1';
 const DRY_RUN = !APPLY;
@@ -22,24 +22,31 @@ const run = async () => {
   await mongoose.connect(mongoUri);
   console.log(`[pii] connected (${DRY_RUN ? 'dry run' : 'APPLY'})`);
 
+  const errors = [];
+  const rotate = (value, row, field) => {
+    try {
+      return rewrap(value);
+    } catch (error) {
+      errors.push({ id: String(row._id), field, error: error?.message ?? String(error) });
+      return value;
+    }
+  };
+
   let txSealed = 0;
   const transactions = await TransactionModel.find({
     accountNumber: { $nin: [null, ''] },
   }).select('accountNumber accountLast4').lean();
   const txOps = [];
   for (const row of transactions) {
-    if (isSealed(row.accountNumber)) continue;
-    txOps.push({
-      updateOne: {
-        filter: { _id: row._id },
-        update: {
-          $set: {
-            accountNumber: seal(row.accountNumber),
-            accountLast4: row.accountLast4 || String(row.accountNumber).slice(-4),
-          },
-        },
-      },
-    });
+    const next = rotate(row.accountNumber, row, 'accountNumber');
+    const set = {};
+    if (next !== row.accountNumber) set.accountNumber = next;
+    if (!row.accountLast4) {
+      const plain = open(next) ?? open(row.accountNumber);
+      if (plain) set.accountLast4 = String(plain).slice(-4);
+    }
+    if (Object.keys(set).length === 0) continue;
+    txOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
   }
   txSealed = txOps.length;
   if (!DRY_RUN) {
@@ -57,9 +64,11 @@ const run = async () => {
   const kycOps = [];
   for (const row of kycRows) {
     const set = {};
-    if (row.address && !isSealed(row.address)) set.address = seal(row.address);
-    if (row.city && !isSealed(row.city)) set.city = seal(row.city);
-    if (row.state && !isSealed(row.state)) set.state = seal(row.state);
+    for (const field of ['address', 'city', 'state']) {
+      if (!row[field]) continue;
+      const next = rotate(row[field], row, field);
+      if (next !== row[field]) set[field] = next;
+    }
     if (Object.keys(set).length > 0) {
       kycOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
     }
@@ -80,11 +89,11 @@ const run = async () => {
   const claimOps = [];
   for (const row of claims) {
     const set = {};
-    if (row.claim?.senderAccount && !isSealed(row.claim.senderAccount)) {
-      set['claim.senderAccount'] = seal(row.claim.senderAccount);
-    }
-    if (row.claim?.destinationAccount && !isSealed(row.claim.destinationAccount)) {
-      set['claim.destinationAccount'] = seal(row.claim.destinationAccount);
+    for (const field of ['senderAccount', 'destinationAccount']) {
+      const value = row.claim?.[field];
+      if (!value) continue;
+      const next = rotate(value, row, `claim.${field}`);
+      if (next !== value) set[`claim.${field}`] = next;
     }
     if (Object.keys(set).length > 0) {
       claimOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
@@ -110,13 +119,13 @@ const run = async () => {
     const set = {};
     for (const field of ['street', 'city', 'state', 'country']) {
       const value = row.address?.[field];
-      if (value && !isSealed(value)) set[`address.${field}`] = seal(value);
+      if (!value) continue;
+      const next = rotate(value, row, `address.${field}`);
+      if (next !== value) set[`address.${field}`] = next;
     }
-    if (row.dobDatePicker && !isSealed(row.dobDatePicker)) {
-      const plain = row.dobDatePicker instanceof Date
-        ? row.dobDatePicker.toISOString()
-        : String(row.dobDatePicker);
-      if (plain.trim()) set.dobDatePicker = seal(plain);
+    if (row.dobDatePicker) {
+      const next = rotate(row.dobDatePicker, row, 'dobDatePicker');
+      if (next !== row.dobDatePicker) set.dobDatePicker = next;
     }
     if (Object.keys(set).length > 0) {
       partnerOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
@@ -129,11 +138,15 @@ const run = async () => {
 
   console.log(JSON.stringify({
     dryRun: DRY_RUN,
+    activeKeyId: activeKeyId(),
     transactionsToSeal: txSealed,
     kycToSeal: kycSealed,
     manualClaimsToSeal: claimsSealed,
     partnersToSeal: partnersSealed,
+    errorCount: errors.length,
+    errors: errors.slice(0, 20),
   }, null, 2));
+  if (!DRY_RUN && errors.length > 0) process.exitCode = 1;
   await mongoose.connection.close(false);
 };
 
