@@ -49,6 +49,16 @@ test('no recorded consent falls back to a review page, never an automated send',
   assert.match(row.reason, /consent not recorded/i);
 });
 
+test('survey and admin-pushed leads are opt-in even on legacy rows', () => {
+  const rows = buildOraOpportunities(input({
+    prospects: {
+      items: [prospect({ consentToContact: false, prospectSource: 'Website' })],
+      total: 1,
+    },
+  }));
+  assert.equal(rows.find((o) => o.prospectId === 'p1').type, 'send_sms');
+});
+
 test('at-risk goals, unread notifications and the next event are captured', () => {
   const rows = buildOraOpportunities(input({
     goals: [{ id: 'g1', title: 'Recruit 5', progress: { percent: 20, onTrack: false, complete: false, daysLeft: 3 } }],

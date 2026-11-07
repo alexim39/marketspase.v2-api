@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
+import { hasAutomationConsent } from '../domain/Ora.consent.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { UpdateProspectStatusUseCase } from '../../crm/application/Prospect.commands.js';
 import { LogCommunicationUseCase } from '../../crm/application/Prospect.communications.js';
@@ -55,7 +56,7 @@ export class OraActionExecutor {
   }
 
   requireConsent(prospect) {
-    if (prospect.consentToContact !== true) {
+    if (!hasAutomationConsent(prospect)) {
       throw new ForbiddenException(
         'This prospect has not consented to automated contact. Open the record to follow up manually.',
       );

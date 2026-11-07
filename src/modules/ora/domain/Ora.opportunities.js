@@ -1,5 +1,6 @@
 import { bucketFollowUps } from '../../crm/domain/Prospect.reminders.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
+import { hasAutomationConsent } from './Ora.consent.js';
 
 /**
  * Ora opportunities — a bounded, server-generated list of safe next moves.
@@ -55,7 +56,7 @@ export const buildOraOpportunities = ({
     const stage = prospect.status?.stage;
     if (stage === 'Closed' || stage === 'Converted' || prospect.status?.status === 'Closed') return false;
     const name = `${prospect.prospectName ?? ''} ${prospect.prospectSurname ?? ''}`.trim() || 'this prospect';
-    const consent = prospect.consentToContact === true;
+    const consent = hasAutomationConsent(prospect);
     const phone = String(prospect.prospectPhone ?? '').trim();
     const email = String(prospect.prospectEmail ?? '').trim();
     seenProspects.add(id);

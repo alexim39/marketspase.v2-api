@@ -55,6 +55,16 @@ test('blocks a prospect owned by another partner', async () => {
   }), /not in your pipeline/i);
 });
 
+test('survey-sourced leads are treated as opt-in', async () => {
+  const { executor, calls } = deps(prospect({ consentToContact: false, prospectSource: 'Website' }));
+  const result = await executor.execute({
+    partnerId: 'owner-1',
+    action: { type: 'send_sms', payload: { prospectId: PID, body: 'Hi Paul' } },
+  });
+  assert.equal(result.sent, 1);
+  assert.equal(calls.sms.length, 1);
+});
+
 test('advances a stage after approval', async () => {
   const { executor, calls } = deps();
   const result = await executor.execute({
