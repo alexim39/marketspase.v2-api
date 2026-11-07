@@ -123,8 +123,9 @@ backoff and marked `failed` after five attempts for inspection.
   campaign-allocation writes validate and replace `req.body` through
   `validateBodyInPlace`, stripping unknown fields before controllers.
 - Retired legacy mounts: `/auth` (use `/v1/auth`), campaign create endpoints
-  (use `/v1/campaigns`), legacy email/SMS inbox reads (use v1 message reads)
-  and individual partner social-link writes (use `/partners/landing-page`).
+  (use `/v1/campaigns`), legacy email/SMS inbox reads (use v1 message reads),
+  booking email-list exports, partner public-search/username lookup and
+  individual partner social-link writes (use `/partners/landing-page`).
 
 - Legacy email/SMS sends, inbox reads and campaign creation are retired in
   favour of their `/v1` slices.

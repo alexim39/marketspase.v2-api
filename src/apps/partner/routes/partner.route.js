@@ -1,10 +1,9 @@
 import express from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
-import { rateLimit } from '../../../shared/http/rateLimit.js';
 import { validateBodyInPlace } from '../../../shared/http/validate.js';
 import { 
-    checkPartnerUsername, getAllUsers, searchPartnersPublic,
+    getAllUsers,
      getPartnerByNames, getPartnerByName,
     updateTestimonial, updateLandingPage,
     updateProfile, updateUsername, unfollowPartner, checkFollowStatus,
@@ -47,13 +46,8 @@ const PasswordUpdate = z.object({
 
 
 
-// public referral picker (safe fields, no auth — used by Get Started).
-// Throttled: autocomplete types per keystroke.
-PartnerRouter.get('/public-search', rateLimit({ name: 'partner-search', windowMs: 60000, max: 60 }), searchPartnersPublic);
-
-// public page lookup (safe fields only — used by /:partnerUsername).
-// Throttled against username harvesting scripts.
-PartnerRouter.get('/check-username/:username', rateLimit({ name: 'username-check', windowMs: 60000, max: 60 }), checkPartnerUsername);
+// Public username lookup and referral search are retired. Public pages read
+// through /v1/admin/pages and signup validates uniqueness inside v1 auth.
 
 // Everything below needs a partner session. Writes additionally enforce
 // session-ownership inside the controllers (self-only or scoped reads).

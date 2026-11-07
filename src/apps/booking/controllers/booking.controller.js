@@ -2,7 +2,6 @@ import { BookingModel } from "../models/booking.model.js";
 import { sendEmail } from "../../../services/emailService.js";
 import { PartnersModel } from './../../partner/models/partner.model.js';
 import { ProspectModel } from '../../prospect/models/prospect.model.js';
-import { EmailSubscriptionModel } from "../../email-subscription/models/email-subscription.model.js";
 import { ownerEmailTemplate } from "../services/email/ownerTemplate.js";
 import { userNotificationEmailTemplate } from "../services/email/userTemplate.js";
 import { buildPartnerAccess } from '../../../modules/crm/application/Prospect.access.js';
@@ -338,48 +337,7 @@ export const UpdateBooking = async (req, res) => {
     }
 };
 
-// get partner email list — owner, upline or admin (PII harvest guard).
-export const getPartnerEmailList = async (req, res) => {
-  try {
-    const { createdBy } = req.params;
+// Removed: GET /booking/email-list (legacy PII harvest path). Partner email
+// lists now come from the v1 marketing/exports surfaces with role checks.
 
-    try {
-      await guard.requireListAccess(req.auth?.partnerId, createdBy);
-    } catch (err) {
-      return deny(res, err);
-    }
-  
-      // Step 1: Find the user and get username
-      const partner = await PartnersModel.findById(createdBy);
-      if (!partner) {
-        return res.status(404).json({ 
-          message: "User not found",
-          success: false,
-        });
-      }
-  
-      /// Step 2: user found username to get user from emailListObject collection
-      const emailListObject = await EmailSubscriptionModel.find({
-        username: partner.username,
-      });
-  
-      if (!emailListObject) {
-        return res.status(400).json({ 
-          message: "Email list not found",
-          success: false,
-        });
-      }
-  
-      res.status(200).json({
-        message: "Email list retrieved successfully!",
-        data: emailListObject,
-        success: true,
-      });
-    } catch (error) {
-      res.status(500).json({
-        message: "Error retrieving Ads",
-        error: error.message,
-        success: false,
-      });
-    }
-  };
+

@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { 
-    SessionBookingController, getBookingsForPartner, deleteBooking, UpdateBooking, getPartnerEmailList
+    SessionBookingController, getBookingsForPartner, deleteBooking, UpdateBooking
 } from '../controllers/booking.controller.js'
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { validateBodyInPlace } from '../../../shared/http/validate.js';
@@ -37,8 +37,6 @@ BookingRouter.get('/for/:createdBy', requireAuth, getBookingsForPartner);
 BookingRouter.delete('/delete/:id', requireAuth, deleteBooking );
 // Update booking status — owner, upline (support) or admin.
 BookingRouter.put('/update', requireAuth, validateBodyInPlace(BookingUpdate), UpdateBooking);
-// Partner email list — owner, upline or admin (PII harvest guard).
-BookingRouter.get('/email-list/:createdBy', requireAuth, getPartnerEmailList);
 
 
 export default BookingRouter;

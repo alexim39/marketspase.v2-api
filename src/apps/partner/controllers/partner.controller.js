@@ -45,70 +45,11 @@ const safePartner = (doc) => {
 /** Team-facing reads can opt into masked contact details with ?maskContacts=1. */
 const wantsMaskedContacts = (req) => String(req.query?.maskContacts ?? '') === '1';
 
-// Public page fields (client PartnerInterface + landing content). Everything
-// else (password, settings, wallet, telemetry) stays hidden.
-// Phone and email are private by default: only the explicit displayPhone /
-// displayEmail values a partner chooses are exposed publicly.
-const PUBLIC_PROFILE_SELECT = [
-  'username', 'name', 'surname', 'bio', 'jobTitle', 'profileImage',
-  'testimonial',
-  'whatsappGroupLink', 'whatsappChatLink',
-  'facebookPage', 'linkedinPage', 'youtubePage', 'instagramPage', 'tiktokPage', 'twitterPage',
-  'headline', 'subHeadline', 'heroBadge', 'businessTagline', 'aboutStory', 'achievements',
-  'inviteNote', 'opportunityPoints', 'videoTestimonialUrl', 'displayPhone', 'displayEmail',
-  'locationDisplay', 'whatsappCtaText',
-].join(' ');
-
 // Directory-safe fields for member search (no contact PII, no secrets).
 const DIRECTORY_SELECT = 'username name surname profileImage jobTitle address';
 
-
-// Public referral picker — safe fields only (no email/phone/password).
-// GET /partners/public-search?q=ada — min 2 chars, max 8 rows.
-export const searchPartnersPublic = async (req, res) => {
-  try {
-    const q = String(req.query.q ?? '').trim().slice(0, 60);
-    if (q.length < 2) {
-      return res.status(200).json({ partners: [], success: true });
-    }
-    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    const rows = await PartnersModel.find({
-      $or: [{ username: rx }, { name: rx }, { surname: rx }],
-    })
-      .select('username name surname profileImage jobTitle address')
-      .limit(8)
-      .lean();
-    const partners = (rows ?? []).map((p) => ({
-      username: p.username ?? '',
-      name: p.name ?? '',
-      surname: p.surname ?? '',
-      profileImage: p.profileImage ?? '',
-      jobTitle: p.jobTitle ?? '',
-      state: p.address?.state ?? '',
-      city: p.address?.city ?? '',
-    })).filter((p) => p.username);
-    res.status(200).json({ partners, success: true });
-  } catch (error) {
-    res.status(500).json({ message: 'Search failed', success: false });
-  }
-};
-
-// Check if a partner exists — public, but safe fields only (never secrets).
-export const checkPartnerUsername = async (req, res) => {
-  const { username } = req.params;
-  const partner = await PartnersModel.findOne({ username }).select(PUBLIC_PROFILE_SELECT).lean();
-
-  if (partner) {
-    return res.status(200).json({partner: safePartner(partner), success: true});
-  }
-
-  res.status(404).json({
-    message: "Username not found",
-    code: "404",
-    success: false
-  });
-};
-
+// Removed: public referral search and username lookup. Public pages read
+// through /v1/admin/pages; signup validates username uniqueness in v1 auth.
 
 // Update a partner's profile — own account only.
 export const updateProfile = async (req, res) => {
