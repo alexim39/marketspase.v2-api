@@ -1,6 +1,7 @@
 import { TransactionModel } from "../models/transaction.model.js";
 import { PartnersModel } from '../../partner/models/partner.model.js';
 import { SMS_CHARGE_PER_PAGE as SMS_CHARGE } from '../../../modules/outreach/domain/Outreach.entity.js';
+import { mask, last4 } from '../../../shared/security/fieldCrypto.js';
 
 export const getTransactions = async (req, res) => {
   try {
@@ -20,7 +21,13 @@ export const getTransactions = async (req, res) => {
 
     res.status(200).json({
       message: "Transaction retrieved successfully!",
-      data: transaction,
+      data: transaction.map((row) => ({
+        ...row,
+        accountNumber: row.accountLast4
+          ? `••••${row.accountLast4}`
+          : mask(row.accountNumber),
+        accountLast4: row.accountLast4 ?? last4(row.accountNumber),
+      })),
       meta: {
         count: transaction.length,
         total,

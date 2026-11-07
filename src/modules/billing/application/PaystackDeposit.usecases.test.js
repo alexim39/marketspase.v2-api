@@ -92,11 +92,12 @@ test('creditPaystackIntent propagates DB failures so the provider retries', asyn
 });
 
 test('CreateWithdrawalUseCase (manual mode) debits and stores the resolved name', async () => {
+  const created = [];
   const partners = {
     findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000 }),
   };
   const transactions = {
-    create: async ([doc]) => [{ ...doc, _id: 't1' }],
+    create: async ([doc]) => { created.push(doc); return [{ ...doc, _id: 't1' }]; },
   };
   const paystack = {
     enabled: true,
@@ -109,6 +110,9 @@ test('CreateWithdrawalUseCase (manual mode) debits and stores the resolved name'
   });
   assert.equal(out.status, 'Pending');
   assert.equal(out.payoutMode, 'manual');
+  assert.ok(created[0].accountNumber.startsWith('enc:v1:'));
+  assert.equal(created[0].accountLast4, '6789');
+  assert.equal(out.accountNumber, '0123456789');
   assert.equal(out.accountName, 'Ada Obi');
   assert.equal(out.bank, 'Guaranty Trust Bank');
   assert.equal(out.balance, 4000);

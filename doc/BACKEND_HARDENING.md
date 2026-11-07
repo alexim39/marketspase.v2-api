@@ -64,6 +64,18 @@ Email/SMS/push side effects from lifecycle notifications are written to
 Rows are claimed atomically (safe across replicas), retried with exponential
 backoff and marked `failed` after five attempts for inspection.
 
+## Multi-replica safety
+
+- Auth, withdrawal, listing, deposit-init and cost-bearing send budgets use
+  Mongo-backed counters (`ratelimitcounters`) in addition to the in-memory
+  burst guard.
+- Every cron sweep acquires a Mongo lease (`joblocks`); a second replica skips
+  the tick. Crashed leases expire after the configured TTL.
+- The outbox uses a separate atomic row claim, so delivery still runs safely
+  even while the cron lease is held by another sweep.
+- Set `TRUST_PROXY_HOPS` correctly in production so all per-IP budgets see the
+  real client address.
+
 ## Health
 
 - `GET /health/live` — process liveness only.
@@ -77,6 +89,15 @@ backoff and marked `failed` after five attempts for inspection.
   clear next step.
 - Soft delete uses `deletedAt`; business records are never hard-deleted except
   legal erasure and dependent join rows.
+
+## PII at rest
+
+- Bank account numbers and KYC address fields are AES-256-GCM sealed with
+  `PII_ENCRYPTION_KEY` (fallback `KYC_HASH_SECRET`, then `JWTTOKENSECRET`).
+- `enc:v1:` values are transparently read by the API; legacy plaintext rows
+  keep working.
+- Run `APPLY=1 npm run migrate:pii` once against a backed-up database to seal
+  existing rows. Without `APPLY=1` it is a dry run that only reports counts.
 
 ## Environment
 

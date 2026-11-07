@@ -26,6 +26,7 @@ import { runCompensationReconcileJob } from './compensation-reconcile.js';
 import { runPayoutReconcileJob } from './payout-reconcile.js';
 import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
 import { runOutboxDueJob } from './outbox-delivery.js';
+import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
 
 /**
  * Background jobs — the single scheduling mechanism (the legacy birthday
@@ -72,28 +73,30 @@ export async function runSnapshotJob(deps = {}) {
 }
 
 export function scheduleJobs() {
-  cron.schedule('0 2 * * *', () => runSnapshotJob());
-  cron.schedule('30 6 * * *', () => runDailyBriefJob());
-  cron.schedule('0 7 * * 1', () => runWeeklyReviewJob());
-  cron.schedule('0 8 * * *', () => runBirthdayJob());
-  cron.schedule('0 9 * * *', () => runDormantNudgeJob());
-  cron.schedule('0 19 * * *', () => runDigestJob());
-  cron.schedule('* * * * *', () => runOutreachDueJob());
-  cron.schedule('* * * * *', () => runBroadcastDueJob());
-  cron.schedule('*/15 * * * *', () => withJobHealth(JobRunModel, 'leadpool-sweep', () => runLeadPoolDueJob()));
-  cron.schedule('*/30 * * * *', () => withJobHealth(JobRunModel, 'campaign-allocation', () => runAllocationDueJob()));
-  cron.schedule('*/15 * * * *', () => runGrowthAllocationDueJob());
-  cron.schedule('30 1 * * *', () => withJobHealth(JobRunModel, 'campaign-expiry', () => runCampaignExpiryDueJob()));
-  cron.schedule('*/15 * * * *', () => runSessionRemindersJob());
-  cron.schedule('*/15 * * * *', () => runEventRsvpDueJob());
-  cron.schedule('30 3 * * *', () => runErasureDueJob());
-  cron.schedule('15 * * * *', () => withJobHealth(JobRunModel, 'mentor-bonus', () => runMentorBonusDueJob()));
-  cron.schedule('45 * * * *', () => withJobHealth(JobRunModel, 'compensation-reconcile', () => runCompensationReconcileJob()));
-  cron.schedule('*/10 * * * *', () => withJobHealth(JobRunModel, 'payout-reconcile', () => runPayoutReconcileJob()));
-  cron.schedule('*/5 * * * *', () => withJobHealth(JobRunModel, 'store-order-expiry', () => runStoreOrderExpiryJob()));
-  cron.schedule('*/15 * * * *', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob()));
-  cron.schedule('*/20 * * * * *', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()));
-  console.log('[jobs] scheduled: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
+  const run = (name, fn, ttlMs = 10 * 60 * 1000) => () => withDistributedLock(name, fn, { ttlMs });
+
+  cron.schedule('0 2 * * *', run('team-snapshots', () => runSnapshotJob(), 30 * 60 * 1000));
+  cron.schedule('30 6 * * *', run('daily-brief', () => runDailyBriefJob()));
+  cron.schedule('0 7 * * 1', run('weekly-review', () => runWeeklyReviewJob()));
+  cron.schedule('0 8 * * *', run('birthdays', () => runBirthdayJob()));
+  cron.schedule('0 9 * * *', run('dormant-nudge', () => runDormantNudgeJob()));
+  cron.schedule('0 19 * * *', run('digests', () => runDigestJob()));
+  cron.schedule('* * * * *', run('outreach-due', () => runOutreachDueJob()));
+  cron.schedule('* * * * *', run('broadcast-due', () => runBroadcastDueJob()));
+  cron.schedule('*/15 * * * *', run('leadpool-sweep', () => withJobHealth(JobRunModel, 'leadpool-sweep', () => runLeadPoolDueJob())));
+  cron.schedule('*/30 * * * *', run('campaign-allocation', () => withJobHealth(JobRunModel, 'campaign-allocation', () => runAllocationDueJob())));
+  cron.schedule('*/15 * * * *', run('growth-campaign-allocation', () => withJobHealth(JobRunModel, 'growth-campaign-allocation', () => runGrowthAllocationDueJob())));
+  cron.schedule('30 1 * * *', run('campaign-expiry', () => withJobHealth(JobRunModel, 'campaign-expiry', () => runCampaignExpiryDueJob())));
+  cron.schedule('*/15 * * * *', run('session-reminders', () => runSessionRemindersJob()));
+  cron.schedule('*/15 * * * *', run('event-rsvp-reminders', () => runEventRsvpDueJob()));
+  cron.schedule('30 3 * * *', run('erasure-due', () => runErasureDueJob()));
+  cron.schedule('15 * * * *', run('mentor-bonus', () => withJobHealth(JobRunModel, 'mentor-bonus', () => runMentorBonusDueJob())));
+  cron.schedule('45 * * * *', run('compensation-reconcile', () => withJobHealth(JobRunModel, 'compensation-reconcile', () => runCompensationReconcileJob())));
+  cron.schedule('*/10 * * * *', run('payout-reconcile', () => withJobHealth(JobRunModel, 'payout-reconcile', () => runPayoutReconcileJob())));
+  cron.schedule('*/5 * * * *', run('store-order-expiry', () => withJobHealth(JobRunModel, 'store-order-expiry', () => runStoreOrderExpiryJob())));
+  cron.schedule('*/15 * * * *', run('store-escrow-release', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob())));
+  cron.schedule('*/20 * * * * *', run('outbox-delivery', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()), 2 * 60 * 1000));
+  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';

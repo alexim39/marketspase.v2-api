@@ -6,6 +6,7 @@ import {
 import { verifyCallbackSignature } from '../infrastructure/OpayClient.js';
 import { DepositIntentModel } from '../infrastructure/Deposit.mongo.model.js';
 import { PartnersModel, TransactionModel, runInTransaction } from '../infrastructure/Billing.models.js';
+import { mask, open } from '../../../shared/security/fieldCrypto.js';
 
 /**
  * POST /v1/billing/deposit/init — open a cashier session for a top-up.
@@ -289,7 +290,7 @@ export class MyManualClaimsUseCase {
       reference: d.reference,
       amountNgn: d.amountNgn,
       status: d.status,
-      claim: d.claim ?? null,
+      claim: claimShape(d).claim,
       decidedAt: d.decidedAt ?? null,
       decisionNote: d.decisionNote ?? null,
       creditedAt: d.creditedAt ?? null,
@@ -298,17 +299,24 @@ export class MyManualClaimsUseCase {
   }
 }
 
-const claimShape = (d) => ({
-  reference: d.reference,
-  amountNgn: d.amountNgn,
-  status: d.status,
-  claim: d.claim ?? null,
-  decidedBy: d.decidedBy ? String(d.decidedBy) : null,
-  decidedAt: d.decidedAt ?? null,
-  decisionNote: d.decisionNote ?? null,
-  creditedAt: d.creditedAt ?? null,
-  createdAt: d.createdAt,
-});
+function claimShape(d, { reveal = false } = {}) {
+  const claim = d.claim ? { ...d.claim } : null;
+  if (claim) {
+    claim.senderAccount = reveal ? open(claim.senderAccount) : mask(claim.senderAccount);
+    claim.destinationAccount = reveal ? open(claim.destinationAccount) : mask(claim.destinationAccount);
+  }
+  return {
+    reference: d.reference,
+    amountNgn: d.amountNgn,
+    status: d.status,
+    claim,
+    decidedBy: d.decidedBy ? String(d.decidedBy) : null,
+    decidedAt: d.decidedAt ?? null,
+    decisionNote: d.decisionNote ?? null,
+    creditedAt: d.creditedAt ?? null,
+    createdAt: d.createdAt,
+  };
+}
 
 /** GET /v1/billing/deposit/manual/queue — admin review queue. */
 export class ListManualQueueUseCase {
@@ -336,7 +344,7 @@ export class ListManualQueueUseCase {
       phone: o.phone ?? null,
       username: o.username ?? null,
     }]));
-    return rows.map((d) => ({ ...claimShape(d), partner: labels[String(d.partnerId)] ?? null }));
+    return rows.map((d) => ({ ...claimShape(d, { reveal: true }), partner: labels[String(d.partnerId)] ?? null }));
   }
 }
 

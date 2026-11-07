@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { idempotency } from '../../../shared/http/idempotency.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
@@ -72,8 +73,9 @@ export const buildOutreachRouter = (deps = {}) => {
   // Session identity owns the wallet charge — no body partnerId to tamper with.
   router.use(requireAuth);
   const sendLimit = rateLimit({ name: 'outreach-send', windowMs: 3600000, max: 20, key: userKey });
+  const sendHourLimit = mongoRateLimit({ name: 'outreach-send', windowMs: 3600000, max: 20, key: userKey });
 
-  router.post('/sms', sendLimit, validate({ body: BulkSmsSchema }), idempotency(), asyncHandler(async (req, res) => {
+  router.post('/sms', sendLimit, sendHourLimit, validate({ body: BulkSmsSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await sendBulk.execute({ partnerId: req.auth?.partnerId, ...body });
     res.status(200).json({ message: `SMS sent to ${data.sent} of ${data.total} recipients`, data, success: true });
@@ -96,7 +98,7 @@ export const buildOutreachRouter = (deps = {}) => {
     res.status(200).json({ message: 'Scheduled send cancelled', data, success: true });
   }));
 
-  router.post('/email', sendLimit, validate({ body: EmailSchema }), idempotency(), asyncHandler(async (req, res) => {
+  router.post('/email', sendLimit, sendHourLimit, validate({ body: EmailSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await sendEmail.execute({ partnerId: req.auth?.partnerId, ...body });
     res.status(200).json({ message: `Email sent to ${data.sent} of ${data.total} recipients`, data, success: true });

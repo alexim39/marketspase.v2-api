@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { idempotency } from '../../../shared/http/idempotency.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
@@ -182,8 +183,14 @@ export const buildDepositRouter = (deps = {}) => {
     max: 10,
     key: userKey,
   });
+  const depositInitHourLimit = mongoRateLimit({
+    name: 'billing-deposit-init',
+    windowMs: 3600000,
+    max: 10,
+    key: userKey,
+  });
 
-  router.post('/deposit/init', requireAuth, depositInitLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
+  router.post('/deposit/init', requireAuth, depositInitLimit, depositInitHourLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await init.execute({
       partnerId: req.auth?.partnerId,
@@ -216,7 +223,7 @@ export const buildDepositRouter = (deps = {}) => {
     });
   }));
 
-  router.post('/deposit/paystack/init', requireAuth, depositInitLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
+  router.post('/deposit/paystack/init', requireAuth, depositInitLimit, depositInitHourLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await paystackInit.execute({
       partnerId: req.auth?.partnerId,

@@ -2,6 +2,7 @@ import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, clientIp } from '../../../shared/http/rateLimit.js';
+import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { SignupSchema, SigninSchema, ResetRequestSchema, ResetConfirmSchema, VerifyEmailSchema, ResendVerificationSchema } from './Auth.validator.js';
 import { makeAuthController } from './Auth.controller.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
@@ -122,8 +123,8 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   const router = express.Router();
   // Brute-force guard on credential + reset endpoints (per-IP budgets).
   const authLimit = rateLimit({ name: 'auth-attempt', windowMs: 60000, max: 10 });
-  const loginHourLimit = rateLimit({ name: 'auth-login-hour', windowMs: 3600000, max: 30 });
-  const refreshLimit = rateLimit({ name: 'auth-refresh-hour', windowMs: 3600000, max: 30 });
+  const loginHourLimit = mongoRateLimit({ name: 'auth-login-hour', windowMs: 3600000, max: 30 });
+  const refreshLimit = mongoRateLimit({ name: 'auth-refresh-hour', windowMs: 3600000, max: 30 });
   const resetLimit = rateLimit({ name: 'auth-reset', windowMs: 60000, max: 5 });
   const verifyLimit = rateLimit({ name: 'auth-verify', windowMs: 60000, max: 10 });
   const resendIpLimit = rateLimit({ name: 'auth-resend-ip', windowMs: 600000, max: 20 });

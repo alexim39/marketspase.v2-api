@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { idempotency } from '../../../shared/http/idempotency.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { makeBillingController } from './Billing.controller.js';
@@ -77,6 +78,12 @@ export const buildBillingRouter = (deps = {}) => {
     max: 5,
     key: userKey,
   });
+  const withdrawalHourLimit = mongoRateLimit({
+    name: 'billing-withdrawal',
+    windowMs: 3600000,
+    max: 5,
+    key: userKey,
+  });
   // Earner self-service (own session identity — no :partnerId to tamper with).
   router.get('/mine', validate({ query: PageQuery }), c.mine);
   router.get('/performance', validate({ query: z.object({}) }), c.summary);
@@ -86,7 +93,7 @@ export const buildBillingRouter = (deps = {}) => {
   // Bank directory — proxied so the browser never calls Paystack directly.
   router.get('/banks', c.listBanks);
   // Withdrawal request — account name is re-resolved server-side.
-  router.post('/withdrawals', withdrawalLimit, validate({ body: WithdrawalSchema }), idempotency(), c.createWithdrawal);
+  router.post('/withdrawals', withdrawalLimit, withdrawalHourLimit, validate({ body: WithdrawalSchema }), idempotency(), c.createWithdrawal);
   // Called by checkout after legacy order success (idempotent on retry).
   router.post('/accrue/:cartId', validate({ params: CartIdParam }), c.accrue);
 

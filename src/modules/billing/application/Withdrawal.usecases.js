@@ -1,4 +1,5 @@
 ﻿import { ConflictException, ValidationException } from '../../../shared/domain/AppError.js';
+import { seal } from '../../../shared/security/fieldCrypto.js';
 import { PartnersModel, TransactionModel, runInTransaction } from '../infrastructure/Billing.models.js';
 import { markWithdrawalPaid, refundWithdrawal } from './PaystackPayout.usecases.js';
 
@@ -110,7 +111,8 @@ export class CreateWithdrawalUseCase {
           transactionType: 'Debit',
           bank: bankLabel,
           bankCode: bank,
-          accountNumber: account,
+          accountNumber: seal(account),
+          accountLast4: account.slice(-4),
           accountName: resolved.accountName,
           reference,
           payoutMode: this.autoPayout ? 'automatic' : 'manual',

@@ -6,6 +6,7 @@ import {
   ValidationException,
 } from '../../../shared/domain/AppError.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
+import { open, seal } from '../../../shared/security/fieldCrypto.js';
 import {
   PartnersModel,
   runInTransaction,
@@ -84,9 +85,9 @@ const publicKyc = (kyc) => {
   return {
     status: kyc.status,
     dateOfBirth: kyc.dateOfBirth,
-    address: kyc.address,
-    city: kyc.city,
-    state: kyc.state,
+    address: open(kyc.address),
+    city: open(kyc.city),
+    state: open(kyc.state),
     country: kyc.country,
     idType: kyc.idType,
     idLast4: kyc.idLast4,
@@ -181,9 +182,9 @@ export class MongoOnboardingRepository {
         {
           $set: {
             dateOfBirth: input.dateOfBirth ?? null,
-            address: input.address ?? null,
-            city: input.city ?? null,
-            state: input.state ?? null,
+            address: seal(input.address),
+            city: seal(input.city),
+            state: seal(input.state),
             country: input.country ?? 'Nigeria',
             idType: input.idType ?? null,
             idNumberHash,

@@ -2,6 +2,7 @@ import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { idempotency } from '../../../shared/http/idempotency.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
@@ -29,6 +30,12 @@ export const buildStoreRouter = (deps = {}) => {
   const audit = deps.audit ?? recordAudit;
   const router = express.Router();
   const listingLimit = rateLimit({
+    name: 'store-listing',
+    windowMs: 3600000,
+    max: 10,
+    key: userKey,
+  });
+  const listingHourLimit = mongoRateLimit({
     name: 'store-listing',
     windowMs: 3600000,
     max: 10,
@@ -103,6 +110,7 @@ export const buildStoreRouter = (deps = {}) => {
     '/me/products/:id',
     auth,
     listingLimit,
+    listingHourLimit,
     validate({ params: StoreProductParamsSchema, body: StoreProductUpdateSchema }),
     asyncHandler(async (req, res) => {
       const data = await repo.updateProduct(

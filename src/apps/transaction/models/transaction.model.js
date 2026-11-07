@@ -20,6 +20,7 @@ const transactionSchema = new mongoose.Schema({
   bank: { type: String, default: null },
   bankCode: { type: String, default: null },
   accountNumber: { type: String, default: null },
+  accountLast4: { type: String, default: null },
   accountName: { type: String, default: null },
   // Automatic Paystack payout state. Manual/legacy rows leave these null.
   payoutMode: { type: String, enum: ['automatic', 'manual'], default: undefined },
