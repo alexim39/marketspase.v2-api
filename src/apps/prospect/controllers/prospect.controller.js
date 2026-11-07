@@ -14,7 +14,7 @@ const claimPoolLead = new ClaimPoolLeadUseCase({});
 // prospect-model endpoint below is now session-checked.
 const guard = buildProspectAccess({
   findProspectById: (id) => ProspectModel.findById(id).select('partnerId').lean().catch(() => null),
-  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean().catch(() => null),
+  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean().catch(() => null),
 });
 const deny = (res, err) => res.status(err?.statusCode ?? 403).json({ message: err?.message ?? 'Forbidden', success: false });
 

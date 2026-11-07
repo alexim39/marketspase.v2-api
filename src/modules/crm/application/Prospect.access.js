@@ -13,8 +13,9 @@ import { adminBootstrapEmails, lenientRole } from '../../identity-access/domain/
  * - owner:   owner or admin only. PII edits, history deletes, prospect
  *            deletes, converts and pool returns move money/identity/credit.
  *
- * Upline = requester appears in the owner's `partnerOf` ancestor chain
- * (bounded, cycle-safe). Admin = role check incl. bootstrap emails.
+ * Upline = requester appears in the owner's effective parent chain:
+ * `partnerOf` when present, otherwise `placementParentId` (campaign mentor).
+ * Bounded, cycle-safe. Admin = role check incl. bootstrap emails.
  * Every dependency is injected (fakes in tests, Mongoose in prod).
  */
 const MAX_CHAIN = 12;
@@ -27,14 +28,18 @@ export const isAdminDoc = (doc) => {
   return adminBootstrapEmails().includes(String(doc.email ?? '').toLowerCase());
 };
 
-/** Walk the owner's upline chain; true when ancestorId is above ownerId. */
+/** Walk the owner's effective upline chain; true when ancestorId is above ownerId. */
 export const isUplineOf = async (findPartnerById, ancestorId, ownerId) => {
   if (!ancestorId || !ownerId || sameId(ancestorId, ownerId)) return false;
   const seen = new Set([String(ownerId)]);
   let current = String(ownerId);
   for (let d = 0; d < MAX_CHAIN && current; d++) {
     const node = await findPartnerById(current).catch(() => null);
-    const parent = node?.partnerOf ? String(node.partnerOf) : null;
+    // Referral parent wins; campaign placement is the fallback parent — the
+    // same rule as the network read model and My Partners list.
+    const parent = node?.partnerOf
+      ? String(node.partnerOf)
+      : (node?.placementParentId ? String(node.placementParentId) : null);
     if (!parent) return false;
     if (parent === String(ancestorId)) return true;
     if (seen.has(parent)) return false;

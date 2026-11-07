@@ -14,7 +14,7 @@ import { maskPartnerContact } from '../domain/ContactMask.js';
 // sanitized to public fields instead.
 const guard = buildProspectAccess({
   findProspectById: async () => null,
-  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean().catch(() => null),
+  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean().catch(() => null),
 });
 const sessionId = (req) => (req.auth?.partnerId ? String(req.auth.partnerId) : null);
 const deny = (res, status, message) => res.status(status).json({ message, success: false });
