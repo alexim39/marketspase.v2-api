@@ -8,12 +8,20 @@ import { classifyTopic, summarizeAnalytics } from '../domain/Ora.analytics.js';
 /** Recent window sent to the model — bounds tokens per call. */
 export const HISTORY_WINDOW = 12;
 /** Per-partner daily message cap (cost control; in-memory, resets on restart). */
-export const DEFAULT_DAILY_LIMIT = 50;
+export const DEFAULT_DAILY_LIMIT = 25;
 export const MAX_PENDING_ACTIONS = 20;
 
 const dayKey = (now = new Date()) => {
   const d = now instanceof Date ? now : new Date(now);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Next local midnight, matching the `dayKey` rollover. */
+const nextDayStart = (now = new Date()) => {
+  const d = now instanceof Date ? new Date(now) : new Date(now);
+  if (Number.isNaN(d.getTime())) return nextDayStart(new Date());
+  d.setHours(24, 0, 0, 0);
+  return d;
 };
 
 const toHistory = (messages = []) => messages
@@ -180,8 +188,26 @@ export class AskOraUseCase {
    * (`usage` is a Map for tests; defaults to a module counter.)
    */
   constructor({ conversations, client, context, analytics = null, actions = null, dailyLimit = DEFAULT_DAILY_LIMIT, usage = null }) {
-    Object.assign(this, { conversations, client, context, analytics, actions, dailyLimit });
+    const configured = Number(dailyLimit);
+    Object.assign(this, { conversations, client, context, analytics, actions });
+    this.dailyLimit = Number.isFinite(configured) && configured >= 0
+      ? Math.floor(configured)
+      : DEFAULT_DAILY_LIMIT;
     this.usage = usage ?? new Map();
+  }
+
+  /** Current partner's daily budget, safe to expose to the UI. */
+  usageFor(partnerId, now = new Date()) {
+    const limit = this.dailyLimit;
+    const dateKey = dayKey(now);
+    const used = Math.max(0, Number(this.usage.get(`${partnerId}:${dateKey}`)) || 0);
+    return {
+      dateKey,
+      limit,
+      used,
+      remaining: Math.max(0, limit - used),
+      resetsAt: nextDayStart(now).toISOString(),
+    };
   }
 
   async execute({ partnerId, message, conversationId = null, now = new Date() }) {
@@ -190,7 +216,13 @@ export class AskOraUseCase {
     const key = `${partnerId}:${dayKey(now)}`;
     const used = this.usage.get(key) ?? 0;
     if (used >= this.dailyLimit) {
-      throw new AppError('Daily Ora limit reached — please continue tomorrow', 429, 'ORA_RATE_LIMITED');
+      throw new AppError(
+        'Daily Ora limit reached — please continue tomorrow',
+        429,
+        'ORA_RATE_LIMITED',
+        { usage: this.usageFor(partnerId, now) },
+        'Your daily Ora limit resets at midnight.',
+      );
     }
     let convo = null;
     if (conversationId) {
@@ -220,6 +252,7 @@ export class AskOraUseCase {
           actions: [],
           degraded: true,
           warning: 'AI_DOWN_USING_LAST_PICKS',
+          usage: this.usageFor(partnerId, now),
         };
       }
       throw error;
@@ -245,7 +278,7 @@ export class AskOraUseCase {
         latencyMs: Date.now() - started, at: new Date(),
       }).catch(() => null);
     }
-    return { conversationId: convo.id, reply, actions };
+    return { conversationId: convo.id, reply, actions, usage: this.usageFor(partnerId, now) };
   }
 }
 

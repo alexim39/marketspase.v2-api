@@ -39,6 +39,21 @@ const actionStore = () => ({
   },
 });
 
+const fakeConversations = () => ({
+  async create(partnerId, title) {
+    return { id: 'c1', partnerId, title, messages: [] };
+  },
+  async findById() { return null; },
+  async appendMessage() { return {}; },
+});
+
+const askWithLimit = (dailyLimit) => new AskOraUseCase({
+  conversations: fakeConversations(),
+  client: { complete: async () => 'That is the next step.' },
+  context: { assemble: async () => snapshot },
+  dailyLimit,
+});
+
 test('materializes an opportunity into a persisted approval action', async () => {
   const actions = actionStore();
   const out = await materializeProposals({
@@ -184,6 +199,41 @@ test('a pipeline question still yields an approval card when the model omits one
   assert.equal(out.actions[0].type, 'send_sms');
   assert.equal(out.actions[0].payload.body, 'Default draft');
   assert.equal(created.length, 1);
+});
+
+test('chat responses carry the per-partner daily usage budget', async () => {
+  const usecase = askWithLimit(25);
+  const now = new Date('2026-11-07T10:00:00Z');
+
+  const first = await usecase.execute({ partnerId: 'p1', message: 'Hello Ora', now });
+
+  assert.equal(first.usage.limit, 25);
+  assert.equal(first.usage.used, 1);
+  assert.equal(first.usage.remaining, 24);
+  assert.equal(first.usage.dateKey, '2026-11-07');
+  assert.ok(new Date(first.usage.resetsAt).getTime() > now.getTime());
+  assert.deepEqual(usecase.usageFor('p1', now), first.usage);
+  assert.equal(usecase.usageFor('p2', now).used, 0);
+  assert.equal(usecase.usageFor('p2', now).remaining, 25);
+});
+
+test('the daily cap rejects the next message with usage details', async () => {
+  const usecase = askWithLimit(1);
+  const now = new Date('2026-11-07T10:00:00Z');
+
+  await usecase.execute({ partnerId: 'p1', message: 'First message', now });
+
+  await assert.rejects(
+    usecase.execute({ partnerId: 'p1', message: 'Second message', now }),
+    (error) => {
+      assert.equal(error.statusCode, 429);
+      assert.equal(error.code, 'ORA_RATE_LIMITED');
+      assert.equal(error.details.usage.limit, 1);
+      assert.equal(error.details.usage.used, 1);
+      assert.equal(error.details.usage.remaining, 0);
+      return true;
+    },
+  );
 });
 
 test('approval claims once, executes once and returns the existing result afterwards', async () => {

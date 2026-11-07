@@ -130,6 +130,11 @@ export const buildOraRouter = (deps = {}) => {
     res.status(200).json({ message: 'Ora context retrieved successfully', data, success: true });
   }));
 
+  router.get('/usage', asyncHandler(async (req, res) => {
+    const data = ask.usageFor(req.auth?.partnerId);
+    res.status(200).json({ message: 'Ora usage retrieved successfully', data, success: true });
+  }));
+
   const planSaveLimit = rateLimit({ name: 'ora-plan-save', windowMs: 3600000, max: 30, key: userKey });
 
   router.get('/plan', asyncHandler(async (req, res) => {

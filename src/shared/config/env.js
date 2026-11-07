@@ -38,7 +38,7 @@ export const env = {
       model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
       maxTokens: Number(process.env.DEEPSEEK_MAX_TOKENS || 800),
       timeoutMs: Number(process.env.DEEPSEEK_TIMEOUT_MS || 30000),
-      dailyLimit: Number(process.env.ORA_DAILY_LIMIT || 50),
+      dailyLimit: Number(process.env.ORA_DAILY_LIMIT || 25),
     };
   },
   /**

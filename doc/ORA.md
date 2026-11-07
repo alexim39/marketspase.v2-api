@@ -127,6 +127,19 @@ Consent: manual/contact-list prospects need `consentToContact: true`. Survey-sou
 
 The live context also carries the pipeline stage mix, wallet balance, team size/recent partners, active/pending campaigns, store listings, pending receipts, open store orders, goals, next event, today's saved plan and unread notifications, so answers can quote real numbers.
 
+## Daily usage budget
+
+- `ORA_DAILY_LIMIT` (default `25`, configurable in the API env) caps successful
+  chat replies per partner per local day.
+- `GET /v1/ora/usage` returns `{ dateKey, limit, used, remaining, resetsAt }`.
+- Every `POST /v1/ora/chat` reply includes the same `usage` object, so the chat
+  UI can update its progress bar without another request.
+- A blocked turn returns `429 ORA_RATE_LIMITED` with `details.usage` and a
+  midnight reset hint.
+- The counter is in-memory per API process: it resets on restart and is not
+  shared across replicas. Move it to Mongo if a hard platform-wide cap is
+  required.
+
 ## Safety rules
 
 - No auto-send without approval.
