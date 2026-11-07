@@ -1,6 +1,11 @@
 import { createNoteEntity } from '../domain/Coaching.entity.js';
-import { isAncestor } from '../../network/infrastructure/Network.mongo.repository.js';
+import { collectDownlineIds, isAncestor } from '../../network/infrastructure/Network.mongo.repository.js';
 import { ForbiddenException } from '../../../shared/domain/AppError.js';
+
+const displayName = (node) => {
+  if (!node) return null;
+  return [node.name, node.surname].filter(Boolean).join(' ') || node.username || null;
+};
 
 /** GET /v1/coaching/mine — your coach (direct upline), action items and next step. */
 export class GetMyCoachUseCase {
@@ -46,9 +51,9 @@ export class GetMyCoachUseCase {
 }
 
 export class AddNoteUseCase {
-  /** @param {{coaching, network}} deps */
-  constructor({ coaching, network }) {
-    Object.assign(this, { coaching, network });
+  /** @param {{coaching, network, notify?}} deps */
+  constructor({ coaching, network, notify = null }) {
+    Object.assign(this, { coaching, network, notify });
   }
 
   async execute({ coachId, memberId, body }) {
@@ -67,12 +72,44 @@ export class AddNoteUseCase {
     }
 
     const entity = createNoteEntity({ body });
-    return this.coaching.addNote({
+    const note = await this.coaching.addNote({
       memberId: targetId,
       coachId: noteCoachId,
       authorId: actorId,
       body: entity.body,
     });
+    await this.notifySharedNote({ note, actorId, targetId, noteCoachId });
+    return note;
+  }
+
+  /**
+   * A note is a shared journal entry: whichever side writes it, the other
+   * side gets a notification. Best-effort — a notification failure must
+   * never lose the note that was already saved.
+   */
+  async notifySharedNote({ note, actorId, targetId, noteCoachId }) {
+    if (!this.notify?.execute) return null;
+    const selfNote = actorId === targetId;
+    const recipientId = selfNote ? noteCoachId : targetId;
+    if (!recipientId || String(recipientId) === actorId) return null;
+    try {
+      const actor = await this.network?.findNode?.(actorId).catch(() => null);
+      const author = displayName(actor) ?? 'Your partner';
+      const snippet = String(note.body ?? '').slice(0, 180);
+      return await this.notify.execute({
+        recipientId,
+        category: 'team',
+        priority: 'medium',
+        title: selfNote ? `${author} shared a coaching note` : `${author} added a coaching note`,
+        body: snippet,
+        icon: 'menu_book',
+        link: selfNote
+          ? `/dashboard/mentorship/partners/my-partners/detail/${targetId}`
+          : '/dashboard/training/coach',
+      });
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -86,8 +123,46 @@ export class ListNotesUseCase {
     const target = memberId ?? requesterId;
     if (String(target) !== String(requesterId)) {
       const isCoach = await isAncestor(this.network, requesterId, target).catch(() => false);
-      if (!isCoach) throw new (await import('../../../shared/domain/AppError.js')).ForbiddenException('Only an upline can view these notes');
+      if (!isCoach) throw new ForbiddenException('Only an upline can view these notes');
     }
     return this.coaching.listNotes(target, limit);
+  }
+}
+
+/**
+ * Coach inbox: recent notes written anywhere in the caller's downline.
+ * Scoped by the network — a member only ever sees notes from their own team.
+ */
+export class ListCoachingInboxUseCase {
+  /** @param {{coaching, network}} deps */
+  constructor({ coaching, network }) {
+    Object.assign(this, { coaching, network });
+  }
+
+  async execute({ partnerId, limit = 50 }) {
+    const { ids, capped } = await collectDownlineIds(this.network, partnerId, {
+      maxDepth: 5,
+      cap: 1000,
+    });
+    if (ids.length === 0) return { notes: [], total: 0, teamSize: 0, capped: false };
+    const rows = await this.coaching.listNotesForMembers(ids, limit);
+    const authorIds = rows.map((r) => String(r.authorId ?? r.coachId));
+    const memberIds = rows.map((r) => String(r.memberId));
+    const lookup = [...new Set([...memberIds, ...authorIds])];
+    const nodes = this.network?.findNodesByIds
+      ? await this.network.findNodesByIds(lookup).catch(() => [])
+      : [];
+    const byId = Object.fromEntries((nodes ?? []).map((n) => [String(n.id), n]));
+    const notes = rows.map((row) => {
+      const authorId = String(row.authorId ?? row.coachId);
+      return {
+        ...row,
+        memberName: displayName(byId[String(row.memberId)]) ?? 'Team member',
+        memberUsername: byId[String(row.memberId)]?.username ?? null,
+        authorName: displayName(byId[authorId]) ?? 'Team member',
+        authorRole: authorId === String(row.memberId) ? 'member' : 'coach',
+      };
+    });
+    return { notes, total: notes.length, teamSize: ids.length, capped };
   }
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
-import { AddNoteUseCase, GetMyCoachUseCase, ListNotesUseCase } from '../application/Coaching.usecases.js';
+import { AddNoteUseCase, GetMyCoachUseCase, ListCoachingInboxUseCase, ListNotesUseCase } from '../application/Coaching.usecases.js';
 import { MongoCoachingStore } from '../infrastructure/Coaching.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
@@ -14,6 +14,8 @@ import { MongoCommunityStore } from '../../community/infrastructure/Community.mo
 import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
 import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { MongoTrainingStore } from '../../training/infrastructure/Training.mongo.repository.js';
+import { NotifyUseCase } from '../../notifications/application/NotificationsCenter.usecases.js';
+import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 
@@ -32,10 +34,13 @@ export const buildCoachingRouter = (deps = {}) => {
     reports: deps.reportStore ?? new MongoReportStore(),
   });
   const training = deps.training ?? new MongoTrainingStore();
+  const notifyStore = deps.stored ?? new MongoStoredNotificationStore();
+  const notify = deps.notify ?? new NotifyUseCase({ stored: notifyStore });
 
   const myCoach = new GetMyCoachUseCase({ network, progression, training });
-  const addNote = new AddNoteUseCase({ coaching, network });
+  const addNote = new AddNoteUseCase({ coaching, network, notify });
   const listNotes = new ListNotesUseCase({ coaching, network });
+  const inbox = new ListCoachingInboxUseCase({ coaching, network });
 
   const router = express.Router();
   router.use(requireAuth);
@@ -49,6 +54,12 @@ export const buildCoachingRouter = (deps = {}) => {
     const q = req.validated?.query ?? req.query;
     const data = await listNotes.execute({ requesterId: req.auth?.partnerId, memberId: q?.memberId, limit: q?.limit });
     res.status(200).json({ message: 'Notes retrieved successfully', data, success: true });
+  }));
+
+  router.get('/inbox', validate({ query: z.object({ limit: z.coerce.number().int().min(1).max(100).optional().default(50) }) }), asyncHandler(async (req, res) => {
+    const q = req.validated?.query ?? req.query;
+    const data = await inbox.execute({ partnerId: req.auth?.partnerId, limit: q?.limit });
+    res.status(200).json({ message: 'Coaching inbox retrieved successfully', data, success: true });
   }));
 
   router.post('/notes', validate({ body: z.object({ memberId: objectId, body: z.string().trim().min(3).max(2000) }) }), asyncHandler(async (req, res) => {
