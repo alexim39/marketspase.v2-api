@@ -4,6 +4,7 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit } from '../../../shared/http/rateLimit.js';
 import { requireRole } from '../../../modules/identity-access/interface/RequireRole.js';
 import { validateBodyInPlace } from '../../../shared/http/validate.js';
+import { idempotency } from '../../../shared/http/idempotency.js';
 import {
     createCampaign,
     createFacebookCampaign,
@@ -109,16 +110,16 @@ const CampaignAllocate = z.object({
 
 // unified creation (one wizard, per-channel minimums enforced inside)
 // — session-owned: wallet + record always hit the caller's account.
-CampaignRouter.post('/', requireAuth, validateBodyInPlace(CampaignCreate), createCampaign);
+CampaignRouter.post('/', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createCampaign);
 
 // create facebook campaign
-CampaignRouter.post('/facebook', requireAuth, validateBodyInPlace(CampaignCreate), createFacebookCampaign);
+CampaignRouter.post('/facebook', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createFacebookCampaign);
 
 // create youtbue campaign
-CampaignRouter.post('/youtube', requireAuth, validateBodyInPlace(CampaignCreate), createYoutubeCampaign);
+CampaignRouter.post('/youtube', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createYoutubeCampaign);
 
 // create linkedin campaign
-CampaignRouter.post('/linkedin', requireAuth, validateBodyInPlace(CampaignCreate), createLinkedinCampaign);
+CampaignRouter.post('/linkedin', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createLinkedinCampaign);
 
 // Get all campaigns createdBy — owner, upline or admin.
 CampaignRouter.get('/all-createdBy/:createdBy', requireAuth, getCampaignsCreatedBy);

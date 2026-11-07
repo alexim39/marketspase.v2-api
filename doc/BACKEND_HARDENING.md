@@ -46,7 +46,9 @@ request returns `409 REQUEST_IN_PROGRESS` with `retry_after: 1`.
 
 Covered: withdrawals, deposit init, store checkout, campaign creation, lead
 claims, page-lead acceptance, outreach SMS/email and onboarding orders.
-The web client adds a key and retries once on a transport failure.
+Legacy `/campaign` create endpoints honour the header when supplied; the v1
+flow requires it. The web client adds a key and retries once on a transport
+failure.
 
 ## Money ledger
 
@@ -54,6 +56,9 @@ The web client adds a key and retries once on a transport failure.
 - Transaction rows carry `balanceBefore` / `balanceAfter` where available.
 - Withdrawals are created as `Pending` immediately and reconciled by webhook
   every 10 minutes.
+- Legacy campaign purchases use one transaction for the `$gte` balance debit,
+  the debit transaction row and the campaign itself. A failed campaign save
+  can no longer leave the wallet short.
 - Deposit intents are credited exactly once via an atomic status flip.
 - Provider webhook IDs are stored in `providerevents`; replays short-circuit.
 

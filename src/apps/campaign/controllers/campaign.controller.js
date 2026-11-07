@@ -1,5 +1,6 @@
 import {CampaignModel} from './../models/campaign.model.js';
 import { PartnersModel } from './../../partner/models/partner.model.js';
+import { runInTransaction } from '../../../modules/identity-access/infrastructure/Auth.models.js';
 import mongoose from 'mongoose';
 import {TransactionModel} from '../../transaction/models/transaction.model.js';
 import { NotifyUseCase } from '../../../modules/notifications/application/NotificationsCenter.usecases.js';
@@ -111,6 +112,46 @@ const CHANNEL_LABEL = {
   linkedin: 'LinkedIn',
 };
 
+const httpError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+/**
+ * Legacy campaign purchases: atomic debit + transaction row + campaign in one
+ * transaction. Replaces the old read-modify-save sequence, which could debit a
+ * partner and then fail the campaign save with no row to reconcile against.
+ */
+const purchaseCampaign = async ({ body, amount, label, campaign }) => runInTransaction(async (session) => {
+  const lookup = PartnersModel.findById(body.createdBy);
+  if (session) lookup.session(session);
+  const partner = await lookup;
+  if (!partner) throw httpError(400, 'Partner not found');
+  if (!(Number(partner.balance ?? 0) >= amount)) {
+    throw httpError(401, 'Insufficient balance for transaction');
+  }
+
+  const debit = await PartnersModel.updateOne(
+    { _id: partner._id, balance: { $gte: amount } },
+    { $inc: { balance: -Number(amount) } },
+    { session },
+  );
+  if (!debit.modifiedCount) throw httpError(401, 'Insufficient balance for transaction');
+
+  const [transaction] = await TransactionModel.create([{
+    partnerId: partner._id,
+    amount: Number(amount),
+    status: 'Completed',
+    paymentMethod: `${label} Ads`,
+    transactionType: 'Debit',
+    reference: Math.floor(100000000 + Math.random() * 900000000).toString(),
+  }], { session });
+
+  const [created] = await CampaignModel.create([campaign], { session });
+  return { campaign: created, transaction };
+});
+
 // Unified campaign creation (one wizard for all channels).
 // Same economics as the legacy per-channel endpoints (minimum hold per
 // channel, full-budget wallet debit, Pending admin flow); those endpoints
@@ -124,14 +165,6 @@ export const createCampaign = async (req, res) => {
     if (!CHANNEL_MINIMUM[channel]) {
       return res.status(400).json({
         message: 'Pick a valid channel: Facebook, YouTube or LinkedIn.',
-        success: false,
-      });
-    }
-
-    const partner = await PartnersModel.findById(body.createdBy);
-    if (!partner) {
-      return res.status(400).json({
-        message: 'Partner not found',
         success: false,
       });
     }
@@ -156,7 +189,6 @@ export const createCampaign = async (req, res) => {
       });
     }
 
-    // Check if the partner entered sufficient amount
     if (budgetAmount < CHANNEL_MINIMUM[channel]) {
       return res.status(402).json({
         message: `Minimum budget for ${CHANNEL_LABEL[channel]} is ₦${CHANNEL_MINIMUM[channel].toLocaleString()}.`,
@@ -164,64 +196,38 @@ export const createCampaign = async (req, res) => {
       });
     }
 
-    // Check if the partner has sufficient balance for the budget amount
-    if (partner.balance >= budgetAmount) {
-      // Deduct the budget amount from the partner's balance
-      partner.balance -= budgetAmount;
-
-      // Save the updated partner balance
-      await partner.save();
-
-      // Record the transaction
-      const transaction = new TransactionModel({
-        partnerId: partner._id,
-        amount: budgetAmount,  // Use the budget amount as the charge
-        status: 'Completed',
-        paymentMethod: `${CHANNEL_LABEL[channel]} Ads`,
-        transactionType: 'Debit',
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString() // Generate a random 9-digit number as a string
+    const title = String(body.title ?? '').trim().slice(0, 120);
+    const category = String(body.category ?? '').trim().slice(0, 80);
+    if (!CAMPAIGN_CATEGORIES.includes(category)) {
+      return res.status(400).json({
+        message: 'Pick a valid campaign category.',
+        success: false,
       });
+    }
 
-      await transaction.save();
-
-      const title = String(body.title ?? '').trim().slice(0, 120);
-      const category = String(body.category ?? '').trim().slice(0, 80);
-      if (!CAMPAIGN_CATEGORIES.includes(category)) {
-        return res.status(400).json({
-          message: 'Pick a valid campaign category.',
-          success: false,
-        });
-      }
-      // Create a new Ad document using the data from the request body
-      const newAd = new CampaignModel({
+    const { campaign, transaction } = await purchaseCampaign({
+      body,
+      amount: budgetAmount,
+      label: CHANNEL_LABEL[channel],
+      campaign: {
         ...body,
         budget: { ...body.budget, budgetAmount },
         targetAudience: { ...body.targetAudience, locationTargets },
         campaignName: title ? `${title} · ${CHANNEL_LABEL[channel]}` : CHANNEL_LABEL[channel],
         category,
-      });
+      },
+    });
 
-      // Save the Ad document to the database
-      await newAd.save();
-
-      res.status(200).json({
-        message: 'Ad campaign created successfully! Our admin team will run it and leads will land in your general contact list.',
-        data: newAd,
-        transaction: transaction,
-        success: true,
-      });
-
-    } else {
-      return res.status(401).json({
-        message: 'Insufficient balance for transaction',
-        success: false,
-      });
-    }
-
+    return res.status(200).json({
+      message: 'Ad campaign created successfully! Our admin team will run it and leads will land in your general contact list.',
+      data: campaign,
+      transaction,
+      success: true,
+    });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      message: 'Error creating campaign',
+    const status = error.statusCode ?? 500;
+    return res.status(status).json({
+      message: status === 500 ? 'Error creating campaign' : error.message,
       success: false,
     });
   }
@@ -229,228 +235,103 @@ export const createCampaign = async (req, res) => {
 
 // facebook campaign/ads
 export const createFacebookCampaign = async (req, res) => {
-  const MIN_CHARGE = 6500; // Define the Facebook minimum charge amount  
-
   try {
     const { body } = req;
     ownBody(req);
-
-    // Find the partner by ID  
-    const partner = await PartnersModel.findById(body.createdBy);
-    if (!partner) {
-      return res.status(400).json({
-        message: 'Partner not found',
-        success: false,
-      });
+    const amount = Number(body.budget?.budgetAmount);
+    if (!Number.isFinite(amount)) {
+      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
     }
-
-    // Check if the partner entered sufficient amount  
-    if (body.budget.budgetAmount < MIN_CHARGE) {
-      return res.status(402).json({
-        message: 'Insufficient amount for transaction',
-        success: false,
-      });
+    if (amount < 6500) {
+      return res.status(402).json({ message: 'Insufficient amount for transaction', success: false });
     }
-
-    // Check if the partner has sufficient balance for the budget amount
-    if (partner.balance >= body.budget.budgetAmount) {
-      // Deduct the budget amount from the partner's balance  
-      partner.balance -= body.budget.budgetAmount;
-
-      // Save the updated partner balance  
-      await partner.save();
-
-      // Record the transaction  
-      const transaction = new TransactionModel({
-        partnerId: partner._id,
-        amount: body.budget.budgetAmount,  // Use the budget amount as the charge
-        status: 'Completed',
-        paymentMethod: 'Facebook Ads',
-        transactionType: 'Debit',
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString() // Generate a random 9-digit number as a string
-      });
-
-      await transaction.save();
-
-      // Create a new Ad document using the data from the request body
-      const newAd = new CampaignModel(body);
-
-      // Save the Ad document to the database
-      await newAd.save();
-
-      res.status(200).json({
-        message: 'Ad campaign created successfully!',
-        data: newAd,
-        transaction: transaction,
-        success: true,
-      });
-
-    } else {
-      return res.status(401).json({
-        message: 'Insufficient balance for transaction',
-        success: false,
-      });
-    }
-
+    const { campaign, transaction } = await purchaseCampaign({
+      body,
+      amount,
+      label: 'Facebook',
+      campaign: body,
+    });
+    return res.status(200).json({
+      message: 'Ad campaign created successfully!',
+      data: campaign,
+      transaction,
+      success: true,
+    });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      message: 'Error creating Facebook campaign',
+    const status = error.statusCode ?? 500;
+    return res.status(status).json({
+      message: status === 500 ? 'Error creating Facebook campaign' : error.message,
       success: false,
     });
   }
-}
+};
 
 
 // youtube campaign
 export const createYoutubeCampaign = async (req, res) => {
-  const MIN_CHARGE = 18000; // Define the Youtube minimum charge amount  
-
   try {
-
-      const { body } = req; 
-      ownBody(req);
-
-      // Find the partner by ID  
-      const partner = await PartnersModel.findById(body.createdBy);
-      if (!partner) {
-        return res.status(400).json({
-          message: 'Partner not found',
-          success: false,
-        });
-      }
-
-      // Check if the partner entered sufficient amount  
-      if (body.budget.budgetAmount < MIN_CHARGE) {
-        return res.status(402).json({
-          message: 'Insufficient amount for transaction',
-          success: false,
-        });
-      }
-
-      // Check if the partner has sufficient balance for the budget amount
-      if (partner.balance >= body.budget.budgetAmount) {
-        // Deduct the budget amount from the partner's balance  
-        partner.balance -= body.budget.budgetAmount;
-
-        // Save the updated partner balance  
-        await partner.save();
-
-        // Record the transaction  
-        const transaction = new TransactionModel({
-          partnerId: partner._id,
-          amount: body.budget.budgetAmount,  // Use the budget amount as the charge
-          status: 'Completed',
-          paymentMethod: 'Youtube Ads',
-          transactionType: 'Debit',
-          reference: Math.floor(100000000 + Math.random() * 900000000).toString() // Generate a random 9-digit number as a string
-        });
-
-        await transaction.save();
-
-        // Create a new Ad document using the data from the request body
-         const newAd = new CampaignModel(body);
-
-        // Save the Ad document to the database
-        await newAd.save();
-
-        res.status(200).json({
-            message: 'Ad campaign created successfully!',
-            data: newAd, // Include the saved Ad data in the response
-            transaction: transaction,
-            success: true,
-        });
-
-      } else {
-        return res.status(401).json({
-          message: 'Insufficient balance for transaction',
-          success: false,
-        });
-      }
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Error creating Youtube campaign',
-            error: error.message
-        })
+    const { body } = req;
+    ownBody(req);
+    const amount = Number(body.budget?.budgetAmount);
+    if (!Number.isFinite(amount)) {
+      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
     }
-}
+    if (amount < 18000) {
+      return res.status(402).json({ message: 'Insufficient amount for transaction', success: false });
+    }
+    const { campaign, transaction } = await purchaseCampaign({
+      body,
+      amount,
+      label: 'Youtube',
+      campaign: body,
+    });
+    return res.status(200).json({
+      message: 'Ad campaign created successfully!',
+      data: campaign,
+      transaction,
+      success: true,
+    });
+  } catch (error) {
+    const status = error.statusCode ?? 500;
+    return res.status(status).json({
+      message: status === 500 ? 'Error creating Youtube campaign' : error.message,
+      success: false,
+    });
+  }
+};
 
 // linkedin campaign
 export const createLinkedinCampaign = async (req, res) => {
-  const MIN_CHARGE = 10500; // Define the LinkedIn minimum charge amount  
-
-    try {
-
-      const { body } = req; 
-      ownBody(req);
-
-        // Find the partner by ID  
-      const partner = await PartnersModel.findById(body.createdBy);
-      if (!partner) {
-        return res.status(400).json({
-          message: 'Partner not found',
-          success: false,
-        });
-      }
-
-      // Check if the partner entered sufficient amount  
-      if (body.budget.budgetAmount < MIN_CHARGE) {
-        return res.status(400).json({
-          message: 'Insufficient amount for transaction',
-          success: false,
-        });
-      }
-
-      // Check if the partner has sufficient balance for the budget amount
-      if (partner.balance >= body.budget.budgetAmount) {
-      // Deduct the budget amount from the partner's balance  
-      partner.balance -= body.budget.budgetAmount;
-
-      // Save the updated partner balance  
-      await partner.save();
-
-      // Record the transaction  
-      const transaction = new TransactionModel({
-        partnerId: partner._id,
-        amount: body.budget.budgetAmount,  // Use the budget amount as the charge
-        status: 'Completed',
-        paymentMethod: 'LinkedIn Ads',
-        transactionType: 'Debit',
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString() // Generate a random 9-digit number as a string
-      });
-
-      await transaction.save();
-
-      // Create a new Ad document using the data from the request body
-        const newAd = new CampaignModel(body);
-
-      // Save the Ad document to the database
-      await newAd.save();
-
-      res.status(200).json({
-          message: 'Ad campaign created successfully!',
-          data: newAd, // Include the saved Ad data in the response
-          transaction: transaction,
-          success: true,
-      });
-
-      } else {
-        return res.status(401).json({
-          message: 'Insufficient balance for transaction',
-          success: false,
-        });
-      }
-
-    } catch (error) {
-        res.status(500).json({
-            error: error.message,
-            success: false,
-            message: 'Error creating LinkedIn campaign'
-        })
+  try {
+    const { body } = req;
+    ownBody(req);
+    const amount = Number(body.budget?.budgetAmount);
+    if (!Number.isFinite(amount)) {
+      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
     }
-}
+    if (amount < 10500) {
+      return res.status(400).json({ message: 'Insufficient amount for transaction', success: false });
+    }
+    const { campaign, transaction } = await purchaseCampaign({
+      body,
+      amount,
+      label: 'LinkedIn',
+      campaign: body,
+    });
+    return res.status(200).json({
+      message: 'Ad campaign created successfully!',
+      data: campaign,
+      transaction,
+      success: true,
+    });
+  } catch (error) {
+    const status = error.statusCode ?? 500;
+    return res.status(status).json({
+      message: status === 500 ? 'Error creating LinkedIn campaign' : error.message,
+      success: false,
+    });
+  }
+};
 
 // Route handler to fetch all Ads by createdBy — owner, upline or admin.
 export const getCampaignsCreatedBy = async (req, res) => {
