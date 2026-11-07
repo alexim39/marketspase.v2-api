@@ -112,6 +112,9 @@ backoff and marked `failed` after five attempts for inspection.
   server-owned fields are stripped before controllers.
 - The unauthenticated subscription delete-by-id route is retired. Admin
   deletion is role-gated under `/v1/admin/subscriptions`.
+- Legacy `/emailSubscription/subscribe|confirm|unsubscribe` paths now 307/302
+  redirect to v1 so links already sent by email keep working. Remove the
+  redirect shim once `audit:legacy` shows no traffic.
 
 ## Health
 
@@ -136,7 +139,8 @@ backoff and marked `failed` after five attempts for inspection.
   `validateBodyInPlace`, stripping unknown fields before controllers.
 - Retired legacy mounts: `/auth` (use `/v1/auth`), campaign create endpoints
   (use `/v1/campaigns`), `/contact`, `/survey`, `/ticket`, `/emailSubscription`
-  (use the `/v1` public forms), legacy email/SMS inbox reads (use v1 message
+  (use the `/v1` public forms; `/emailSubscription/*` keeps temporary redirects
+  for already-sent email links), legacy email/SMS inbox reads (use v1 message
   reads), booking email-list exports, partner public-search/username lookup and
   individual partner social-link writes (use `/partners/landing-page`).
 

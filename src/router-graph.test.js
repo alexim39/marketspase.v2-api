@@ -46,6 +46,7 @@ const ROUTERS = [
   './apps/contact/routes/Contact.routes.js',
   './apps/survey/routes/Survey.routes.js',
   './apps/email-subscription/routes/EmailSubscription.routes.js',
+  './apps/email-subscription/routes/LegacyEmailSubscription.routes.js',
 ];
 
 describe('router graph', () => {

@@ -18,6 +18,7 @@ import ProspectRouter from './src/apps/prospect/index.js';
 import ProductRouter from './src/apps/product/index.js';
 import SurveyV1Router from './src/apps/survey/routes/Survey.routes.js';
 import EmailSubscriptionV1Router from './src/apps/email-subscription/routes/EmailSubscription.routes.js';
+import LegacyEmailSubscriptionRouter from './src/apps/email-subscription/routes/LegacyEmailSubscription.routes.js';
 
 import EmailRouter from './src/apps/email/index.js';
 import SmsRouter from './src/apps/sms/index.js';
@@ -156,6 +157,9 @@ app.use('/v1/tickets', TicketV1Router);
 app.use('/v1/contact', ContactV1Router);
 app.use('/v1/survey', SurveyV1Router);
 app.use('/v1/email-subscription', EmailSubscriptionV1Router);
+// Temporary redirects for confirmation/unsubscribe links already sent by email.
+// Remove after the legacy audit shows no /emailSubscription traffic.
+app.use('/emailSubscription', LegacyEmailSubscriptionRouter);
 app.use('/v1/auth', AuthV1Router);
 app.use('/v1/prospects', ProspectV1Router);
 app.use('/v1/admin/pages', PagesRouter);
