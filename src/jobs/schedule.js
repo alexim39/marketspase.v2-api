@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { logger } from '../shared/observability/logger.js';
 import { BuildTeamSnapshotsUseCase } from '../modules/analytics/application/BuildSnapshots.usecase.js';
 import { MongoNetworkRepository } from '../modules/network/infrastructure/Network.mongo.repository.js';
 import { MongoOrderReader } from '../modules/billing/infrastructure/Billing.mongo.repository.js';
@@ -72,8 +73,26 @@ export async function runSnapshotJob(deps = {}) {
   }
 }
 
+/**
+ * Cron-safe runner: one rejected job logs and returns a result instead of
+ * becoming an unhandled rejection that takes down the API.
+ */
+export const scheduledRun = (
+  name,
+  fn,
+  ttlMs = 10 * 60 * 1000,
+  { lock = withDistributedLock } = {},
+) => () => lock(name, fn, { ttlMs }).catch((error) => {
+  logger.error('scheduled_job_failed', {
+    job: name,
+    error: error?.message ?? String(error),
+    stack: error?.stack,
+  });
+  return { failed: true, job: name };
+});
+
 export function scheduleJobs() {
-  const run = (name, fn, ttlMs = 10 * 60 * 1000) => () => withDistributedLock(name, fn, { ttlMs });
+  const run = (name, fn, ttlMs = 10 * 60 * 1000) => scheduledRun(name, fn, ttlMs);
 
   cron.schedule('0 2 * * *', run('team-snapshots', () => runSnapshotJob(), 30 * 60 * 1000));
   cron.schedule('30 6 * * *', run('daily-brief', () => runDailyBriefJob()));

@@ -121,6 +121,15 @@ backoff and marked `failed` after five attempts for inspection.
 - `GET /health/live` — process liveness only.
 - `GET /health` — Mongo readiness (1.5s timeout), Paystack configuration,
   circuit-breaker state and registered provider health.
+- Startup now binds the port **before** index builds, cron registration and
+  seeds. An `EADDRINUSE` or other listen error logs `port_in_use` /
+  `server_error`, closes Mongo and exits `1` without starting boot tasks.
+- `SIGTERM`/`SIGINT` and fatal process errors share one idempotent shutdown:
+  stop accepting connections, close idle sockets, then close Mongo with a 5s
+  cap. Cron callbacks catch and log failures so one bad sweep cannot become an
+  unhandled rejection.
+- Socket timeouts: `KEEP_ALIVE_TIMEOUT_MS` (65s), `HEADERS_TIMEOUT_MS` (66s,
+  always at least keep-alive + 1s) and `REQUEST_TIMEOUT_MS` (120s).
 
 ## Database
 
@@ -190,4 +199,5 @@ Removing a key before the re-wrap finishes makes those values unreadable;
 
 See `.env.example` for `TRUST_PROXY_HOPS`, `ACCESS_TOKEN_TTL`,
 `REFRESH_TOKEN_TTL_MS`, `MONGO_QUERY_TIMEOUT_MS`, `JSON_BODY_LIMIT`,
-`LOG_LEVEL`, `PII_ENCRYPTION_KEYS` and `PII_ACTIVE_KEY_ID`.
+`LOG_LEVEL`, `PII_ENCRYPTION_KEYS`, `PII_ACTIVE_KEY_ID`,
+`KEEP_ALIVE_TIMEOUT_MS`, `HEADERS_TIMEOUT_MS` and `REQUEST_TIMEOUT_MS`.

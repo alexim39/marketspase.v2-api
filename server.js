@@ -96,7 +96,12 @@ import { allowedOrigins } from './src/shared/http/origins.js';
 import { buildHealthRouter } from './src/shared/http/health.routes.js';
 import { logger } from './src/shared/observability/logger.js';
 
-const port = process.env.PORT || 8080;
+const requestedPort = process.env.PORT ?? '8080';
+const port = Number(requestedPort);
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  logger.error('invalid_port', { port: requestedPort });
+  process.exit(1);
+}
 const app = express();
 
 // Trust exactly the configured number of proxy hops. Default 0 because
@@ -283,93 +288,192 @@ app.use(errorMiddleware);
   // campaign immediately kicks the growth-campaign placement sweep. The
   // 15-minute cron remains the safety net.
   domainEvents.on('partner.activated', () => {
-    void runGrowthAllocationDueJob().catch(() => null);
+    void runGrowthAllocationDueJob().catch((error) => {
+      logger.warn('growth_allocation_trigger_failed', {
+        trigger: 'partner.activated',
+        error: error?.message ?? String(error),
+      });
+    });
   });
   domainEvents.on('campaign.activated', () => {
-    void runGrowthAllocationDueJob().catch(() => null);
+    void runGrowthAllocationDueJob().catch((error) => {
+      logger.warn('growth_allocation_trigger_failed', {
+        trigger: 'campaign.activated',
+        error: error?.message ?? String(error),
+      });
+    });
   });
 }
 
 /* DB connection */
 let httpServer = null;
+let shuttingDown = false;
 
-const shutdown = async (signal) => {
+const envMs = (name, fallback) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const closeHttpServer = async () => {
+  if (!httpServer) return;
+  if (!httpServer.listening) {
+    try {
+      httpServer.close();
+    } catch { /* the server never reached listen */ }
+    return;
+  }
+
+  await new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    try {
+      httpServer.close(done);
+    } catch {
+      done();
+    }
+    if (typeof httpServer.closeIdleConnections === 'function') {
+      httpServer.closeIdleConnections();
+    }
+    setTimeout(() => {
+      if (typeof httpServer.closeAllConnections === 'function') {
+        httpServer.closeAllConnections();
+      }
+      done();
+    }, 10000).unref();
+  });
+};
+
+const closeMongo = async () => {
+  if (mongoose.connection.readyState === 0) return;
+  await Promise.race([
+    mongoose.connection.close(false).catch(() => null),
+    new Promise((resolve) => setTimeout(resolve, 5000).unref()),
+  ]);
+};
+
+const shutdown = async (signal, exitCode = 0) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info('shutdown_started', { signal });
   try {
-    if (httpServer) {
-      await new Promise((resolve) => {
-        httpServer.close(() => resolve());
-        if (typeof httpServer.closeIdleConnections === 'function') {
-          httpServer.closeIdleConnections();
-        }
-        setTimeout(() => {
-          if (typeof httpServer.closeAllConnections === 'function') {
-            httpServer.closeAllConnections();
-          }
-          resolve();
-        }, 10000).unref();
-      });
-    }
-    await mongoose.connection.close(false);
+    await closeHttpServer();
+    await closeMongo();
     logger.info('shutdown_complete', { signal });
-    process.exit(0);
+    process.exit(exitCode);
   } catch (error) {
     logger.error('shutdown_failed', { signal, error: error?.message ?? String(error) });
     process.exit(1);
   }
 };
 
+const onServerError = (error) => {
+  const code = error?.code ?? null;
+  logger.error(code === 'EADDRINUSE' ? 'port_in_use' : 'server_error', {
+    port,
+    code,
+    error: error?.message ?? String(error),
+  });
+  void shutdown('server_error', 1);
+};
+
+const startBackgroundTasks = async () => {
+  try {
+    const { created, failed } = await ensureIndexes(mongoose);
+    if (!shuttingDown) {
+      logger.info('indexes_ensured', { created: created.length, failed: failed.length });
+      for (const f of failed) logger.warn('index_failed', { index: f.index, error: f.error });
+    }
+  } catch (error) {
+    if (!shuttingDown) logger.warn('index_ensure_skipped', { error: error?.message ?? String(error) });
+  }
+
+  if (shuttingDown) return;
+
+  if (process.env.SKIP_SCHEDULE === '1') {
+    logger.warn('schedule_skipped', { reason: 'SKIP_SCHEDULE=1' });
+  } else {
+    try {
+      scheduleJobs();
+    } catch (error) {
+      logger.error('schedule_jobs_failed', { error: error?.message ?? String(error) });
+    }
+  }
+
+  if (shuttingDown) return;
+
+  ensureSeedBonus().then(
+    (r) => logger.info('bonus_seed', { seeded: r.seeded, retired: r.retired, id: r.id ?? null }),
+    (error) => {
+      if (!shuttingDown) logger.warn('bonus_seed_skipped', { error: error?.message ?? String(error) });
+    },
+  );
+  ensureStarterProduct().then(
+    (r) => logger.info('starter_product_seed', { seeded: r.seeded, id: r.id ?? null }),
+    (error) => {
+      if (!shuttingDown) logger.warn('starter_product_seed_skipped', { error: error?.message ?? String(error) });
+    },
+  );
+};
+
 if (process.env.NODE_ENV !== 'test') {
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
-  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM', 0));
+  process.on('SIGINT', () => void shutdown('SIGINT', 0));
   process.on('unhandledRejection', (reason) => {
     logger.error('unhandled_rejection', {
       error: reason?.message ?? String(reason),
       stack: reason?.stack,
     });
+    void shutdown('unhandledRejection', 1);
   });
   process.on('uncaughtException', (error) => {
     logger.error('uncaught_exception', { error: error?.message ?? String(error), stack: error?.stack });
-    void shutdown('uncaughtException');
+    void shutdown('uncaughtException', 1);
   });
 }
 
 const mongoUri = process.env.MONGODB_URI
   || `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0.ab5nviz.mongodb.net/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`;
-mongoose.connect(mongoUri)
-.then(() => {
-    // Start serving immediately after the DB handshake; index builds and
-    // seeds run in the background so /health and reads are available.
+
+const bootServer = () => {
+  try {
     logger.info('mongo_connected');
     httpServer = http.createServer(app);
+    httpServer.keepAliveTimeout = envMs('KEEP_ALIVE_TIMEOUT_MS', 65000);
+    httpServer.headersTimeout = Math.max(
+      envMs('HEADERS_TIMEOUT_MS', 66000),
+      httpServer.keepAliveTimeout + 1000,
+    );
+    httpServer.requestTimeout = envMs('REQUEST_TIMEOUT_MS', 120000);
+    httpServer.on('error', onServerError);
     attachMessagingGateway(httpServer, { groups: new MongoGroupStore() });
-    httpServer.listen(port, () => {
-        logger.info('server_started', { port: Number(port) });
-    });
 
-    void (async () => {
-      try {
-        const { created, failed } = await ensureIndexes(mongoose);
-        logger.info('indexes_ensured', { created: created.length, failed: failed.length });
-        for (const f of failed) logger.warn('index_failed', { index: f.index, error: f.error });
-      } catch (error) {
-        logger.warn('index_ensure_skipped', { error: error?.message ?? String(error) });
-      }
-      if (process.env.SKIP_SCHEDULE === '1') {
-        logger.warn('schedule_skipped', { reason: 'SKIP_SCHEDULE=1' });
-      } else {
-        scheduleJobs();
-      }
-      ensureSeedBonus().then(
-        (r) => logger.info('bonus_seed', { seeded: r.seeded, retired: r.retired, id: r.id ?? null }),
-        (error) => logger.warn('bonus_seed_skipped', { error: error?.message ?? String(error) }),
-      );
-      ensureStarterProduct().then(
-        (r) => logger.info('starter_product_seed', { seeded: r.seeded, id: r.id ?? null }),
-        (error) => logger.warn('starter_product_seed_skipped', { error: error?.message ?? String(error) }),
-      );
-    })();
-}).catch((error) => {
+    httpServer.listen(port, () => {
+      logger.info('server_started', { port });
+      // Index builds, cron registration and seeds run only after the port is
+      // bound, so a listen failure never tears down Mongo mid-boot.
+      void startBackgroundTasks().catch((error) => {
+        logger.error('boot_tasks_failed', { error: error?.message ?? String(error) });
+      });
+    });
+  } catch (error) {
+    logger.error('server_boot_failed', { port, error: error?.message ?? String(error) });
+    void shutdown('server_boot_failed', 1);
+  }
+};
+
+const connect = async () => {
+  try {
+    await mongoose.connect(mongoUri);
+  } catch (error) {
     logger.error('mongo_connect_failed', { error: error?.message ?? String(error), stack: error?.stack });
-    process.exitCode = 1;
-})
+    await shutdown('mongo_connect_failed', 1);
+    return;
+  }
+  bootServer();
+};
+
+void connect();
