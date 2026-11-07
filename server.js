@@ -12,16 +12,15 @@ import cookieParser from 'cookie-parser';
 import PartnerRouter from './src/apps/partner/index.js';
 import BookingRouter from './src/apps/booking/index.js';
 import CampaignRouter from './src/apps/campaign/index.js';
-import ContactRouter from './src/apps/contact/index.js';
+import ContactV1Router from './src/apps/contact/routes/Contact.routes.js';
 import TransactionRouter from './src/apps/transaction/index.js';
 import ProspectRouter from './src/apps/prospect/index.js';
 import ProductRouter from './src/apps/product/index.js';
-import SurveyRouter from './src/apps/survey/index.js';
-import EmailSubscriptionRouter from './src/apps/email-subscription/index.js';
+import SurveyV1Router from './src/apps/survey/routes/Survey.routes.js';
+import EmailSubscriptionV1Router from './src/apps/email-subscription/routes/EmailSubscription.routes.js';
 
 import EmailRouter from './src/apps/email/index.js';
 import SmsRouter from './src/apps/sms/index.js';
-import TicketRouter from './src/apps/ticket/index.js';
 import TeamsRouter from './src/apps/teams/index.js';
 
 // Strangler Fig: DDD slices (new) mounted alongside legacy routers
@@ -145,19 +144,18 @@ app.get('/', (req, res) => res.send('Node server is up and running'));
 app.use('/partners', PartnerRouter);
 app.use('/booking', BookingRouter);
 app.use('/campaign', CampaignRouter);
-app.use('/contact', ContactRouter);
 app.use('/billing', TransactionRouter);
 app.use('/prospect', ProspectRouter);
 app.use('/products', ProductRouter);
-app.use('/survey', SurveyRouter);
-app.use('/emailSubscription', EmailSubscriptionRouter);
 
 app.use('/emails', EmailRouter);
 app.use('/sms', SmsRouter);
-app.use('/ticket', TicketRouter);
 app.use('/team', TeamsRouter);
 /* DDD v1 (new, strangler) — same data, validated boundary */
 app.use('/v1/tickets', TicketV1Router);
+app.use('/v1/contact', ContactV1Router);
+app.use('/v1/survey', SurveyV1Router);
+app.use('/v1/email-subscription', EmailSubscriptionV1Router);
 app.use('/v1/auth', AuthV1Router);
 app.use('/v1/prospects', ProspectV1Router);
 app.use('/v1/admin/pages', PagesRouter);

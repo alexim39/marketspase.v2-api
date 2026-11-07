@@ -82,7 +82,7 @@ export const emailSubscription = async (req, res) => {
         subscription.unsubscribeTokenHash = undefined;
         await subscription.save();
 
-        const confirmUrl = `${apiBaseUrl(req)}/emailSubscription/confirm/${token}`;
+        const confirmUrl = `${apiBaseUrl(req)}/v1/email-subscription/confirm/${token}`;
         const sent = await sendEmail(
             email,
             'Confirm your Diamond Project subscription',
@@ -108,7 +108,6 @@ export const emailSubscription = async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message,
             message: "Error subscribing to email list",
         })
     }
@@ -149,7 +148,7 @@ export const confirmEmailSubscription = async (req, res) => {
         subscription.unsubscribeTokenHash = hashToken(unsubscribeToken);
         await subscription.save();
 
-        const unsubscribeUrl = `${apiBaseUrl(req)}/emailSubscription/unsubscribe/${unsubscribeToken}`;
+        const unsubscribeUrl = `${apiBaseUrl(req)}/v1/email-subscription/unsubscribe/${unsubscribeToken}`;
         await sendEmail(
             subscription.email,
             'You are subscribed to Diamond Project updates',
@@ -219,32 +218,5 @@ export const unsubscribeEmailSubscription = async (req, res) => {
     }
 };
 
-export const deleteSingleEmailFromEmailList = async (req, res) => {
-    try {
-      const { emailId } = req.params;
-      const email = await EmailSubscriptionModel.findById(emailId);
-
-      if (!email) {
-        return res.status(404).json({
-          message: "Email not found",
-          success: false,
-        });
-      }
-
-      await EmailSubscriptionModel.updateOne(
-        { _id: emailId, deletedAt: null },
-        { $set: { deletedAt: new Date() } },
-      );
-
-      res.status(200).json({
-        message: "Email deleted successfully!",
-        success: true,
-      });
-    } catch (error) {
-      res.status(500).json({
-        message: "Error deleting email",
-        error: error.message,
-        success: false,
-      });
-    }
-  };
+// The unauthenticated delete-by-id route was retired. Admin deletion lives
+// under /v1/admin/subscriptions and is role-gated + audited.

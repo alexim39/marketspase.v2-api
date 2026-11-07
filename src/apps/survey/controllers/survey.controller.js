@@ -80,7 +80,7 @@ export const ProspectSurveyForm = async (req, res) => {
         !referringPartner.settings.notification ||
         referringPartner.settings.notification.receive !== 'off')
     ) {
-      await sendEmail(referringPartner.email, ownerSubject, ownerMessage);
+      await sendEmail(referringPartner.email, ownerSubject, ownerMessage).catch(() => null);
       await notifyPageLead(referringPartner);
     } else {
       // Case 2: partners in the lead's (normalized) state. Normalization
@@ -99,7 +99,7 @@ export const ProspectSurveyForm = async (req, res) => {
 
       if (eligibleStatePartners.length > 0) {
         for (const partner of eligibleStatePartners) {
-          await sendEmail(partner.email, ownerSubject, ownerMessage);
+          await sendEmail(partner.email, ownerSubject, ownerMessage).catch(() => null);
           await notifyNewLead(partner);
         }
       } else {
@@ -116,13 +116,13 @@ export const ProspectSurveyForm = async (req, res) => {
             partner.settings.notification.receive !== 'off'
         );
         for (const partner of eligibleAdmins) {
-          await sendEmail(partner.email, ownerSubject, ownerMessage);
+          await sendEmail(partner.email, ownerSubject, ownerMessage).catch(() => null);
         }
       }
     }
 
-    // Send welcome email to the prospect
-    await sendEmail(surveyData.email, userSubject, userMessage);
+    // Send welcome email to the prospect (best effort — the survey is saved).
+    await sendEmail(surveyData.email, userSubject, userMessage).catch(() => null);
 
     res.status(200).json({ 
       success: true, 
@@ -132,7 +132,6 @@ export const ProspectSurveyForm = async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
       success: false, 
-      error: error.message,
       message: 'An error occurred while saving your survey. Please try again later.'
     });
   }
@@ -152,9 +151,14 @@ export const PartnerSurveyForm = async (req, res) => {
     // Send email to form owner
     const ownerSubject = 'Partner Survey Submission';
     const ownerMessage = partnerOwnerEmailTemplate(surveyData);
-    const ownerEmails = ['ago.fnc@gmail.com'];
+    const configured = process.env.PARTNER_SURVEY_ALERTS
+      || process.env.SUPPORT_OWNER_EMAILS
+      || 'contacts@c21fg.online';
+    const ownerEmails = [...new Set(
+      configured.split(',').map((email) => email.trim()).filter(Boolean),
+    )];
     for (const email of ownerEmails) {
-      await sendEmail(email, ownerSubject, ownerMessage);
+      await sendEmail(email, ownerSubject, ownerMessage).catch(() => null);
     }
 
     res.status(200).json({
@@ -165,7 +169,6 @@ export const PartnerSurveyForm = async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
         success: false,
-        error: error.message,
         message: 'An error occurred while processing your request. Please try again later.'
     });
   }

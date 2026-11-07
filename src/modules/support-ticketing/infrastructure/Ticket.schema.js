@@ -44,9 +44,6 @@ ticketSchema.index({ partnerId: 1, createdAt: -1 });
 ticketSchema.index({ status: 1, createdAt: -1 });
 
 export const TicketMongooseModel =
-  // Distinct model name on the SAME 'tickets' collection: the legacy
-  // `Ticket` model (status-less schema) loads first in server.js, so a
-  // `?? mongoose.model('Ticket', ...)` reuse would silently keep the old
-  // schema — strict mode then strips every status write and all rows read
-  // back as 'open' forever. The explicit collection keeps one data home.
+  // Distinct model name on the shared 'tickets' collection. Historical rows
+  // predate the workflow fields; the mapper treats missing status as 'open'.
   mongoose.models.TicketV1 ?? mongoose.model('TicketV1', ticketSchema, 'tickets');

@@ -101,6 +101,18 @@ backoff and marked `failed` after five attempts for inspection.
   category and SKU. Zero-result product searches are logged to `searchmisses`
   (90-day TTL) for catalogue planning.
 
+## Public forms
+
+- Contact: `POST /v1/contact/submit`, `POST /v1/contact/pre-approach`.
+- Surveys: `POST /v1/survey/submit`, `POST /v1/survey/partners`.
+- Tickets: `POST /v1/tickets` and `POST /v1/tickets/submit`.
+- Newsletter: `POST /v1/email-subscription/subscribe` plus the tokenised
+  `GET /v1/email-subscription/confirm/:token` and `/unsubscribe/:token` links.
+- All public POSTs are IP-throttled and whitelist fields; unknown and
+  server-owned fields are stripped before controllers.
+- The unauthenticated subscription delete-by-id route is retired. Admin
+  deletion is role-gated under `/v1/admin/subscriptions`.
+
 ## Health
 
 - `GET /health/live` — process liveness only.
@@ -123,8 +135,9 @@ backoff and marked `failed` after five attempts for inspection.
   campaign-allocation writes validate and replace `req.body` through
   `validateBodyInPlace`, stripping unknown fields before controllers.
 - Retired legacy mounts: `/auth` (use `/v1/auth`), campaign create endpoints
-  (use `/v1/campaigns`), legacy email/SMS inbox reads (use v1 message reads),
-  booking email-list exports, partner public-search/username lookup and
+  (use `/v1/campaigns`), `/contact`, `/survey`, `/ticket`, `/emailSubscription`
+  (use the `/v1` public forms), legacy email/SMS inbox reads (use v1 message
+  reads), booking email-list exports, partner public-search/username lookup and
   individual partner social-link writes (use `/partners/landing-page`).
 
 - Legacy email/SMS sends, inbox reads and campaign creation are retired in

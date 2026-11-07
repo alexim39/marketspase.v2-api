@@ -71,11 +71,9 @@ export const ContactController = async (req, res) => {
         });
 
     } catch (error) {
-        console.error(error.message);
         const duplicate = error?.code === 11000;
         const invalid = error?.name === 'ValidationError';
         res.status(duplicate ? 409 : invalid ? 400 : 500).json({
-            error: duplicate ? 'Duplicate contact' : error.message,
             message: duplicate
                 ? 'We already have a message from this email. Please contact us directly at contacts@c21fg.online.'
                 : invalid
@@ -92,7 +90,15 @@ export const ContactController = async (req, res) => {
 export const DownloadPreapproachController = async (req, res) => {
     try {
 
-        //console.log('sent==',req.body);
+        // Resolve the referring partner before writing: an unknown username
+        // must not leave an orphan download row behind.
+        const partner = await PartnersModel.findOne({ username: req.body.username });
+        if (!partner) {
+            return res.status(404).json({
+                message: 'User not found',
+                success: false
+            });
+        }
 
         const downloadObject = await PreapproachDownloadModel.create({
             name: req.body.name,
@@ -103,43 +109,39 @@ export const DownloadPreapproachController = async (req, res) => {
             username: req.body.username,
         });
 
-         // Find the user by username  
-         const partner = await PartnersModel.findOne({ username: req.body.username });  
-        
-         if (!partner) {  
-             return res.status(404).json({ 
-                message: 'User not found',
-                success: false
-            });  
-         }  
-
-        // Send email after successfully submitting the records
         const emailSubject = 'Diamond Project Pre-Approach Download';
         const emailMessage = `
             <h1>Pre-Approach Download Form</h1>
-            <p>Kindly note that ${req.body.name} ${req.body.surname} downloaded the pre-approach file on Diamond Project webiste.</p>
+            <p>Kindly note that ${escapeHtml(req.body.name)} ${escapeHtml(req.body.surname)} downloaded the pre-approach file on Diamond Project website.</p>
 
             <br>
             <h1>Complete Prospect Response</h1>
-            <p>Name: ${req.body.name}</p>
-            <p>Surname: ${req.body.surname}</p>
-            <p>Email address: ${req.body.email}</p>
-            <p>Phone: ${req.body.phone}</p>
+            <p>Name: ${escapeHtml(req.body.name)}</p>
+            <p>Surname: ${escapeHtml(req.body.surname)}</p>
+            <p>Email address: ${escapeHtml(req.body.email)}</p>
+            <p>Phone: ${escapeHtml(req.body.phone)}</p>
         `;
 
-        const emailsToSend = ['aleximenwo@gmail.com'];
+        const configured = process.env.PREAPPROACH_ALERT_EMAILS
+            || process.env.SUPPORT_OWNER_EMAILS
+            || 'contacts@c21fg.online';
+        const emailsToSend = [...new Set(
+            configured.split(',').map((email) => email.trim()).filter(Boolean),
+        )];
 
-        for (const email of emailsToSend) {
-            await sendEmail(email, emailSubject, emailMessage);
-        }
+        await Promise.all(emailsToSend.map((email) => sendEmail(email, emailSubject, emailMessage)));
 
         res.status(200).json({downloadObject, message: 'Pre-approach download form submitted successfully', success: true});
 
     } catch (error) {
-        console.error(error.message);
-        res.status(500).json({
-            error: error.message,
-            message: 'Pre-approach download form submission failed',
+        const duplicate = error?.code === 11000;
+        const invalid = error?.name === 'ValidationError';
+        res.status(duplicate ? 409 : invalid ? 400 : 500).json({
+            message: duplicate
+                ? 'This email has already downloaded the pre-approach guide.'
+                : invalid
+                    ? 'Please check the form and try again.'
+                    : 'Pre-approach download form submission failed',
             success: false
         })
     }
