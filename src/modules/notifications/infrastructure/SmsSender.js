@@ -19,8 +19,8 @@ export class HttpSmsSender extends SmsSender {
   constructor(config = {}) {
     super();
     this.config = {
-      method: 'POST', headers: {}, toField: 'to', messageField: 'message',
-      extra: {}, senderId: 'DiamondProj', timeoutMs: 8000, ...config,
+      method: 'POST', headers: {}, toField: 'to', messageField: 'body',
+      extra: {}, senderId: 'marketspase', timeoutMs: 15000, ...config,
     };
     this.post = config.post ?? ((url, data, opts) => axios({ method: this.config.method, url, data, ...opts }));
   }

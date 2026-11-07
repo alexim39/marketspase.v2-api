@@ -93,25 +93,35 @@ export const env = {
     };
   },
   /**
-   * SMS via a generic HTTP provider (Termii-compatible shape documented
-   * in .env.example). `disabled` (default) logs instead of sending.
+   * SMS through BulkSMSNigeria or any generic JSON HTTP provider.
+   * BulkSMS can be configured with BULKSMS_API_TOKEN/BULKSMS_SENDER_ID alone;
+   * the explicit SMS_HTTP_* variables remain for other gateways.
    */
   get sms() {
+    const bulkToken = process.env.BULKSMS_API_TOKEN || '';
     let headers = {};
     let extra = {};
-    try { headers = JSON.parse(process.env.SMS_HTTP_HEADERS || '{}'); } catch { headers = {}; }
+    if (process.env.SMS_HTTP_HEADERS) {
+      try { headers = JSON.parse(process.env.SMS_HTTP_HEADERS); } catch { headers = {}; }
+    }
+    if (Object.keys(headers).length === 0 && bulkToken) {
+      headers = { Authorization: `Bearer ${bulkToken}`, Accept: 'application/json' };
+    }
     try { extra = JSON.parse(process.env.SMS_HTTP_EXTRA || '{}'); } catch { extra = {}; }
+    const url = process.env.SMS_HTTP_URL
+      || (bulkToken ? 'https://www.bulksmsnigeria.com/api/v2/sms' : '');
+    const provider = process.env.SMS_PROVIDER || (bulkToken ? 'bulksmsnigeria' : 'disabled');
     return {
-      provider: process.env.SMS_PROVIDER || 'disabled',
-      url: process.env.SMS_HTTP_URL || '',
+      provider,
+      url,
       method: (process.env.SMS_HTTP_METHOD || 'POST').toUpperCase(),
       headers,
       toField: process.env.SMS_HTTP_TO_FIELD || 'to',
-      messageField: process.env.SMS_HTTP_MESSAGE_FIELD || 'message',
+      messageField: process.env.SMS_HTTP_MESSAGE_FIELD || 'body',
       extra,
-      senderId: process.env.SMS_SENDER_ID || 'DiamondProj',
-      timeoutMs: Number(process.env.SMS_HTTP_TIMEOUT_MS || 8000),
-      enabled: (process.env.SMS_PROVIDER || 'disabled') !== 'disabled' && Boolean(process.env.SMS_HTTP_URL),
+      senderId: process.env.BULKSMS_SENDER_ID || process.env.SMS_SENDER_ID || 'marketspase',
+      timeoutMs: Number(process.env.SMS_HTTP_TIMEOUT_MS || 15000),
+      enabled: provider !== 'disabled' && Boolean(url),
     };
   },
 };
