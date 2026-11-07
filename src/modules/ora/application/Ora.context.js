@@ -1,6 +1,7 @@
 import { RANKS, rankDepth } from '../../compensation/domain/Compensation.plan.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
 import { buildOraOpportunities } from '../domain/Ora.opportunities.js';
+import { lagosDateKey } from '../domain/Ora.plans.js';
 
 /**
  * Ora context assembler — one bounded live snapshot per chat call.
@@ -53,12 +54,13 @@ export class OraContextAssembler {
       team: { directPartners: 0, recent: [] },
       campaigns: { total: 0, active: 0, pending: 0, remainingBudget: 0, items: [] },
       store: null,
+      plan: { dateKey: lagosDateKey(now), items: [], source: null, savedAt: null },
       opportunities: [],
       goals: [],
       events: [],
       unread: 0,
     };
-    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders] = await Promise.all([
+    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders, todayPlan] = await Promise.all([
       this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 }).catch(() => null),
       this.goals?.execute({ partnerId, now }).catch(() => []),
       this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS }).catch(() => null),
@@ -69,6 +71,7 @@ export class OraContextAssembler {
       this.campaigns?.listMine(partnerId).catch(() => []),
       this.store?.getMyStore(partnerId).catch(() => null),
       this.storeOrders?.listPartnerOrders(partnerId, { limit: 5 }).catch(() => []),
+      this.plans?.get(partnerId, lagosDateKey(now)).catch(() => null),
     ]);
 
     if (partner) {
@@ -158,6 +161,14 @@ export class OraContextAssembler {
         })),
       };
     }
+    if (todayPlan) {
+      ctx.plan = {
+        dateKey: todayPlan.dateKey ?? lagosDateKey(now),
+        items: (todayPlan.items ?? []).slice(0, 3),
+        source: todayPlan.source ?? null,
+        savedAt: todayPlan.savedAt ?? null,
+      };
+    }
     ctx.pipeline = {
       total: Number(prospects?.total ?? list.length) || 0,
       overdue: 0,
@@ -182,6 +193,7 @@ export class OraContextAssembler {
       team: ctx.team,
       campaigns: ctx.campaigns,
       store: ctx.store,
+      plan: ctx.plan,
       now,
     });
     return ctx;

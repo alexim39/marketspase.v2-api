@@ -102,7 +102,7 @@ const oraActionSchema = new mongoose.Schema(
     opportunityId: { type: String, default: null, maxlength: 120 },
     type: {
       type: String,
-      enum: ['send_sms', 'send_email', 'schedule_followup', 'advance_stage'],
+      enum: ['send_sms', 'send_email', 'schedule_followup', 'advance_stage', 'save_daily_plan'],
       required: true,
     },
     capabilityKey: { type: String, default: null, maxlength: 80 },
@@ -129,6 +129,29 @@ oraActionSchema.index({ partnerId: 1, status: 1, createdAt: -1 });
 
 export const OraActionModel =
   mongoose.models['Ora-action'] ?? mongoose.model('Ora-action', oraActionSchema);
+
+const oraPlanItemSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, maxlength: 100 },
+    detail: { type: String, default: '', maxlength: 240 },
+    link: { type: String, default: '', maxlength: 200 },
+  },
+  { _id: false },
+);
+
+const oraPlanSchema = new mongoose.Schema(
+  {
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
+    dateKey: { type: String, required: true, index: true, maxlength: 10 },
+    items: { type: [oraPlanItemSchema], default: [] },
+    source: { type: String, default: 'partner', maxlength: 20 },
+  },
+  { timestamps: { createdAt: true, updatedAt: true } },
+);
+oraPlanSchema.index({ partnerId: 1, dateKey: 1 }, { unique: true });
+
+export const OraPlanModel =
+  mongoose.models['Ora-plan'] ?? mongoose.model('Ora-plan', oraPlanSchema);
 
 const shapedAction = (row) => (row ? {
   id: oid(row._id),
@@ -229,6 +252,38 @@ export class MongoOraActionStore {
 
   async countProposed(partnerId) {
     return OraActionModel.countDocuments({ partnerId, status: 'proposed' });
+  }
+}
+
+const shapedPlan = (row) => (row ? {
+  id: oid(row._id),
+  partnerId: oid(row.partnerId),
+  dateKey: row.dateKey,
+  items: (row.items ?? []).map((item) => ({
+    title: item.title,
+    ...(item.detail ? { detail: item.detail } : {}),
+    ...(item.link ? { link: item.link } : {}),
+  })),
+  source: row.source ?? 'partner',
+  savedAt: row.updatedAt ?? row.createdAt ?? null,
+} : null);
+
+/** One plan per partner per Lagos day; save is an atomic upsert. */
+export class MongoOraPlanStore {
+  async get(partnerId, dateKey) {
+    return shapedPlan(await OraPlanModel.findOne({ partnerId, dateKey }).lean());
+  }
+
+  async save(partnerId, { dateKey, items, source = 'partner' }) {
+    const doc = await OraPlanModel.findOneAndUpdate(
+      { partnerId, dateKey },
+      {
+        $set: { items, source },
+        $setOnInsert: { partnerId, dateKey },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean();
+    return shapedPlan(doc);
   }
 }
 

@@ -1,6 +1,7 @@
 import { AppError, ConflictException, ForbiddenException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import { buildSystemPrompt, greetingFor, startersForLevel } from '../domain/Ora.persona.js';
 import { extractProposalBlock } from '../domain/Ora.proposals.js';
+import { parsePlanDraft, planDraftFromReply } from '../domain/Ora.plans.js';
 import { capabilityByKey } from '../domain/Ora.capabilities.js';
 import { classifyTopic, summarizeAnalytics } from '../domain/Ora.analytics.js';
 
@@ -25,14 +26,25 @@ const titleOf = (message) => {
   return s.length > 60 ? `${s.slice(0, 59)}…` : (s || 'New conversation');
 };
 
-const draftFor = (proposal, opportunity) => {
+const draftFor = (proposal, opportunity, reply = '') => {
   const draft = String(proposal?.draft ?? '').trim();
-  if (!draft) return opportunity.payload ?? {};
+  if (!draft) {
+    if (opportunity.type === 'save_daily_plan') {
+      const items = planDraftFromReply(reply);
+      return { ...(opportunity.payload ?? {}), ...(items.length > 0 ? { items } : {}) };
+    }
+    return opportunity.payload ?? {};
+  }
   if (opportunity.type === 'send_sms') {
     return { ...(opportunity.payload ?? {}), body: draft.slice(0, 960) };
   }
   if (opportunity.type === 'send_email') {
     return { ...(opportunity.payload ?? {}), body: draft.slice(0, 20000) };
+  }
+  if (opportunity.type === 'save_daily_plan') {
+    const parsed = parsePlanDraft(draft);
+    const items = parsed.length > 0 ? parsed : planDraftFromReply(reply);
+    return { ...(opportunity.payload ?? {}), ...(items.length > 0 ? { items } : {}) };
   }
   return opportunity.payload ?? {};
 };
@@ -71,6 +83,7 @@ export const materializeProposals = async ({
   conversationId,
   snapshot,
   proposals = [],
+  reply = '',
   actions = null,
   maxPending = MAX_PENDING_ACTIONS,
 } = {}) => {
@@ -113,7 +126,7 @@ export const materializeProposals = async ({
       if (pending >= maxPending) continue;
       const record = {
         ...common,
-        payload: draftFor(proposal, opportunity),
+        payload: draftFor(proposal, opportunity, reply),
       };
       if (actions?.create) {
         try {
@@ -218,6 +231,7 @@ export class AskOraUseCase {
       conversationId: convo.id,
       snapshot,
       proposals,
+      reply,
       actions: this.actions,
     });
     await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });

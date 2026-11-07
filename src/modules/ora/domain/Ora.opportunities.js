@@ -1,6 +1,7 @@
 import { bucketFollowUps } from '../../crm/domain/Prospect.reminders.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
 import { hasAutomationConsent } from './Ora.consent.js';
+import { lagosDateKey } from './Ora.plans.js';
 
 /**
  * Ora opportunities — a bounded, server-generated list of safe next moves.
@@ -44,6 +45,7 @@ export const buildOraOpportunities = ({
   team = null,
   campaigns = null,
   store = null,
+  plan = null,
   now = new Date(),
 } = {}) => {
   const items = prospects?.items ?? [];
@@ -233,6 +235,50 @@ export const buildOraOpportunities = ({
       reason: 'Leadership rank — check who needs support this week',
     }));
   }
+
+  const existingPlanItems = Array.isArray(plan?.items)
+    ? plan.items
+      .filter((item) => item && String(item.title ?? '').trim())
+      .slice(0, 3)
+      .map((item) => ({
+        title: String(item.title).trim().slice(0, 100),
+        ...(item.detail ? { detail: String(item.detail).trim().slice(0, 240) } : {}),
+        ...(item.link ? { link: String(item.link).trim().slice(0, 200) } : {}),
+      }))
+    : [];
+  const basePlanItems = existingPlanItems.length > 0
+    ? existingPlanItems
+    : opportunities
+      .filter((item) => item?.title)
+      .slice(0, 3)
+      .map((item) => ({
+        title: String(item.title).trim().slice(0, 100),
+        ...(item.summary || item.reason
+          ? { detail: String(item.summary ?? item.reason).trim().slice(0, 240) }
+          : {}),
+        ...(String(item.page ?? '').startsWith('/dashboard') ? { link: item.page } : {}),
+      }));
+  const suggestedItems = basePlanItems.length > 0 ? basePlanItems : [
+    { title: 'Review your pipeline', detail: 'Find one person to follow up with today', link: '/dashboard/pipeline' },
+    { title: 'Check your goals', detail: 'Pick the next step toward your target', link: '/dashboard/goals' },
+  ];
+
+  opportunities.unshift({
+    id: 'opp:plan:today',
+    type: 'save_daily_plan',
+    area: 'Home',
+    title: existingPlanItems.length > 0 ? "Update today's plan" : "Save today's plan",
+    reason: existingPlanItems.length > 0
+      ? 'Adjust the focus you already saved for today'
+      : "Turn today's priorities into a plan you can follow",
+    page: '/dashboard/ora',
+    capabilityKey: 'home.plan',
+    requiresApproval: true,
+    payload: { dateKey: lagosDateKey(now), items: suggestedItems },
+    summary: existingPlanItems.length > 0
+      ? 'Your saved plan can be edited'
+      : `${suggestedItems.length} focus item(s) ready`,
+  });
 
   return opportunities.slice(0, MAX_OPPORTUNITIES);
 };

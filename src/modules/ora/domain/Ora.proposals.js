@@ -19,7 +19,7 @@ const clean = (row) => {
     ...(capability ? { capability } : {}),
     label: text(row.label, 60),
     summary: text(row.summary, 220),
-    draft: text(row.draft, 960),
+    draft: text(row.draft, 2000),
   };
 };
 

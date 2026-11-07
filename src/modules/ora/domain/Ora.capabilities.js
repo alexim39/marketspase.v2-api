@@ -11,6 +11,7 @@ export const ORA_ACTION_TYPES = Object.freeze([
   'send_email',
   'schedule_followup',
   'advance_stage',
+  'save_daily_plan',
 ]);
 
 const cap = (key, area, title, page, actions, description) => ({
@@ -28,6 +29,7 @@ const PIPELINE = ['open_page', 'send_sms', 'send_email', 'schedule_followup', 'a
 
 export const ORA_CAPABILITIES = Object.freeze([
   cap('home.today', 'Home', 'Today’s plan and business status', '/dashboard', OPEN, 'Summarise priorities, pipeline, goals, wallet and next steps.'),
+  cap('home.plan', 'Home', "Today's plan", '/dashboard/ora', ['open_page', 'save_daily_plan'], 'Create or edit the day plan and track its focus items.'),
   cap('pipeline.hub', 'Pipeline', 'Pipeline overview', '/dashboard/pipeline', OPEN, 'Show who needs attention today.'),
   cap('pipeline.followups', 'Pipeline', 'Follow-ups', '/dashboard/prospects/pipeline', PIPELINE, 'Read, message, schedule and advance prospects.'),
   cap('pipeline.reminders', 'Pipeline', 'Follow-up reminders', '/dashboard/prospects/reminders', PIPELINE, 'Work promises due today or overdue.'),

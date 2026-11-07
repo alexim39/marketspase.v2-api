@@ -69,3 +69,17 @@ test('at-risk goals, unread notifications and the next event are captured', () =
   assert.ok(rows.some((o) => o.capabilityKey === 'notifications.center'));
   assert.ok(rows.some((o) => o.capabilityKey === 'community.events'));
 });
+
+test('a daily plan opportunity exists even on an empty account', () => {
+  const rows = buildOraOpportunities({
+    prospects: { items: [], total: 0 },
+    goals: [],
+    events: { items: [] },
+    now: new Date('2026-11-07T10:00:00Z'),
+  });
+  const plan = rows.find((o) => o.id === 'opp:plan:today');
+  assert.ok(plan);
+  assert.equal(plan.type, 'save_daily_plan');
+  assert.equal(plan.payload.dateKey, '2026-11-07');
+  assert.ok(plan.payload.items.length > 0);
+});

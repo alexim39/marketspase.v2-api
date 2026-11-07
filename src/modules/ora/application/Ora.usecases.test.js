@@ -89,6 +89,67 @@ test('unknown ids are dropped', async () => {
   assert.deepEqual(out, []);
 });
 
+test('a daily plan proposal keeps the server payload and applies the model draft', async () => {
+  const actions = actionStore();
+  const planSnapshot = {
+    opportunities: [{
+      id: 'opp:plan:today',
+      type: 'save_daily_plan',
+      area: 'Home',
+      title: "Save today's plan",
+      reason: 'Three priorities ready',
+      page: '/dashboard/ora',
+      capabilityKey: 'home.plan',
+      summary: 'Plan ready',
+      payload: { dateKey: '2026-11-07', items: [{ title: 'Default item' }] },
+    }],
+  };
+  const out = await materializeProposals({
+    partnerId: 'p1',
+    conversationId: 'c1',
+    snapshot: planSnapshot,
+    actions,
+    proposals: [{
+      opportunityId: 'opp:plan:today',
+      label: 'Save today\'s plan',
+      draft: '[{"title":"Follow up with Paul","link":"/dashboard/prospects/pipeline"}]',
+    }],
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].type, 'save_daily_plan');
+  assert.equal(out[0].status, 'proposed');
+  assert.equal(out[0].payload.dateKey, '2026-11-07');
+  assert.equal(out[0].payload.items[0].title, 'Follow up with Paul');
+  assert.equal(out[0].payload.items[0].link, '/dashboard/prospects/pipeline');
+});
+
+test('a plan proposal without a draft uses the numbered reply list', async () => {
+  const actions = actionStore();
+  const planSnapshot = {
+    opportunities: [{
+      id: 'opp:plan:today',
+      type: 'save_daily_plan',
+      area: 'Home',
+      title: "Save today's plan",
+      reason: 'Three priorities ready',
+      page: '/dashboard/ora',
+      capabilityKey: 'home.plan',
+      summary: 'Plan ready',
+      payload: { dateKey: '2026-11-07', items: [{ title: 'Default item' }] },
+    }],
+  };
+  const out = await materializeProposals({
+    partnerId: 'p1',
+    conversationId: 'c1',
+    snapshot: planSnapshot,
+    actions,
+    reply: 'Here is the plan:\n1. Follow up with Paul — overdue by two days\n2. Check goal pace',
+    proposals: [{ opportunityId: 'opp:plan:today', label: 'Save today\'s plan' }],
+  });
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0].payload.items.map((item) => item.title), ['Follow up with Paul', 'Check goal pace']);
+});
+
 test('a pipeline question still yields an approval card when the model omits one', async () => {
   const created = [];
   const conversations = {

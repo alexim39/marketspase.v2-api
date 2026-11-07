@@ -5,6 +5,8 @@ import { UpdateProspectStatusUseCase } from '../../crm/application/Prospect.comm
 import { LogCommunicationUseCase } from '../../crm/application/Prospect.communications.js';
 import { SendBulkEmailUseCase, SendBulkSmsUseCase } from '../../outreach/application/Outreach.usecases.js';
 import { outreachDeps, outreachSms } from '../../outreach/infrastructure/Outreach.store.js';
+import { SaveOraPlanUseCase } from './Ora.plan.usecases.js';
+import { MongoOraPlanStore } from '../infrastructure/Ora.mongo.repository.js';
 import { env } from '../../../shared/config/env.js';
 
 const STAGES = ['New', 'Contacted', 'Interested', 'In Negotiation', 'Converted', 'Closed'];
@@ -25,6 +27,7 @@ export class OraActionExecutor {
     sendEmail,
     logCommunication,
     updateStatus,
+    savePlan,
     smsEnv,
   } = {}) {
     const stores = outreachDeps();
@@ -41,6 +44,7 @@ export class OraActionExecutor {
     });
     this.logCommunication = logCommunication ?? new LogCommunicationUseCase({ prospects: this.prospects });
     this.updateStatus = updateStatus ?? new UpdateProspectStatusUseCase({ prospects: this.prospects });
+    this.savePlan = savePlan ?? new SaveOraPlanUseCase({ plans: new MongoOraPlanStore() });
   }
 
   async prospectFor(partnerId, prospectId) {
@@ -162,6 +166,14 @@ export class OraActionExecutor {
           type: 'advance_stage',
           prospectId: String(updated?.id ?? updated?._id ?? payload.prospectId),
           stage,
+        };
+      }
+      case 'save_daily_plan': {
+        const plan = await this.savePlan.execute({ partnerId, items: payload.items, source: 'ora' });
+        return {
+          type: 'save_daily_plan',
+          dateKey: plan.dateKey,
+          items: plan.items,
         };
       }
       case 'open_page':

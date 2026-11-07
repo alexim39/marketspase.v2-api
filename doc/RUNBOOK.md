@@ -58,11 +58,14 @@ circuit breaker is open.
    ```
 3. **Web/admin** deploy. Its CI guard must pass before the release.
 4. Keep the temporary `/emailSubscription/*` redirects for **7 days** after the
-   web release, then remove the shim. During that window, run:
+   web release, then remove the shim. The current window started
+   **2026-11-07**; the earliest safe removal date is **2026-11-14**.
+   During that window, capture the API request logs and run:
    ```bash
-   npm run audit:legacy
+   npm run audit:legacy -- /var/log/marketspase-api.log --since=2026-11-07
    ```
-   and check web CI's `check:legacy-endpoints` job.
+   Remove the shim only when the report shows no `/emailSubscription/*` rows.
+   Also keep web CI's `check:legacy-endpoints` job green.
 
 ### Rollback
 
@@ -215,9 +218,13 @@ Jobs use one lease per cluster in `joblocks`; each sweep writes its outcome to
    ```
    **Do not delete an active (future `expiresAt`) lease.** That can run two
    copies of a sweep and duplicate sends or allocations.
-3. If one job is stale but others are healthy, inspect its `lastError`, then
+3. A local `nodemon` restart around the scheduled minute can skip one tick; the
+   next cadence catches up. `compensation-reconcile` is idempotent (it skips
+   existing sales and claims each mentor bonus conditionally), so a manual
+   catch-up is safe when the ledger looks stale.
+4. If one job is stale but others are healthy, inspect its `lastError`, then
    trigger it manually from a staging shell or wait for the next tick.
-4. Redis is not used. There is no external queue to flush; Mongo is the queue.
+5. Redis is not used. There is no external queue to flush; Mongo is the queue.
 
 ### 4.5 Circuit breaker open
 

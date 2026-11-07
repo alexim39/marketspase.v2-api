@@ -22,6 +22,7 @@ Open-page cards do not need approval.
 | Capability key | Page |
 | --- | --- |
 | `home.today` | `/dashboard` |
+| `home.plan` | `/dashboard/ora` |
 | `pipeline.hub` | `/dashboard/pipeline` |
 | `pipeline.followups` | `/dashboard/prospects/pipeline` |
 | `pipeline.reminders` | `/dashboard/prospects/reminders` |
@@ -87,9 +88,25 @@ The source of truth is `src/modules/ora/domain/Ora.capabilities.js`.
 | `send_email` | Sends an approved email | owner match, recorded consent, valid email |
 | `schedule_followup` | Logs a dated follow-up commitment | owner match, valid date |
 | `advance_stage` | Moves a prospect to a pipeline stage | owner match, valid stage |
+| `save_daily_plan` | Saves or edits today's 1-3 focus items | partner scope, max 3 items, dashboard-only links |
 | `open_page` | Opens the relevant platform area | capability allowlist |
 
 No money movement, campaign funding, lead purchase, withdrawal or refund is executed directly by Ora. Those remain explicit partner actions on their existing screens.
+
+## Daily plan
+
+Today's plan is partner-scoped and keyed by the Africa/Lagos calendar day
+(`ora-plans`, unique on `partnerId + dateKey`). Ora proposes a plan from live
+opportunities; the member approves it before anything is stored.
+
+- `GET /v1/ora/plan` returns `{ dateKey, items, source, savedAt }`.
+- `PUT /v1/ora/plan` manually saves/edits `{ items: [{ title, detail?, link? }] }`
+  (1-3 items, rate-limited to 30/hour/partner).
+- `POST /v1/ora/actions/:id/approve` with a `save_daily_plan` card upserts the
+  same day, so repeat approval cannot duplicate a plan.
+- The model can reference `opp:plan:today` and provide a JSON array in `draft`;
+  unknown fields are stripped, links must be known dashboard pages, and the
+  server re-validates everything before saving.
 
 ## Live opportunities
 
@@ -102,12 +119,13 @@ No money movement, campaign funding, lead purchase, withdrawal or refund is exec
 - next community event
 - low wallet balance before SMS
 - team pulse for Leader/Ambassador ranks
+- today's plan (save or update the 1-3 focus items)
 
 The model may reference only these opportunity IDs. Contact details never enter the prompt; the executor reloads the prospect and re-checks ownership and consent.
 
 Consent: manual/contact-list prospects need `consentToContact: true`. Survey-sourced leads (`Website`, `Unique Link`) and `Admin Push` leads are opt-in by submission, including older rows.
 
-The live context also carries the pipeline stage mix, wallet balance, team size/recent partners, active/pending campaigns, store listings, pending receipts, open store orders, goals, next event and unread notifications, so answers can quote real numbers.
+The live context also carries the pipeline stage mix, wallet balance, team size/recent partners, active/pending campaigns, store listings, pending receipts, open store orders, goals, next event, today's saved plan and unread notifications, so answers can quote real numbers.
 
 ## Safety rules
 

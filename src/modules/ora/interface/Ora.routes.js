@@ -10,10 +10,11 @@ import {
   GetOraContextUseCase, GetOraConversationUseCase, ListOraActionsUseCase, ListOraConversationsUseCase,
   PinOraConversationUseCase, SkipOraActionUseCase,
 } from '../application/Ora.usecases.js';
+import { GetOraPlanUseCase, SaveOraPlanUseCase } from '../application/Ora.plan.usecases.js';
 import { OraContextAssembler } from '../application/Ora.context.js';
 import { OraActionExecutor } from '../application/Ora.actionExecutor.js';
 import { DeepSeekClient } from '../infrastructure/DeepSeek.client.js';
-import { MongoOraActionStore, MongoOraAnalyticsStore, MongoOraConversationStore } from '../infrastructure/Ora.mongo.repository.js';
+import { MongoOraActionStore, MongoOraAnalyticsStore, MongoOraConversationStore, MongoOraPlanStore } from '../infrastructure/Ora.mongo.repository.js';
 import { recordAudit } from '../../audit/index.js';
 import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
@@ -52,6 +53,14 @@ const ActionsQuery = z.object({
   status: z.enum(['proposed', 'executing', 'executed', 'skipped', 'failed']).optional().default('proposed'),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
+const PlanItemSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  detail: z.string().trim().max(240).optional().default(''),
+  link: z.string().trim().max(200).optional().default(''),
+});
+const PlanSchema = z.object({
+  items: z.array(PlanItemSchema).min(1).max(3),
+});
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildOraRouter = (deps = {}) => {
@@ -61,6 +70,7 @@ export const buildOraRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const conversations = deps.conversations ?? new MongoOraConversationStore();
   const actionStore = deps.actionStore ?? new MongoOraActionStore();
+  const plans = deps.plans ?? new MongoOraPlanStore();
 
   // Recognition omitted on purpose — Ora reads the journey like the
   // Journey page but never auto-posts promotions from a chat turn.
@@ -87,15 +97,17 @@ export const buildOraRouter = (deps = {}) => {
   const storeOrders = deps.storeOrders ?? new StoreOrderRepository();
 
   const context = deps.context ?? new OraContextAssembler({
-    journey, goals, prospects, events, notifications, partners, network, campaigns, store, storeOrders,
+    journey, goals, prospects, events, notifications, partners, network, campaigns, store, storeOrders, plans,
   });
   const client = deps.client ?? new DeepSeekClient({ ...env.ora, post: deps.post });
   const analytics = deps.analytics ?? new MongoOraAnalyticsStore();
-  const executor = deps.executor ?? new OraActionExecutor();
+  const savePlan = deps.savePlan ?? new SaveOraPlanUseCase({ plans });
+  const executor = deps.executor ?? new OraActionExecutor({ savePlan });
   const ask = deps.ask ?? new AskOraUseCase({
     conversations, client, context, analytics, actions: actionStore, dailyLimit: env.ora.dailyLimit,
   });
   const oraContext = new GetOraContextUseCase({ context });
+  const getPlan = deps.getPlan ?? new GetOraPlanUseCase({ plans });
   const list = new ListOraConversationsUseCase({ conversations });
   const detail = new GetOraConversationUseCase({ conversations });
   const pin = new PinOraConversationUseCase({ conversations });
@@ -116,6 +128,23 @@ export const buildOraRouter = (deps = {}) => {
   router.get('/context', asyncHandler(async (req, res) => {
     const data = await oraContext.execute({ partnerId: req.auth?.partnerId });
     res.status(200).json({ message: 'Ora context retrieved successfully', data, success: true });
+  }));
+
+  const planSaveLimit = rateLimit({ name: 'ora-plan-save', windowMs: 3600000, max: 30, key: userKey });
+
+  router.get('/plan', asyncHandler(async (req, res) => {
+    const data = await getPlan.execute({ partnerId: req.auth?.partnerId });
+    res.status(200).json({ message: 'Ora plan retrieved successfully', data, success: true });
+  }));
+
+  router.put('/plan', planSaveLimit, validate({ body: PlanSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await savePlan.execute({
+      partnerId: req.auth?.partnerId,
+      items: body?.items,
+      source: 'partner',
+    });
+    res.status(200).json({ message: 'Ora plan saved', data, success: true });
   }));
 
   const approveLimit = rateLimit({ name: 'ora-action-approve', windowMs: 60000, max: 20, key: userKey });

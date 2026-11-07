@@ -126,6 +126,14 @@ export const formatSnapshot = (ctx = {}) => {
   for (const e of (ctx.events ?? []).slice(0, 5)) {
     lines.push(`Upcoming: ${e.title} — ${e.startsAt}${e.location ? ` @ ${e.location}` : ''}`);
   }
+  if ((ctx.plan?.items ?? []).length > 0) {
+    lines.push(`Today's plan (${ctx.plan.dateKey}):`);
+    for (const item of ctx.plan.items.slice(0, 3)) {
+      lines.push(`- ${item.title}${item.detail ? ` - ${item.detail}` : ''}`);
+    }
+  } else {
+    lines.push("Today's plan: not saved yet.");
+  }
   if ((ctx.unread ?? 0) > 0) lines.push(`Unread notifications: ${ctx.unread}`);
   if ((ctx.opportunities ?? []).length > 0) {
     lines.push('LIVE OPPORTUNITIES (use these exact ids only):');
@@ -163,7 +171,9 @@ HOW YOU OPERATE:
 - Answer the member's actual question first, using the live context above. Quote names and numbers.
 - Then offer one clear next move. If a LIVE OPPORTUNITY fits, propose it and ask for approval ("Should I send that SMS?").
 - Never say an action is done before approval. You prepare; the member approves; the backend executes.
-- Use ONLY the exact opportunity ids in LIVE OPPORTUNITIES for send_sms, send_email, schedule_followup and advance_stage.
+- Use ONLY the exact opportunity ids in LIVE OPPORTUNITIES for send_sms, send_email, schedule_followup, advance_stage and save_daily_plan.
+- To save or edit today's plan, use opportunityId "opp:plan:today" and put 1-3 focus items as a JSON array in "draft" (fields: title, detail, link). Use only dashboard links from the capability list.
+- Only propose "opp:plan:today" when the member asks to plan, prioritise or edit today's plan.
 - For any other platform area, propose open_page with a capability key from the list above.
 - Never invent prospect ids, contact details, links, amounts or results.
 - Consent is mandatory: only propose automated SMS/email when the opportunity type is send_sms or send_email. If the opportunity is open_page because consent is missing, explain that and offer to open the record.
@@ -182,6 +192,10 @@ HOW YOU OPERATE:
 For opening an area:
 \`\`\`actions
 [{"capability":"pipeline.reminders","label":"Open reminders"}]
+\`\`\`
+For today's plan, put the focus items in "draft" as a short newline list; the backend reads the draft, not the prose:
+\`\`\`actions
+[{"opportunityId":"opp:plan:today","label":"Save today's plan","summary":"3 focus items","draft":"Follow up with Paul\\nReview goal pace\\nPrepare for the team call"}]
 \`\`\``;
 
 /** First-run greeting — personal, rank-aware, points at one action. */

@@ -59,10 +59,18 @@ const assembler = () => new OraContextAssembler({
   storeOrders: {
     listPartnerOrders: async () => [{ orderNumber: 'MS-1', status: 'paid' }],
   },
+  plans: {
+    get: async () => ({
+      dateKey: '2026-11-07',
+      items: [{ title: 'Follow up with Paul', link: '/dashboard/prospects/pipeline' }],
+      source: 'ora',
+      savedAt: new Date('2026-11-07T09:00:00Z'),
+    }),
+  },
 });
 
 test('assembly carries wallet, stage mix and live opportunities', async () => {
-  const ctx = await assembler().assemble({ partnerId: PID, now: new Date() });
+  const ctx = await assembler().assemble({ partnerId: PID, now: new Date('2026-11-07T10:00:00Z') });
   assert.equal(ctx.displayName, 'Ada Obi');
   assert.equal(ctx.walletBalance, 2500);
   assert.equal(ctx.pipeline.byStage.Contacted, 1);
@@ -70,7 +78,10 @@ test('assembly carries wallet, stage mix and live opportunities', async () => {
   assert.equal(ctx.team.directPartners, 1);
   assert.equal(ctx.campaigns.active, 1);
   assert.equal(ctx.store.pendingReceipts, 1);
+  assert.equal(ctx.plan.dateKey, '2026-11-07');
+  assert.equal(ctx.plan.items[0].title, 'Follow up with Paul');
   assert.ok(ctx.opportunities.some((o) => o.type === 'send_sms' && o.prospectName === 'Paul Obi'));
   assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'team.hub'));
   assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'products.store-orders'));
+  assert.ok(ctx.opportunities.some((o) => o.id === 'opp:plan:today'));
 });
