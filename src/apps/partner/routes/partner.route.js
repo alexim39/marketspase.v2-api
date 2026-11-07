@@ -12,20 +12,34 @@ import {
 const PartnerRouter = express.Router();
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid account');
-const ProfileUpdate = z.object({
+
+// Optional text from a form may arrive as null (empty input). Treat null as
+// blank, while keeping a truly omitted field untouched.
+const nullableText = (max) => z.preprocess(
+  (value) => (value === null ? '' : value),
+  z.string().trim().max(max).optional(),
+);
+
+export const ProfileUpdateSchema = z.object({
   id: objectId,
   name: z.string().trim().min(1).max(80),
   surname: z.string().trim().min(1).max(80),
   email: z.string().trim().toLowerCase().email().max(254),
   phone: z.string().trim().min(7).max(30),
-  bio: z.string().trim().max(1000).optional(),
-  address: z.object({
-    street: z.string().trim().max(300).optional(),
-    city: z.string().trim().max(120).optional(),
-    state: z.string().trim().max(120).optional(),
-    country: z.string().trim().max(80).optional(),
-  }).optional(),
-  dobDatePicker: z.union([z.string(), z.date()]).optional(),
+  bio: nullableText(1000),
+  address: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.object({
+      street: nullableText(300),
+      city: nullableText(120),
+      state: nullableText(120),
+      country: nullableText(80),
+    }).optional(),
+  ),
+  dobDatePicker: z.preprocess(
+    (value) => (value === null || value === '' ? undefined : value),
+    z.union([z.string(), z.date()]).optional(),
+  ),
 });
 const ProfessionUpdate = z.object({
   id: objectId,
@@ -52,7 +66,7 @@ const PasswordUpdate = z.object({
 // Everything below needs a partner session. Writes additionally enforce
 // session-ownership inside the controllers (self-only or scoped reads).
 // Update partner
-PartnerRouter.put('/update-profile', requireAuth, validateBodyInPlace(ProfileUpdate), updateProfile);
+PartnerRouter.put('/update-profile', requireAuth, validateBodyInPlace(ProfileUpdateSchema), updateProfile);
 
 // Update partner
 PartnerRouter.put('/update-profession', requireAuth, validateBodyInPlace(ProfessionUpdate), updateProfession);
