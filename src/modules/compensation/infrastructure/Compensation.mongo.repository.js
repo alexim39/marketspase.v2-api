@@ -18,11 +18,11 @@ import {
 } from './Compensation.models.js';
 import {
   MENTOR_BONUS_AMOUNT,
-  MENTOR_BONUS_DAYS,
   MENTOR_BONUS_EXPIRY_DAYS,
   MAX_LEVELS,
   RANKS,
   commissionAmount,
+  mentorBonusDays,
   depthAllows,
   planSummary,
   rankDepth,
@@ -90,7 +90,8 @@ export class MongoCompensationRepository {
     if (!hasId(orderId) || !hasId(partnerId)) throw new ValidationException('Invalid activation identity');
     const at = dateOrNow(activatedAt);
     const margin = Math.max(Number(grossMargin) || 0, 0);
-    const dueAt = new Date(at.getTime() + (MENTOR_BONUS_DAYS * DAY_MS));
+    const delayDays = mentorBonusDays();
+    const dueAt = new Date(at.getTime() + (delayDays * DAY_MS));
     const expiresAt = new Date(dueAt.getTime() + (MENTOR_BONUS_EXPIRY_DAYS * DAY_MS));
 
     return runInTransaction(async (session) => {
@@ -1095,7 +1096,9 @@ export class MongoCompensationRepository {
           paymentMethod: 'Activation Mentor Bonus',
           transactionType: 'Credit',
           date: now,
-          decisionNote: 'Day-7 activation mentor bonus',
+          decisionNote: mentorBonusDays() === 0
+            ? 'Immediate activation mentor bonus'
+            : `Day-${mentorBonusDays()} activation mentor bonus`,
         }],
         opts(session),
       );

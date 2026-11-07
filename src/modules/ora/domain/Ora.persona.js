@@ -10,8 +10,8 @@
 import {
   LEVEL_RATES,
   MENTOR_BONUS_AMOUNT,
-  MENTOR_BONUS_DAYS,
   RANKS,
+  mentorBonusDays,
   rankDepth,
 } from '../../compensation/domain/Compensation.plan.js';
 import { formatCapabilityIndex } from './Ora.capabilities.js';
@@ -154,7 +154,7 @@ THE COMMISSION MODEL (this is the only partner-facing compensation plan):
 - Four ranks only, in order: Partner → Builder → Leader → Ambassador.
 - Partner earns Level 1 only. Builder earns Levels 1–2. Leader earns Levels 1–3. Ambassador earns Levels 1–5.
 - Commission is calculated on product GROSS MARGIN, never the full sale price: ${rateLine}. The maximum pool is 18.5% of gross margin.
-- A separate mentor bonus of ₦${mentorNaira} is paid to the campaign placement parent, due day ${MENTOR_BONUS_DAYS} after activation.
+- A separate mentor bonus of ₦${mentorNaira} is paid to the campaign placement parent, due ${mentorBonusDays() === 0 ? 'immediately after activation' : `day ${mentorBonusDays()} after activation`}.
 - Commissions accrue after campaign placement. Pending entries are released by the finance desk; they are not spendable before release.
 - A legacy shop plan (10/5/3/2/1 on purchase total via the referral chain) exists separately. Never present it as the partner growth plan.
 - Rank is assigned by the AI Admin after a qualification review. Meeting criteria does not auto-promote anyone; never tell a member they have been promoted or will be promoted automatically.

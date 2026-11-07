@@ -324,6 +324,11 @@ execution writes an `ora.action.execute` audit event.
 - If a provider callback is delayed, reconcile with
   `payout-reconcile`/`compensation-reconcile` and the provider dashboard.
   Never manually credit a wallet without an audit row.
+- Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
+  (default 7; `0` means payable at the next hourly mentor-bonus run). It only
+  affects **newly recorded activations**; existing `mentor_bonuses` rows keep
+  their stored `dueAt`. The job runs at :15 and there is no inline instant
+  payout.
 
 ### 4.9 PII encryption
 
