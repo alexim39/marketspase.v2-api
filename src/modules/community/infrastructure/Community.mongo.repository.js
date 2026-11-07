@@ -24,10 +24,21 @@ const postSchema = new mongoose.Schema(
       }],
       default: [],
     },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: String, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 postSchema.index({ scope: 1, createdAt: -1 });
+postSchema.pre(/^find/, function hideDeletedPosts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+postSchema.pre('countDocuments', function hideDeletedPostCounts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+postSchema.pre('aggregate', function hideDeletedPostAggregates() {
+  if (!this.options?.withDeleted) this.pipeline().unshift({ $match: { deletedAt: null } });
+});
 
 const commentSchema = new mongoose.Schema(
   {
@@ -186,23 +197,13 @@ export class MongoCommunityStore {
     return shaped(doc);
   }
 
-  /** Author delete — post plus its comments, likes, saves and reports. */
+  /** Author delete — soft-delete the post; dependent rows stay for audit. */
   async deletePostCascade(id) {
-    const comments = await CommentModel.find({ postId: id }).select('_id').lean();
-    const commentIds = comments.map((c) => c._id);
-    await Promise.all([
-      CommentModel.deleteMany({ postId: id }),
-      LikeModel.deleteMany({
-        $or: [
-          { targetType: 'post', targetId: id },
-          ...(commentIds.length > 0 ? [{ targetType: 'comment', targetId: { $in: commentIds } }] : []),
-        ],
-      }),
-      SavedModel.deleteMany({ postId: id }),
-      PostReportModel.deleteMany({ postId: id }),
-      PostModel.deleteOne({ _id: id }),
-    ]);
-    return { deleted: true };
+    const res = await PostModel.updateOne(
+      { _id: id, deletedAt: null },
+      { $set: { deletedAt: new Date() } },
+    );
+    return { deleted: (res.modifiedCount ?? 0) > 0 };
   }
 
   async toggleLike(targetType, targetId, partnerId) {

@@ -11,9 +11,17 @@ const tutorialSchema = new mongoose.Schema(
     order: { type: Number, default: 0, min: 0, max: 10000 },
     active: { type: Boolean, default: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: String, default: null },
   },
   { timestamps: true },
 );
+tutorialSchema.pre(/^find/, function hideDeletedTutorials() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+tutorialSchema.pre('countDocuments', function hideDeletedTutorialCounts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
 tutorialSchema.index({ active: 1, area: 1, order: 1 });
 
 export const TutorialModel =

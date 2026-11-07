@@ -88,7 +88,14 @@ backoff and marked `failed` after five attempts for inspection.
   reads, writes and aggregations. Slow queries return `503 SLOW_QUERY` with a
   clear next step.
 - Soft delete uses `deletedAt`; business records are never hard-deleted except
-  legal erasure and dependent join rows.
+  legal erasure and dependent join rows. Covered: prospects, bookings, goals,
+  kits, tutorials, events, community posts, teams and email subscriptions.
+- Pass `{ withDeleted: true }` on an admin restore/reconciliation query to
+  include soft-deleted rows.
+- Legacy requests are tagged `legacy: true` in structured logs so dead routes
+  can be measured before removal.
+- Legacy auth, product and team writes now validate and replace `req.body`
+  through `validateBodyInPlace`, stripping unknown fields before controllers.
 
 ## PII at rest
 

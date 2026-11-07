@@ -231,7 +231,10 @@ export const deleteSingleEmailFromEmailList = async (req, res) => {
         });
       }
 
-      await EmailSubscriptionModel.findByIdAndDelete(emailId);
+      await EmailSubscriptionModel.updateOne(
+        { _id: emailId, deletedAt: null },
+        { $set: { deletedAt: new Date() } },
+      );
 
       res.status(200).json({
         message: "Email deleted successfully!",

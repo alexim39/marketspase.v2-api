@@ -36,6 +36,12 @@ const fakeKits = (rows = []) => {
       const gone = i < 0 ? null : data.splice(i, 1)[0];
       return { lean: async () => (gone ? { ...gone } : null) };
     },
+    findOneAndUpdate(filter, update) {
+      const hit = data.find((r) => String(r._id) === String(filter._id) && !r.deletedAt);
+      if (!hit) return { lean: async () => null };
+      Object.assign(hit, update.$set ?? {});
+      return { lean: async () => ({ ...hit }) };
+    },
   };
 };
 

@@ -45,7 +45,7 @@ const fakeSubs = (rows = []) => {
       },
     }),
     findById: (id) => ({ lean: async () => {
-      const r = store.find((x) => String(x._id) === String(id));
+      const r = store.find((x) => String(x._id) === String(id) && !x.deletedAt);
       return r ? { ...r } : null;
     } }),
     deleteOne: async (filter) => {
@@ -83,7 +83,7 @@ test('status flips and validates; delete removes and guards', async () => {
   );
   const out = await new DeleteSubscriptionUseCase({ subscriptions: subs }).execute({ id: '0123456789abcdef01234567' });
   assert.equal(out.email, 'a@x.test');
-  assert.equal(subs.store.length, 0);
+  assert.ok(subs.store[0].deletedAt);
   await assert.rejects(new DeleteSubscriptionUseCase({ subscriptions: subs }).execute({ id: '0123456789abcdef01234567' }), /not found/i);
   await assert.rejects(new DeleteSubscriptionUseCase({ subscriptions: subs }).execute({ id: 'nope' }), /Invalid subscription id/);
 });

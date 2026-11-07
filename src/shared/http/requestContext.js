@@ -27,6 +27,7 @@ export const requestContext = (req, res, next) => {
       durationMs: Math.round(durationMs),
       partnerId: req.auth?.partnerId ?? null,
       ip: req.ip ?? null,
+      legacy: !path.startsWith('/v1') && !path.startsWith('/health') && path !== '/',
     };
     if (res.statusCode >= 500) {
       logger.error('http_request', fields);

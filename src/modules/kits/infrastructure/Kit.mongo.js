@@ -25,9 +25,17 @@ const kitSchema = new mongoose.Schema(
     order: { type: Number, default: 0, min: 0, max: 10000 },
     active: { type: Boolean, default: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: String, default: null },
   },
   { timestamps: true },
 );
+kitSchema.pre(/^find/, function hideDeletedKits() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+kitSchema.pre('countDocuments', function hideDeletedKitCounts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
 kitSchema.index({ active: 1, area: 1, order: 1 });
 
 export const KitModel =

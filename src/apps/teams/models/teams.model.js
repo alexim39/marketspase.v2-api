@@ -23,11 +23,20 @@ const teamSchema = mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Partner'
           }],
+        deletedAt: { type: Date, default: null, index: true },
+        deletedBy: { type: String, default: null },
     },  
     {  
         timestamps: true, // Automatically add createdAt and updatedAt fields  
     }  
 );  
+
+teamSchema.pre(/^find/, function hideDeletedTeams() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+teamSchema.pre('countDocuments', function hideDeletedTeamCounts() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
 
 /* Model */  
 export const TeamModel = mongoose.model('Team', teamSchema);

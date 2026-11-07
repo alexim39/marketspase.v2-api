@@ -26,3 +26,20 @@ export const validate = (schemas) => (req, _res, next) => {
     );
   }
 };
+
+/**
+ * Legacy-controller adapter: validate and replace `req.body` in place so
+ * existing handlers that read `req.body` get the stripped, typed values.
+ */
+export const validateBodyInPlace = (schema) => (req, _res, next) => {
+  try {
+    req.body = schema.parse(req.body ?? {});
+    next();
+  } catch (err) {
+    next(
+      new ValidationException('Invalid request data', {
+        issues: err?.issues ?? err?.errors ?? String(err),
+      }),
+    );
+  }
+};

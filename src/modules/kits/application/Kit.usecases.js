@@ -157,8 +157,12 @@ export class DeleteKitUseCase {
     this.kits = kits ?? KitModel;
   }
 
-  async execute({ kitId }) {
-    const doc = await this.kits.findByIdAndDelete(kitId).lean();
+  async execute({ kitId, adminId = null }) {
+    const doc = await this.kits.findOneAndUpdate(
+      { _id: kitId, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: String(adminId ?? '') } },
+      { new: true },
+    ).lean();
     if (!doc) throw new NotFoundException('Kit not found');
     return { deleted: true, id: String(kitId), fileUrl: doc.fileUrl ?? null };
   }

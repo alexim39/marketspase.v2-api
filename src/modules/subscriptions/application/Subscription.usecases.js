@@ -101,7 +101,13 @@ export class DeleteSubscriptionUseCase {
     if (!/^[a-fA-F0-9]{24}$/.test(String(id ?? ''))) throw new ValidationException('Invalid subscription id');
     const doc = await this.subscriptions.findById(id).lean().catch(() => null);
     if (!doc) throw new NotFoundException('Subscription not found');
-    await this.subscriptions.deleteOne({ _id: id }).catch(() => null);
+    try {
+      const query = this.subscriptions.findByIdAndUpdate(id, {
+        $set: { deletedAt: new Date() },
+      });
+      if (query && typeof query.lean === 'function') await query.lean();
+      else await query;
+    } catch { /* best-effort soft delete */ }
     return { id: String(id), email: doc.email ?? '' };
   }
 }

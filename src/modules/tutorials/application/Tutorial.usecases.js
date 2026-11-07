@@ -113,8 +113,12 @@ export class DeleteTutorialUseCase {
     this.tutorials = tutorials ?? TutorialModel;
   }
 
-  async execute({ tutorialId }) {
-    const doc = await this.tutorials.findByIdAndDelete(tutorialId).lean();
+  async execute({ tutorialId, adminId = null }) {
+    const doc = await this.tutorials.findOneAndUpdate(
+      { _id: tutorialId, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: String(adminId ?? '') } },
+      { new: true },
+    ).lean();
     if (!doc) throw new NotFoundException('Tutorial not found');
     return { deleted: true, id: String(tutorialId) };
   }

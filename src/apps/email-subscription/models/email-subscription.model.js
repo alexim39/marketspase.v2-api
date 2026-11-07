@@ -45,6 +45,8 @@ const emailSubscriptionSchema = mongoose.Schema(
             // see LEGACY_DROP in shared/mongo/indexes.js.)
             //required: [true, "Please enter username"]
         },
+        deletedAt: { type: Date, default: null, index: true },
+        deletedBy: { type: String, default: null },
         
        
     },
@@ -54,4 +56,10 @@ const emailSubscriptionSchema = mongoose.Schema(
 )
 
 /* Model */
+emailSubscriptionSchema.pre(/^find/, function hideDeletedSubscriptions() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+emailSubscriptionSchema.pre('countDocuments', function hideDeletedSubscriptionCounts() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
 export const EmailSubscriptionModel = mongoose.model('Email-subscription', emailSubscriptionSchema);

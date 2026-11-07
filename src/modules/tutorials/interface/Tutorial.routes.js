@@ -84,7 +84,7 @@ export const buildAdminTutorialRouter = (deps = {}) => {
 
   router.delete('/:id', validate({ params: z.object({ id: objectId }) }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
-    const data = await remove.execute({ tutorialId: params.id });
+    const data = await remove.execute({ tutorialId: params.id, adminId: req.auth?.partnerId });
     void recordAudit({
       actorId: req.auth?.partnerId, action: 'tutorial.delete',
       targetType: 'tutorial', targetId: String(params.id),

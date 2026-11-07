@@ -16,10 +16,21 @@ const eventSchema = new mongoose.Schema(
     // `featuredUntil` (defaults to the event start).
     featured: { type: Boolean, default: false, index: true },
     featuredUntil: { type: Date, default: null },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: String, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 eventSchema.index({ scope: 1, startsAt: 1 });
+eventSchema.pre(/^find/, function hideDeletedEvents() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+eventSchema.pre('countDocuments', function hideDeletedEventCounts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+eventSchema.pre('aggregate', function hideDeletedEventAggregates() {
+  if (!this.options?.withDeleted) this.pipeline().unshift({ $match: { deletedAt: null } });
+});
 
 const rsvpSchema = new mongoose.Schema(
   {
@@ -98,11 +109,11 @@ export class MongoEventStore {
   }
 
   async deleteEvent(id) {
-    const [res] = await Promise.all([
-      EventModel.deleteOne({ _id: id }),
-      EventRsvpModel.deleteMany({ eventId: id }),
-    ]);
-    return { deleted: res.deletedCount > 0 };
+    const res = await EventModel.updateOne(
+      { _id: id, deletedAt: null },
+      { $set: { deletedAt: new Date() } },
+    );
+    return { deleted: (res.modifiedCount ?? 0) > 0 };
   }
 
   async updateEvent(id, patch) {

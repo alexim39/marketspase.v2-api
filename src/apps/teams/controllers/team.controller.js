@@ -236,7 +236,10 @@ export const deleteTeamBy = async (req, res) => {
             });
         }
 
-        await TeamModel.findByIdAndDelete(id);
+        await TeamModel.updateOne(
+            { _id: id, deletedAt: null },
+            { $set: { deletedAt: new Date(), deletedBy: String(requesterId ?? '') } },
+        );
 
         res.status(200).json({  
             message: 'Team deleted successfully!',

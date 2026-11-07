@@ -135,7 +135,7 @@ export const buildAdminKitRouter = (deps = {}) => {
 
   router.delete('/:id', validate({ params: z.object({ id: objectId }) }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
-    const data = await remove.execute({ kitId: params.id });
+    const data = await remove.execute({ kitId: params.id, adminId: req.auth?.partnerId });
     // Deck asset cleanup is best-effort — the row is already gone.
     const publicId = publicIdFromUrl(data.fileUrl ?? null);
     if (publicId) {
