@@ -4,6 +4,8 @@ const noteSchema = new mongoose.Schema(
   {
     memberId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
     coachId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
+    // Who wrote the note. Older rows omit it; treat coachId as the author.
+    authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null, index: true },
     body: { type: String, required: true, maxlength: 2000 },
   },
   { timestamps: { createdAt: true, updatedAt: false } },

@@ -1,5 +1,6 @@
 import { createNoteEntity } from '../domain/Coaching.entity.js';
 import { isAncestor } from '../../network/infrastructure/Network.mongo.repository.js';
+import { ForbiddenException } from '../../../shared/domain/AppError.js';
 
 /** GET /v1/coaching/mine — your coach (direct upline), action items and next step. */
 export class GetMyCoachUseCase {
@@ -24,8 +25,11 @@ export class GetMyCoachUseCase {
     };
   }
 
-  /** Works whether progression is a store (findByPartner) or a use case (mine). */
+  /** Works whether progression is a use case (execute) or a raw store. */
   async loadJourney(partnerId) {
+    if (this.progression?.execute) {
+      return this.progression.execute({ partnerId, readOnly: true }).catch(() => null);
+    }
     if (this.progression?.mine) return this.progression.mine(partnerId).catch(() => null);
     if (this.progression?.findByPartner) {
       const doc = await this.progression.findByPartner(partnerId).catch(() => null);
@@ -49,13 +53,27 @@ export class AddNoteUseCase {
   }
 
   async execute({ coachId, memberId, body }) {
-    if (String(coachId) === String(memberId)) throw new (await import('../../../shared/domain/AppError.js')).ValidationException('You cannot coach yourself');
-    // Coach must be upline of member (any depth) or the member themself via dashboard — keep the rule tight.
-    const isCoach = await isAncestor(this.network, coachId, memberId).catch(() => false);
-    const isSelf = String(coachId) === String(memberId);
-    if (!isCoach && !isSelf) throw new (await import('../../../shared/domain/AppError.js')).ForbiddenException('Only an upline can coach this member');
+    const actorId = String(coachId);
+    const targetId = String(memberId);
+    let noteCoachId = actorId;
+
+    if (actorId === targetId) {
+      // Member writing in their own coaching log. Keep the shared note
+      // attached to their coach when an upline exists.
+      const node = await this.network?.findNode?.(targetId).catch(() => null);
+      noteCoachId = node?.parentId ? String(node.parentId) : actorId;
+    } else {
+      const isCoach = await isAncestor(this.network, actorId, targetId).catch(() => false);
+      if (!isCoach) throw new ForbiddenException('Only an upline can coach this member');
+    }
+
     const entity = createNoteEntity({ body });
-    return this.coaching.addNote({ memberId, coachId, body: entity.body });
+    return this.coaching.addNote({
+      memberId: targetId,
+      coachId: noteCoachId,
+      authorId: actorId,
+      body: entity.body,
+    });
   }
 }
 

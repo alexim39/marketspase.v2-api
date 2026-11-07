@@ -7,6 +7,8 @@ import { AddNoteUseCase, GetMyCoachUseCase, ListNotesUseCase } from '../applicat
 import { MongoCoachingStore } from '../infrastructure/Coaching.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
+import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
+import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoTrainingStore } from '../../training/infrastructure/Training.mongo.repository.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
@@ -15,7 +17,12 @@ const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 export const buildCoachingRouter = (deps = {}) => {
   const coaching = deps.coaching ?? new MongoCoachingStore();
   const network = deps.network ?? new MongoNetworkRepository();
-  const progression = deps.progression ?? new MongoProgressionStore();
+  const progression = deps.progression ?? new GetMyProgressionUseCase({
+    progress: new MongoProgressionStore(),
+    network,
+    orders: deps.orders ?? new MongoOrderReader(),
+    recognition: null,
+  });
   const training = deps.training ?? new MongoTrainingStore();
 
   const myCoach = new GetMyCoachUseCase({ network, progression, training });
