@@ -40,6 +40,25 @@ const assembler = () => new OraContextAssembler({
       name: 'Ada', surname: 'Obi', username: 'ada', commissionRank: 'Partner', balance: 2500,
     }),
   },
+  network: {
+    countChildren: async () => 1,
+    recentChildren: async () => [{ name: 'Kemi', surname: 'Bello', username: 'kemi', commissionRank: 'Builder' }],
+  },
+  campaigns: {
+    listMine: async () => [{
+      name: 'Lagos growth', status: 'Active',
+      budget: { remaining: 5000 }, capacity: { allocated: 2, total: 10 },
+    }],
+  },
+  store: {
+    getMyStore: async () => ({
+      store: { slug: 'ada', name: 'Ada Store', status: 'published' },
+      counts: { published: 3, draft: 1, pendingReceipts: 1 },
+    }),
+  },
+  storeOrders: {
+    listPartnerOrders: async () => [{ orderNumber: 'MS-1', status: 'paid' }],
+  },
 });
 
 test('assembly carries wallet, stage mix and live opportunities', async () => {
@@ -48,5 +67,10 @@ test('assembly carries wallet, stage mix and live opportunities', async () => {
   assert.equal(ctx.walletBalance, 2500);
   assert.equal(ctx.pipeline.byStage.Contacted, 1);
   assert.equal(ctx.pipeline.byStage.New, 1);
+  assert.equal(ctx.team.directPartners, 1);
+  assert.equal(ctx.campaigns.active, 1);
+  assert.equal(ctx.store.pendingReceipts, 1);
   assert.ok(ctx.opportunities.some((o) => o.type === 'send_sms' && o.prospectName === 'Paul Obi'));
+  assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'team.hub'));
+  assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'products.store-orders'));
 });

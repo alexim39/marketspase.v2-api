@@ -41,6 +41,9 @@ export const buildOraOpportunities = ({
   events = null,
   unread = 0,
   partner = null,
+  team = null,
+  campaigns = null,
+  store = null,
   now = new Date(),
 } = {}) => {
   const items = prospects?.items ?? [];
@@ -178,13 +181,55 @@ export const buildOraOpportunities = ({
     }));
   }
 
-  if (['Leader', 'Ambassador'].includes(String(partner?.commissionRank ?? ''))) {
+  if (campaigns && Number(campaigns.pending ?? 0) > 0) {
+    opportunities.push(openPage({
+      id: 'opp:campaign:pending',
+      page: '/dashboard/campaigns',
+      capabilityKey: 'campaigns.fund',
+      area: 'Campaigns',
+      title: 'Review your pending acquisition campaign',
+      reason: `${campaigns.pending} campaign(s) waiting for funding or approval`,
+    }));
+  }
+
+  if (team && Number(team.directPartners ?? 0) > 0) {
     opportunities.push(openPage({
       id: 'opp:team',
       page: '/dashboard/team',
       capabilityKey: 'team.hub',
       area: 'Team',
       title: 'Review your team pulse',
+      reason: `${team.directPartners} direct partner(s) in your team`,
+    }));
+  }
+
+  if (store && Number(store.pendingReceipts ?? 0) > 0) {
+    opportunities.push(openPage({
+      id: 'opp:store:receipts',
+      page: '/dashboard/products/store-orders',
+      capabilityKey: 'products.store-orders',
+      area: 'Products',
+      title: 'Confirm store receipts',
+      reason: `${store.pendingReceipts} wholesale receipt(s) waiting`,
+    }));
+  } else if (store && Number(store.openOrders ?? 0) > 0) {
+    opportunities.push(openPage({
+      id: 'opp:store:orders',
+      page: '/dashboard/products/store-orders',
+      capabilityKey: 'products.store-orders',
+      area: 'Products',
+      title: 'Fulfil open store orders',
+      reason: `${store.openOrders} order(s) need attention`,
+    }));
+  }
+
+  if (['Leader', 'Ambassador'].includes(String(partner?.commissionRank ?? '')) && !team?.directPartners) {
+    opportunities.push(openPage({
+      id: 'opp:team:leadership',
+      page: '/dashboard/team',
+      capabilityKey: 'team.hub',
+      area: 'Team',
+      title: 'Review your leadership team',
       reason: 'Leadership rank — check who needs support this week',
     }));
   }

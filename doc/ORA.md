@@ -107,7 +107,7 @@ The model may reference only these opportunity IDs. Contact details never enter 
 
 Consent: manual/contact-list prospects need `consentToContact: true`. Survey-sourced leads (`Website`, `Unique Link`) and `Admin Push` leads are opt-in by submission, including older rows.
 
-The live context also carries the pipeline stage mix, wallet balance, goals, next event and unread notifications, so answers can quote real numbers.
+The live context also carries the pipeline stage mix, wallet balance, team size/recent partners, active/pending campaigns, store listings, pending receipts, open store orders, goals, next event and unread notifications, so answers can quote real numbers.
 
 ## Safety rules
 

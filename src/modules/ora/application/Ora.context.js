@@ -48,19 +48,27 @@ export class OraContextAssembler {
       missing: [],
       nextActions: [],
       prospects: { total: 0, overdue: [], hot: [] },
-      pipeline: { total: 0, overdue: 0, hot: 0 },
+      pipeline: { total: 0, overdue: 0, hot: 0, byStage: {} },
       walletBalance: 0,
+      team: { directPartners: 0, recent: [] },
+      campaigns: { total: 0, active: 0, pending: 0, remainingBudget: 0, items: [] },
+      store: null,
       opportunities: [],
       goals: [],
       events: [],
       unread: 0,
     };
-    const [prospects, goals, events, unread, partner] = await Promise.all([
+    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders] = await Promise.all([
       this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 }).catch(() => null),
       this.goals?.execute({ partnerId, now }).catch(() => []),
       this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS }).catch(() => null),
       this.notifications?.unreadCount(partnerId).catch(() => 0),
       this.partners?.findById(partnerId).catch(() => null),
+      this.network?.countChildren(partnerId).catch(() => 0),
+      this.network?.recentChildren(partnerId, 3).catch(() => []),
+      this.campaigns?.listMine(partnerId).catch(() => []),
+      this.store?.getMyStore(partnerId).catch(() => null),
+      this.storeOrders?.listPartnerOrders(partnerId, { limit: 5 }).catch(() => []),
     ]);
 
     if (partner) {
@@ -111,6 +119,45 @@ export class OraContextAssembler {
       location: String(e.location ?? '').slice(0, 60) || null,
     }));
     ctx.unread = Number(unread) || 0;
+    ctx.team = {
+      directPartners: Number(teamCount) || 0,
+      recent: (teamRecent ?? []).slice(0, 3).map((p) => ({
+        name: [p.name, p.surname].filter(Boolean).join(' ') || p.username || 'Partner',
+        username: p.username ?? '',
+        rank: p.commissionRank ?? 'Partner',
+      })),
+    };
+    const campaignRows = Array.isArray(myCampaigns) ? myCampaigns : [];
+    ctx.campaigns = {
+      total: campaignRows.length,
+      active: campaignRows.filter((c) => c.status === 'Active').length,
+      pending: campaignRows.filter((c) => c.status === 'Pending').length,
+      remainingBudget: Math.round(campaignRows.reduce((sum, c) => sum + Number(c.budget?.remaining ?? 0), 0) * 100) / 100,
+      items: campaignRows.slice(0, 3).map((c) => ({
+        name: String(c.name ?? 'Campaign').slice(0, 60),
+        status: c.status,
+        remaining: Number(c.budget?.remaining ?? 0),
+        allocated: Number(c.capacity?.allocated ?? 0),
+        capacity: Number(c.capacity?.total ?? 0),
+      })),
+    };
+    if (myStore?.store || myStore?.counts) {
+      const orders = Array.isArray(storeOrders) ? storeOrders : [];
+      const openOrders = orders.filter((o) => ['paid', 'processing', 'shipped'].includes(String(o.status ?? '')));
+      ctx.store = {
+        slug: myStore?.store?.slug ?? '',
+        name: myStore?.store?.name ?? '',
+        status: myStore?.store?.status ?? 'draft',
+        published: Number(myStore?.counts?.published ?? 0),
+        draft: Number(myStore?.counts?.draft ?? 0),
+        pendingReceipts: Number(myStore?.counts?.pendingReceipts ?? 0),
+        openOrders: openOrders.length,
+        recentOrders: orders.slice(0, 3).map((o) => ({
+          orderNumber: o.orderNumber ?? '',
+          status: o.status ?? '',
+        })),
+      };
+    }
     ctx.pipeline = {
       total: Number(prospects?.total ?? list.length) || 0,
       overdue: 0,
@@ -132,6 +179,9 @@ export class OraContextAssembler {
       events,
       unread: ctx.unread,
       partner,
+      team: ctx.team,
+      campaigns: ctx.campaigns,
+      store: ctx.store,
       now,
     });
     return ctx;

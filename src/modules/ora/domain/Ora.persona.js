@@ -110,6 +110,16 @@ export const formatSnapshot = (ctx = {}) => {
   if (ctx.walletBalance !== undefined) {
     lines.push(`Wallet balance: ₦${Number(ctx.walletBalance ?? 0).toLocaleString('en-NG')}.`);
   }
+  if (ctx.team) {
+    const recent = (ctx.team.recent ?? []).map((p) => p.name).filter(Boolean).slice(0, 3);
+    lines.push(`Team: ${ctx.team.directPartners ?? 0} direct partner(s)${recent.length ? ` — recent: ${recent.join(', ')}` : ''}.`);
+  }
+  if (ctx.campaigns) {
+    lines.push(`Campaigns: ${ctx.campaigns.active ?? 0} active, ${ctx.campaigns.pending ?? 0} pending, ₦${Number(ctx.campaigns.remainingBudget ?? 0).toLocaleString('en-NG')} remaining budget.`);
+  }
+  if (ctx.store) {
+    lines.push(`Store: ${ctx.store.name || ctx.store.slug || 'not opened'} (${ctx.store.status}), ${ctx.store.published ?? 0} published listing(s), ${ctx.store.pendingReceipts ?? 0} receipt(s) waiting, ${ctx.store.openOrders ?? 0} open order(s).`);
+  }
   for (const g of (ctx.goals ?? []).slice(0, 4)) {
     lines.push(`Goal "${g.title}": ${g.percent}% (${g.onTrack ? 'on track' : 'AT RISK'}), ${g.daysLeft}d left`);
   }

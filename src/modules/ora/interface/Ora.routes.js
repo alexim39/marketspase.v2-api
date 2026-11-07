@@ -28,6 +28,9 @@ import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.rep
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
+import { MongoCampaignRepository } from '../../campaigns/infrastructure/Campaign.mongo.repository.js';
+import { StoreRepository } from '../../stores/infrastructure/Store.mongo.repository.js';
+import { StoreOrderRepository } from '../../stores/infrastructure/StoreOrder.mongo.repository.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 
@@ -79,8 +82,13 @@ export const buildOraRouter = (deps = {}) => {
   });
   const notifications = deps.notifications ?? new MongoStoredNotificationStore();
   const partners = deps.partners ?? new MongoPartnerRepository();
+  const campaigns = deps.campaigns ?? new MongoCampaignRepository();
+  const store = deps.store ?? new StoreRepository();
+  const storeOrders = deps.storeOrders ?? new StoreOrderRepository();
 
-  const context = deps.context ?? new OraContextAssembler({ journey, goals, prospects, events, notifications, partners });
+  const context = deps.context ?? new OraContextAssembler({
+    journey, goals, prospects, events, notifications, partners, network, campaigns, store, storeOrders,
+  });
   const client = deps.client ?? new DeepSeekClient({ ...env.ora, post: deps.post });
   const analytics = deps.analytics ?? new MongoOraAnalyticsStore();
   const executor = deps.executor ?? new OraActionExecutor();
