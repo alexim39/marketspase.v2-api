@@ -62,6 +62,7 @@ import { buildAdminBonusRouter, buildBonusRouter } from './src/modules/bonuses/i
 import { buildAdminTutorialRouter, buildTutorialRouter } from './src/modules/tutorials/interface/Tutorial.routes.js';
 import { buildAdminKitRouter, buildKitRouter } from './src/modules/kits/interface/Kit.routes.js';
 import JobHealthRouter from './src/jobs/JobHealth.routes.js';
+import RecycleBinRouter from './src/modules/recycle-bin/interface/RecycleBin.routes.js';
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
@@ -186,6 +187,7 @@ app.use('/v1/training', TrainingRouter);
 app.use('/v1/admin/training', AdminTrainingRouter);
 app.use('/v1/admin/audit', AuditRouter);
 app.use('/v1/admin/jobs', JobHealthRouter);
+app.use('/v1/admin/recycle-bin', RecycleBinRouter);
 app.use('/v1/admin/broadcast', BroadcastRouter);
 app.use('/v1/coaching', CoachingRouter);
 app.use('/v1/community', CommunityRouter);

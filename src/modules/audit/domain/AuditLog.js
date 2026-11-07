@@ -43,6 +43,7 @@ export const AUDIT_ACTIONS = Object.freeze([
   'ticket.decide',
   'moderation.remove',
   'moderation.dismiss',
+  'content.restore',
   'broadcast.send',
   'broadcast.campaign.queue',  'broadcast.campaign.cancel',
   'broadcast.campaign.retry',

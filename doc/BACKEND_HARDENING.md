@@ -76,6 +76,15 @@ backoff and marked `failed` after five attempts for inspection.
 - Set `TRUST_PROXY_HOPS` correctly in production so all per-IP budgets see the
   real client address.
 
+## Recycle bin
+
+- `GET /v1/admin/recycle-bin/:entity` lists soft-deleted records for
+  `prospects`, `bookings`, `goals`, `kits`, `tutorials`, `events`,
+  `community-posts`, `teams` and `subscriptions`.
+- `POST /v1/admin/recycle-bin/:entity/:id/restore` clears `deletedAt`.
+- Both routes require an admin session and write a `content.restore` audit row.
+- Search, limit and skip are supported; responses include the standard `meta`.
+
 ## Health
 
 - `GET /health/live` — process liveness only.
