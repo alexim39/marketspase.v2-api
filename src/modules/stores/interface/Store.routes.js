@@ -262,7 +262,7 @@ export const buildStoreRouter = (deps = {}) => {
         req.validated.params.slug,
         req.validated.params.productId,
       );
-      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.set('Cache-Control', 'no-cache');
       return sendSuccess(res, { data });
     }),
   );
@@ -272,7 +272,7 @@ export const buildStoreRouter = (deps = {}) => {
     validate({ params: StoreSlugParamsSchema }),
     asyncHandler(async (req, res) => {
       const data = await repo.getPublicStore(req.validated.params.slug);
-      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.set('Cache-Control', 'no-cache');
       return sendSuccess(res, { data });
     }),
   );
