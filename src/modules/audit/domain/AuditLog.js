@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = Object.freeze([
 'wallet.withdraw.refund',
 'wallet.admin.credit',
 'commission.release',
+'commission.auto_release',
 'commission.void',
 'commission.rank.set',
 'mentor-bonus.run',

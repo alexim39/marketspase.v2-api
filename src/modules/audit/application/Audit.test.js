@@ -28,6 +28,7 @@ describe('AUDIT_ACTIONS vocabulary', () => {
       'account.reassign-upline',
       'account.view-as',
       'payout.release', 'payout.void', 'wallet.credit',
+      'commission.release', 'commission.auto_release',
       'campaign.decide', 'order.decide',
       'campaign.allocation.override', 'campaign.allocation.reverse',
       'training.quiz.save', 'training.media.save', 'training.media.revert',

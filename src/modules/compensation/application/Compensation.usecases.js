@@ -1,4 +1,5 @@
 import { domainEvents } from '../../../shared/events/DomainEvents.js';
+import { recordAudit } from '../../audit/index.js';
 
 export class RecordActivationCompensationUseCase {
   constructor({ repo }) {
@@ -11,14 +12,32 @@ export class RecordActivationCompensationUseCase {
 }
 
 export class RecordAllocationCompensationUseCase {
-  constructor({ repo, events = domainEvents }) {
+  constructor({ repo, events = domainEvents, audit = recordAudit }) {
     this.repo = repo;
     this.events = events;
+    this.audit = audit;
   }
 
   async execute(payload) {
     const results = await this.repo.handleAllocation(payload);
     for (const result of results) {
+      if (result.entries > 0 && result.orderId && this.repo.releaseActivationOrder) {
+        try {
+          const released = await this.repo.releaseActivationOrder(result.orderId, null);
+          if (released?.released > 0) {
+            void this.audit({
+              actorId: 'system',
+              actorLabel: 'Auto release',
+              action: 'commission.auto_release',
+              targetType: 'order',
+              targetId: result.orderId,
+              detail: { trigger: 'allocation', ...released },
+            });
+          }
+        } catch (error) {
+          console.error('[compensation] allocation auto-release failed:', error?.message ?? error);
+        }
+      }
       await this.events.emit('commission.accrued', result).catch(() => null);
     }
     return results;

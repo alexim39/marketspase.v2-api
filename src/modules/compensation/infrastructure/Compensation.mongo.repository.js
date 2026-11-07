@@ -511,6 +511,7 @@ export class MongoCompensationRepository {
 
         return {
           saleId: String(claimed._id),
+          orderId: String(claimed.orderId),
           partnerId: String(claimed.partnerId),
           campaignId: campaignId ? String(campaignId) : null,
           entries,
@@ -710,6 +711,87 @@ export class MongoCompensationRepository {
       );
 
       return { released: true, repeated: false, entry: claimed };
+    });
+  }
+
+  /**
+   * Release every Pending activation commission for a fulfilled order.
+   * Idempotent and safe to call from fulfillment, late allocation or the
+   * hourly reconcile sweep. Orders that are not yet Fulfilled are skipped.
+   */
+  async releaseActivationOrder(orderId, adminId = null, now = new Date()) {
+    if (!hasId(orderId)) throw new ValidationException('Invalid activation order');
+
+    const order = await ActivationOrderModel.findById(orderId).select('status').lean();
+    if (!order) throw new NotFoundException('Activation order not found');
+    if (order.status !== 'Fulfilled') {
+      return { released: 0, total: 0, skipped: true, reason: 'not-fulfilled' };
+    }
+
+    const sale = await CommissionSaleModel.findOne({ orderId }).lean();
+    if (!sale || sale.status === 'cancelled') {
+      return { released: 0, total: 0, skipped: true, reason: 'no-active-sale' };
+    }
+
+    const pending = await GrowthCommissionModel.find({
+      saleId: sale._id,
+      status: 'Pending',
+    }).lean();
+    if (pending.length === 0) {
+      return { released: 0, total: 0, repeated: true, skipped: false };
+    }
+
+    return runInTransaction(async (session) => {
+      let released = 0;
+      let total = 0;
+
+      for (const entry of pending) {
+        const reference = `COM-${entry._id}`;
+        const claimed = await GrowthCommissionModel.findOneAndUpdate(
+          { _id: entry._id, status: 'Pending' },
+          {
+            $set: {
+              status: 'Released',
+              releasedBy: adminId ?? null,
+              releasedAt: now,
+              transactionReference: reference,
+            },
+          },
+          opts(session, { new: true }),
+        ).lean();
+        if (!claimed) continue;
+
+        const amount = Number(claimed.amount) || 0;
+        const earner = await PartnersModel.findByIdAndUpdate(
+          claimed.earnerId,
+          { $inc: { balance: amount } },
+          opts(session, { new: true }),
+        ).lean();
+        if (!earner) throw new NotFoundException('Commission earner not found');
+
+        await TransactionModel.create(
+          [{
+            partnerId: claimed.earnerId,
+            amount,
+            balanceBefore: Number(earner.balance ?? 0) - amount,
+            balanceAfter: Number(earner.balance ?? 0),
+            reference,
+            status: 'Completed',
+            paymentMethod: 'Growth Commission',
+            transactionType: 'Credit',
+            date: now,
+            decidedBy: adminId ?? null,
+            decidedAt: now,
+            decisionNote: `Level ${claimed.level} commission auto-released on activation fulfillment`,
+          }],
+          opts(session),
+        );
+
+        released += 1;
+        total += amount;
+      }
+
+      return { released, total: round(total), repeated: released === 0, skipped: false };
     });
   }
 
@@ -917,7 +999,7 @@ export class MongoCompensationRepository {
   }
 
   async reconcileCompensation(now = new Date()) {
-    const stats = { salesCreated: 0, allocationsAccrued: 0, mentorsAttached: 0, failed: 0 };
+    const stats = { salesCreated: 0, allocationsAccrued: 0, mentorsAttached: 0, autoReleased: 0, failed: 0 };
     const cutoff = new Date(now.getTime() - (120 * DAY_MS));
 
     const orders = await ActivationOrderModel.find({
@@ -985,6 +1067,28 @@ export class MongoCompensationRepository {
           { $set: { mentorId: partner.placementParentId } },
         );
         if (updated.modifiedCount > 0) stats.mentorsAttached += 1;
+      } catch {
+        stats.failed += 1;
+      }
+    }
+
+    // Catch-up sweep: activation commissions that accrued after their order
+    // was already fulfilled (or before this automation shipped) release now.
+    const pendingActivation = await GrowthCommissionModel.find({
+      status: 'Pending',
+      saleType: 'activation',
+    }).select('orderId').limit(500).lean();
+    const pendingOrderIds = [...new Set(pendingActivation.map((entry) => String(entry.orderId)))];
+    const fulfilledOrders = pendingOrderIds.length
+      ? await ActivationOrderModel.find({
+        _id: { $in: pendingOrderIds },
+        status: 'Fulfilled',
+      }).select('_id').lean()
+      : [];
+    for (const order of fulfilledOrders) {
+      try {
+        const result = await this.releaseActivationOrder(order._id, null, now);
+        stats.autoReleased += result.released ?? 0;
       } catch {
         stats.failed += 1;
       }

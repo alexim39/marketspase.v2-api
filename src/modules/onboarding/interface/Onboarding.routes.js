@@ -6,6 +6,7 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { ValidationException } from '../../../shared/domain/AppError.js';
 import { MongoOnboardingRepository } from '../infrastructure/Onboarding.mongo.repository.js';
+import { MongoCompensationRepository } from '../../compensation/infrastructure/Compensation.mongo.repository.js';
 import {
   CreateActivationOrderUseCase,
   FulfillActivationOrderUseCase,
@@ -95,8 +96,9 @@ export const buildOnboardingRouter = (deps = {}) => {
 
 export const buildAdminOnboardingRouter = (deps = {}) => {
   const repo = deps.repo ?? new MongoOnboardingRepository();
+  const commissions = deps.commissions ?? new MongoCompensationRepository();
   const listOrders = deps.listAdminOrders ?? new ListAdminActivationOrdersUseCase({ repo });
-  const fulfilOrder = deps.fulfilOrder ?? new FulfillActivationOrderUseCase({ repo });
+  const fulfilOrder = deps.fulfilOrder ?? new FulfillActivationOrderUseCase({ repo, commissions });
   const refundOrder = deps.refundOrder ?? new RefundActivationOrderUseCase({
     repo,
     events: deps.events,

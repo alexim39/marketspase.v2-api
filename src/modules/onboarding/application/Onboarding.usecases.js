@@ -1,4 +1,5 @@
 import { domainEvents } from '../../../shared/events/DomainEvents.js';
+import { recordAudit } from '../../audit/index.js';
 
 export class GetOnboardingStatusUseCase {
   constructor({ repo }) {
@@ -92,12 +93,33 @@ export class ListAdminActivationOrdersUseCase {
 }
 
 export class FulfillActivationOrderUseCase {
-  constructor({ repo }) {
+  constructor({ repo, commissions = null, audit = recordAudit }) {
     this.repo = repo;
+    this.commissions = commissions;
+    this.audit = audit;
   }
 
-  execute(orderId, adminId) {
-    return this.repo.fulfillOrder(orderId, adminId);
+  async execute(orderId, adminId) {
+    const order = await this.repo.fulfillOrder(orderId, adminId);
+    let autoRelease = null;
+    if (this.commissions?.releaseActivationOrder) {
+      try {
+        autoRelease = await this.commissions.releaseActivationOrder(orderId, adminId);
+        if (autoRelease?.released > 0) {
+          void this.audit({
+            actorId: adminId ?? 'system',
+            action: 'commission.auto_release',
+            targetType: 'order',
+            targetId: String(orderId),
+            detail: { trigger: 'fulfillment', ...autoRelease },
+          });
+        }
+      } catch (error) {
+        console.error('[onboarding] activation commission auto-release failed:', error?.message ?? error);
+        autoRelease = { error: true };
+      }
+    }
+    return { ...order, autoRelease };
   }
 }
 

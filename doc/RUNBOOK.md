@@ -324,6 +324,11 @@ execution writes an `ora.action.execute` audit event.
 - If a provider callback is delayed, reconcile with
   `payout-reconcile`/`compensation-reconcile` and the provider dashboard.
   Never manually credit a wallet without an audit row.
+- Activation commissions auto-release when an activation order is marked
+  **Fulfilled**. Product commissions auto-release when a product order is
+  marked **Fulfilled**. The hourly `compensation-reconcile` also catches up
+  pending activation commissions for orders that were already fulfilled before
+  their allocation accrued. Manual **Release** is for exceptions only.
 - Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
   (default 7; `0` means payable at the next hourly mentor-bonus run). It only
   affects **newly recorded activations**; existing `mentor_bonuses` rows keep
