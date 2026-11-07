@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { recordAudit } from '../../audit/index.js';
+import { logger } from '../../../shared/observability/logger.js';
 
 const param = (req, key) => req.validated?.params?.[key] ?? req.params[key];
 
@@ -47,7 +48,47 @@ export const makeBillingController = (uc) => ({
       accountNumber: body?.accountNumber,
       amountNgn: body?.amountNgn,
     });
-    res.status(201).json({ message: 'Withdrawal request created', data, success: true });
+    const balanceBefore = data.balance === null || data.balance === undefined
+      ? null
+      : Number(data.balance) + Number(data.amountNgn);
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'wallet.withdraw.request',
+      targetType: 'withdrawal',
+      targetId: data.reference,
+      detail: {
+        amountNgn: data.amountNgn,
+        balanceBefore,
+        balanceAfter: data.balance ?? null,
+        status: data.status,
+        payoutMode: data.payoutMode,
+        bank: data.bank,
+        accountLast4: String(data.accountNumber ?? '').slice(-4),
+        requestId: req.id,
+      },
+    });
+    logger.info('money_action', {
+      action: 'wallet.withdraw.request',
+      partnerId: req.auth?.partnerId,
+      amountNgn: data.amountNgn,
+      reference: data.reference,
+      balanceBefore,
+      balanceAfter: data.balance ?? null,
+      requestId: req.id,
+    });
+    res.status(201).json({
+      message: 'Withdrawal request created',
+      data,
+      meta: {
+        next_steps: {
+          reference: data.reference,
+          status: data.status,
+          payout_mode: data.payoutMode,
+          next_action: data.status === 'Paid' ? 'none' : 'wait_for_payout',
+        },
+      },
+      success: true,
+    });
   }),
 
   accrue: asyncHandler(async (req, res) => {

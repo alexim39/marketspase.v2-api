@@ -137,6 +137,8 @@ export const decideOrder = async (req, res) => {
             [{
               partnerId: claimed.partner,
               amount: Number(claimed.totalCost),
+              balanceBefore: Number(owner.balance ?? 0) - Number(claimed.totalCost),
+              balanceAfter: owner.balance ?? null,
               status: 'Completed',
               paymentMethod: 'Order Refund',
               transactionType: 'Credit',
@@ -333,18 +335,33 @@ export const adminUpdateProduct = async (req, res) => {
 // get all products
 export const getAllProducts = async (req, res) => {
     try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+      const skip = Math.max(Number(req.query.skip) || 0, 0);
+      const filter = { status: { $nin: ['inactive', 'archived'] } };
       // Hidden rows stay in the database for order history, but never show
       // in the member/partner catalog.
-      const products = await ProductModel.find({
-        status: { $nin: ['inactive', 'archived'] },
-      })
-        .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
-        .sort({ sortOrder: 1, createdAt: -1 })
-        .lean();
+      const [products, total] = await Promise.all([
+        ProductModel.find(filter)
+          .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
+          .sort({ sortOrder: 1, createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        ProductModel.countDocuments(filter),
+      ]);
 
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       res.status(200).json({
         message: 'Products retrieved successfully!',
         data: products,
+        meta: {
+          count: products.length,
+          total,
+          limit,
+          skip,
+          hasMore: skip + products.length < total,
+          next_action: skip + products.length < total ? 'load_more' : null,
+        },
         success: true,
       });
 
@@ -360,10 +377,23 @@ export const getAllProducts = async (req, res) => {
 // Admin catalog: full docs including cost/commission fields.
 export const listProductsForAdmin = async (req, res) => {
   try {
-    const products = await ProductModel.find({}).sort({ createdAt: -1 }).lean();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
+    const [products, total] = await Promise.all([
+      ProductModel.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      ProductModel.countDocuments({}),
+    ]);
     res.status(200).json({
       message: 'Products retrieved successfully!',
       data: products,
+      meta: {
+        count: products.length,
+        total,
+        limit,
+        skip,
+        hasMore: skip + products.length < total,
+        next_action: skip + products.length < total ? 'load_more' : null,
+      },
       success: true,
     });
   } catch (error) {
@@ -426,6 +456,7 @@ export const getProductById = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: 'Product not found', success: false });
     }
+    res.set('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
     res.status(200).json({
       message: 'Product retrieved successfully!',
       data: product,
@@ -603,6 +634,8 @@ export const Savecart = async (req, res) => {
         [{
           partnerId,
           amount: totalCost,
+          balanceBefore: Number(buyer.balance ?? 0) + Number(totalCost),
+          balanceAfter: buyer.balance ?? null,
           status: 'Completed',
           paymentMethod: 'Product Purchase',
           transactionType: 'Debit',

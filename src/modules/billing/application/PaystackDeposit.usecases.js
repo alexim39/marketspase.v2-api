@@ -4,6 +4,10 @@ import { DepositIntentModel } from '../infrastructure/Deposit.mongo.model.js';
 import { PartnersModel, TransactionModel, runInTransaction } from '../infrastructure/Billing.models.js';
 import { creditPartnerWallet } from './Deposit.usecases.js';
 import { verifyPaystackSignature } from '../infrastructure/PaystackClient.js';
+import {
+  markProviderEventProcessed,
+  wasProviderEventProcessed,
+} from '../infrastructure/ProviderEvent.mongo.model.js';
 
 const TERMINAL_FAILURE = new Set(['failed', 'abandoned', 'reversed']);
 
@@ -17,7 +21,7 @@ export const creditPaystackIntent = async ({ deposits, intent, payload, notifier
       { new: false, ...opt },
     ).lean();
     if (!doc) return null;
-    await creditPartnerWallet(
+    const credit = await creditPartnerWallet(
       { partners: PartnersModel, transactions: TransactionModel },
       {
         partnerId: doc.partnerId,
@@ -27,13 +31,20 @@ export const creditPaystackIntent = async ({ deposits, intent, payload, notifier
       },
       opt,
     );
-    return doc;
+    return { doc, credit };
   });
 
   if (notifier && claimed) {
-    await notifier(claimed.partnerId, claimed.amountNgn, claimed.reference).catch(() => null);
+    await notifier(claimed.doc.partnerId, claimed.doc.amountNgn, claimed.doc.reference).catch(() => null);
   }
-  return { status: 'success', deduped: !claimed, reference: intent.reference };
+  return {
+    status: 'success',
+    deduped: !claimed,
+    reference: intent.reference,
+    amountNgn: claimed?.doc?.amountNgn ?? intent.amountNgn ?? null,
+    balance: claimed?.credit?.balance ?? null,
+    partnerId: claimed?.doc?.partnerId ?? null,
+  };
 };
 
 /**
@@ -146,9 +157,15 @@ export class HandlePaystackWebhookUseCase {
       throw err;
     }
     const event = String(payload?.event ?? '');
+    const eventId = String(payload?.data?.id ?? payload?.data?.reference ?? '');
+    if (eventId && await wasProviderEventProcessed({ provider: 'paystack', eventId }).catch(() => false)) {
+      return { status: 'deduped', event, eventId };
+    }
     if (event.startsWith('transfer.')) {
       if (!this.transferHandler) return { status: 'ignored', event };
-      return this.transferHandler.execute({ payload });
+      const result = await this.transferHandler.execute({ payload });
+      await markProviderEventProcessed({ provider: 'paystack', eventId, event }).catch(() => null);
+      return { ...result, eventId };
     }
     if (event !== 'charge.success') return { status: 'ignored', event };
 
@@ -171,7 +188,10 @@ export class HandlePaystackWebhookUseCase {
       err.code = 'UNKNOWN_REFERENCE';
       throw err;
     }
-    if (intent.status === 'success') return { status: 'success', deduped: true, reference };
+    if (intent.status === 'success') {
+      await markProviderEventProcessed({ provider: 'paystack', eventId, event }).catch(() => null);
+      return { status: 'success', deduped: true, reference, eventId };
+    }
 
     // Cross-check the signed event against Paystack before moving money.
     let live;
@@ -182,7 +202,8 @@ export class HandlePaystackWebhookUseCase {
       throw err;
     }
     if (String(live?.status ?? '').toLowerCase() !== 'success') {
-      return { status: 'pending', reference };
+      await markProviderEventProcessed({ provider: 'paystack', eventId, event }).catch(() => null);
+      return { status: 'pending', reference, eventId };
     }
     if (Number(live.amount) !== Number(intent.amountKobo) || String(live.currency ?? 'NGN').toUpperCase() !== 'NGN') {
       const err = new Error('Paystack amount or currency does not match the deposit intent');
@@ -191,12 +212,14 @@ export class HandlePaystackWebhookUseCase {
     }
 
     const payloadForStore = { event, data: live };
-    return creditPaystackIntent({
+    const result = await creditPaystackIntent({
       deposits: this.deposits,
       intent,
       payload: payloadForStore,
       notifier: this.notifier,
     });
+    await markProviderEventProcessed({ provider: 'paystack', eventId, event }).catch(() => null);
+    return { ...result, eventId };
   }
 }
 

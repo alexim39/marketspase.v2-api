@@ -31,7 +31,7 @@ describe('rateLimit', () => {
     assert.ok(Number(r.out.headers['Retry-After']) >= 1);
   });
 
-  it('namespaces buckets per route and keys by forwarded IP', () => {
+  it('namespaces buckets per route and keys by the trusted Express IP', () => {
     resetRateLimits();
     const a = rateLimit({ name: 'a', windowMs: 60000, max: 1 });
     const b = rateLimit({ name: 'b', windowMs: 60000, max: 1 });
@@ -42,7 +42,7 @@ describe('rateLimit', () => {
     assert.equal(nexts, 2);
     assert.equal(
       clientIp({ headers: { 'x-forwarded-for': '9.9.9.9, 1.1.1.1' }, ip: '2.2.2.2', socket: {} }),
-      '9.9.9.9',
+      '2.2.2.2',
     );
   });
 

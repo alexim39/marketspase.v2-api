@@ -5,19 +5,23 @@
  * No Express / Mongoose imports allowed here.
  */
 
+import { defaultFixForStatus } from './errorCodes.js';
+
 export class AppError extends Error {
   /**
    * @param {string} message
    * @param {number} statusCode
    * @param {string} code machine-readable code, e.g. 'NOT_FOUND'
    * @param {unknown} [details]
+   * @param {string} [fix] human next step shown by the client
    */
-  constructor(message, statusCode = 500, code = 'INTERNAL_ERROR', details) {
+  constructor(message, statusCode = 500, code = 'INTERNAL_ERROR', details, fix) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.code = code;
     this.details = details;
+    this.fix = fix ?? defaultFixForStatus(statusCode);
   }
 }
 

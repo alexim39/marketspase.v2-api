@@ -53,10 +53,27 @@ export class AskOraUseCase {
     const started = Date.now();
     const history = toHistory(convo.messages ?? []);
     const snapshot = await this.context.assemble({ partnerId, now });
-    const raw = await this.client.complete({
-      system: buildSystemPrompt(snapshot),
-      messages: [...history, { role: 'user', content: text }],
-    });
+    let raw;
+    try {
+      raw = await this.client.complete({
+        system: buildSystemPrompt(snapshot),
+        messages: [...history, { role: 'user', content: text }],
+      });
+    } catch (error) {
+      const lastReply = [...(convo.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === 'assistant' && String(m.content ?? '').trim());
+      if ((error?.code === 'AI_DOWN' || error?.code === 'ORA_PROVIDER_ERROR') && lastReply) {
+        return {
+          conversationId: convo.id,
+          reply: lastReply.content,
+          actions: [],
+          degraded: true,
+          warning: 'AI_DOWN_USING_LAST_PICKS',
+        };
+      }
+      throw error;
+    }
     const { text: reply, actions } = extractActions(raw);
     await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });
     await this.conversations.appendMessage(convo.id, { role: 'assistant', content: reply, at: new Date() });

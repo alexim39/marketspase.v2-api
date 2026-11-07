@@ -13,12 +13,13 @@ import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../applicatio
 import { VerifyEmailUseCase, ResendVerificationUseCase } from '../application/EmailVerification.usecases.js';
 import { MongoPartnerRepository } from '../infrastructure/Auth.mongo.repository.js';
 import { BcryptPasswordHasher, JwtSessionIssuer, EmailVerificationTokens } from '../infrastructure/Auth.crypto.js';
+import { RefreshSessions } from '../infrastructure/RefreshSessions.js';
 import { PasswordResetMailer } from '../infrastructure/clients/PasswordResetMailer.js';
 import { EmailVerificationMailer } from '../infrastructure/clients/EmailVerificationMailer.js';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
 import { sendEmail } from '../../../services/emailService.js';
 import { recordAudit } from '../../audit/index.js';
-import { clearRevocations } from '../infrastructure/SessionRevocation.js';
+import { clearRevocations, revokeSessions } from '../infrastructure/SessionRevocation.js';
 import { runInTransaction } from '../infrastructure/Auth.models.js';
 
 const escMail = (s) => String(s ?? '')
@@ -82,6 +83,7 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   const mailer = deps.mailer ?? new PasswordResetMailer();
   const tokens = deps.tokens ?? new EmailVerificationTokens();
   const verificationMailer = deps.verificationMailer ?? new EmailVerificationMailer();
+  const refreshSessions = deps.refreshSessions ?? new RefreshSessions();
   const frontendUrl = String(
     deps.frontendUrl ?? process.env.FRONTEND_URL ?? process.env.APP_BASE_URL ?? 'https://marketspase.com',
   ).replace(/\/+$/, '');
@@ -101,7 +103,7 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
     }),
     getCurrentPartner: new GetCurrentPartnerUseCase({ partners }),
     requestPasswordReset: new RequestPasswordResetUseCase({ partners, mailer, frontendUrl }),
-    resetPassword: new ResetPasswordUseCase({ partners, hasher }),
+    resetPassword: new ResetPasswordUseCase({ partners, hasher, revokeSessions, refreshSessions }),
     verifyEmail: new VerifyEmailUseCase({ partners, tokens }),
     resendVerification: new ResendVerificationUseCase({
       partners,
@@ -109,6 +111,8 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
       mailer: verificationMailer,
       frontendUrl,
     }),
+    sessions,
+    refreshSessions,
   });
   // Self-service erasure (GDPR): request/cancel live beside the session they
   // belong to. Wired directly (not via the auth controller) like /ping.
@@ -118,6 +122,8 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   const router = express.Router();
   // Brute-force guard on credential + reset endpoints (per-IP budgets).
   const authLimit = rateLimit({ name: 'auth-attempt', windowMs: 60000, max: 10 });
+  const loginHourLimit = rateLimit({ name: 'auth-login-hour', windowMs: 3600000, max: 30 });
+  const refreshLimit = rateLimit({ name: 'auth-refresh-hour', windowMs: 3600000, max: 30 });
   const resetLimit = rateLimit({ name: 'auth-reset', windowMs: 60000, max: 5 });
   const verifyLimit = rateLimit({ name: 'auth-verify', windowMs: 60000, max: 10 });
   const resendIpLimit = rateLimit({ name: 'auth-resend-ip', windowMs: 600000, max: 20 });
@@ -128,7 +134,8 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
     key: (req) => `${clientIp(req)}:${String(req.body?.email ?? '').trim().toLowerCase()}`,
   });
   router.post('/signup', authLimit, validate({ body: SignupSchema }), controller.signup);
-  router.post('/signin', authLimit, validate({ body: SigninSchema }), controller.signin);
+  router.post('/signin', loginHourLimit, authLimit, validate({ body: SigninSchema }), controller.signin);
+  router.post('/refresh', refreshLimit, controller.refresh);
   router.post('/verify-email', verifyLimit, validate({ body: VerifyEmailSchema }), controller.verifyEmail);
   router.post('/resend-verification', resendIpLimit, resendLimit, validate({ body: ResendVerificationSchema }), controller.resendVerification);
   router.post('/signout', controller.signout);

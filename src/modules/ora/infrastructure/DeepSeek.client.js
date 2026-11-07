@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getBreaker } from '../../../shared/resilience/CircuitBreaker.js';
 
 /**
  * DeepSeek chat client (OpenAI-compatible `/chat/completions`).
@@ -21,6 +22,13 @@ export class DeepSeekClient {
       ...config,
     };
     this.post = config.post ?? ((url, body, opts) => axios.post(url, body, opts));
+    this.breaker = getBreaker('deepseek', {
+      openCode: 'AI_DOWN',
+      openMessage: 'Ora is temporarily unavailable — please try again shortly.',
+      openFix: 'Retry in a minute; cached answers remain available where offered.',
+    });
+    const rawPost = this.post;
+    this.post = (...args) => this.breaker.run(() => rawPost(...args));
   }
 
   get enabled() {
@@ -55,6 +63,7 @@ export class DeepSeekClient {
         },
       );
     } catch (error) {
+      if (error?.code === 'AI_DOWN') throw error;
       const mapped = new Error('Ora is temporarily unavailable — please try again shortly');
       mapped.statusCode = 503;
       mapped.code = 'ORA_PROVIDER_ERROR';

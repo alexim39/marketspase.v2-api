@@ -103,6 +103,8 @@ export class CreateWithdrawalUseCase {
         const created = await this.transactions.create([{
           partnerId,
           amount,
+          balanceBefore: Number(partner.balance ?? 0) + amount,
+          balanceAfter: partner.balance ?? null,
           status: 'Pending',
           paymentMethod: 'Withdrawal',
           transactionType: 'Debit',

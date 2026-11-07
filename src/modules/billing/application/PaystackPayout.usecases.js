@@ -64,14 +64,28 @@ export const refundWithdrawal = async ({
 
     const amount = Number(tx.amount);
     if (amount > 0) {
-      await partners.updateOne(
-        { _id: tx.partnerId },
-        { $inc: { balance: amount } },
-        opt,
-      );
+      let balanceAfter = null;
+      if (typeof partners.findOneAndUpdate === 'function') {
+        const result = partners.findOneAndUpdate(
+          { _id: tx.partnerId },
+          { $inc: { balance: amount } },
+          { new: true, ...opt },
+        );
+        const partner = result && typeof result.lean === 'function' ? await result.lean() : await result;
+        balanceAfter = partner?.balance ?? null;
+      } else {
+        // Backward-compatible path for test doubles / legacy adapters.
+        await partners.updateOne(
+          { _id: tx.partnerId },
+          { $inc: { balance: amount } },
+          opt,
+        );
+      }
       await transactions.create([{
         partnerId: tx.partnerId,
         amount,
+        balanceBefore: balanceAfter === null ? null : Number(balanceAfter) - amount,
+        balanceAfter,
         status: 'Completed',
         paymentMethod: REFUND_METHOD,
         transactionType: 'Credit',

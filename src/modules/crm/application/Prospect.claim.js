@@ -108,6 +108,8 @@ export class ClaimPoolLeadUseCase {
       const tx = await this.transactions.create([{
         partnerId,
         amount: this.fee,
+        balanceBefore: Number(charged.balance ?? 0) + Number(this.fee),
+        balanceAfter: charged.balance ?? null,
         status: 'Completed',
         paymentMethod: 'Lead Claim',
         transactionType: 'Debit',
@@ -122,8 +124,24 @@ export class ClaimPoolLeadUseCase {
       };
     } catch (err) {
       // Compensation: money back, pool row released, then the real error.
-      await this.partners.findByIdAndUpdate(partnerId, { $inc: { balance: this.fee } }).catch(() => null);
+      const refunded = await this.partners.findOneAndUpdate(
+        { _id: partnerId },
+        { $inc: { balance: this.fee } },
+        { new: true },
+      ).lean().catch(() => null);
       await this.surveys.updateOne({ _id: surveyId }, { $set: { prospectStatus: 'Not Moved' } }).catch(() => null);
+      if (refunded) {
+        await this.transactions.create([{
+          partnerId,
+          amount: this.fee,
+          balanceBefore: Number(refunded.balance ?? 0) - Number(this.fee),
+          balanceAfter: refunded.balance ?? null,
+          status: 'Completed',
+          paymentMethod: 'Lead Claim Refund',
+          transactionType: 'Credit',
+          reference: `LCREF-${surveyId}`,
+        }]).catch(() => null);
+      }
       throw err;
     }
   }

@@ -315,6 +315,8 @@ export class MongoOnboardingRepository {
           [{
             partnerId,
             amount: product.price,
+            balanceBefore: Number(activated.balance ?? 0) + Number(product.price),
+            balanceAfter: activated.balance ?? null,
             reference: number,
             status: 'Completed',
             paymentMethod: 'Wallet',
@@ -486,10 +488,18 @@ export class MongoOnboardingRepository {
         );
       }
 
+      let refundedBalance = deactivated?.balance ?? null;
+      if (refundedBalance === null) {
+        const refreshed = await PartnersModel.findById(order.partnerId).select('balance').lean();
+        refundedBalance = refreshed?.balance ?? null;
+      }
+
       await TransactionModel.create(
         [{
           partnerId: order.partnerId,
           amount: order.amount,
+          balanceBefore: refundedBalance === null ? null : Number(refundedBalance) - Number(order.amount),
+          balanceAfter: refundedBalance,
           reference: `REF-${order.orderNumber}`,
           status: 'Completed',
           paymentMethod: 'Wallet',

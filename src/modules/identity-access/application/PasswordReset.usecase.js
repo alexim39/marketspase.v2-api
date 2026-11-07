@@ -55,10 +55,12 @@ export class RequestPasswordResetUseCase {
 }
 
 export class ResetPasswordUseCase {
-  /** @param {{partners, hasher}} deps */
-  constructor({ partners, hasher }) {
+  /** @param {{partners, hasher, revokeSessions?, refreshSessions?}} deps */
+  constructor({ partners, hasher, revokeSessions = null, refreshSessions = null }) {
     this.partners = partners;
     this.hasher = hasher;
+    this.revokeSessions = revokeSessions;
+    this.refreshSessions = refreshSessions;
   }
 
   async execute({ token, newPassword }) {
@@ -83,6 +85,13 @@ export class ResetPasswordUseCase {
       resetPasswordToken: undefined,
       resetPasswordExpires: undefined,
     });
+    const partnerId = String(partner._id ?? partner.id);
+    if (this.refreshSessions?.revokeAll) {
+      await this.refreshSessions.revokeAll(partnerId).catch(() => null);
+    }
+    if (this.revokeSessions) {
+      await this.revokeSessions(partnerId, { reason: 'password-reset' }).catch(() => null);
+    }
     return { message: 'Password successfully updated' };
   }
 }

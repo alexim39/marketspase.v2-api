@@ -34,6 +34,8 @@ export const deliverBulkSms = async ({ partners, transactions, records, sms }, {
   const transaction = await transactions.create({
     partnerId,
     amount: entity.cost,
+    balanceBefore: Number(charged.balance ?? 0) + Number(entity.cost),
+    balanceAfter: charged.balance ?? null,
     status: 'Completed',
     paymentMethod: 'SMS Charge',
     transactionType: 'Debit',

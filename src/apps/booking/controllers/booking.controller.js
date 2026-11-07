@@ -255,8 +255,11 @@ export const deleteBooking = async (req, res) => {
       return deny(res, err);
     }
 
-    // Here we delete the survey entry
-    await BookingModel.findByIdAndDelete(id);
+    // Soft delete: keep the session history for dispute/recall.
+    await BookingModel.updateOne(
+      { _id: id, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: String(req.auth?.partnerId ?? '') } },
+    );
 
     res.status(200).json({
       message: "Booking deleted successfully!",

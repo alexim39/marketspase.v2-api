@@ -1,7 +1,11 @@
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sessionCookieName } from '../../../shared/http/sessionScope.js';
+import { refreshCookieName } from '../infrastructure/RefreshSessions.js';
+import { UnauthorizedException } from '../../../shared/domain/AppError.js';
 
 const isProd = () => process.env.NODE_ENV === 'production';
+const ACCESS_TTL_MS = Number(process.env.ACCESS_TOKEN_TTL_MS || 15 * 60 * 1000);
+const REFRESH_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_MS || 7 * 24 * 60 * 60 * 1000);
 
 /**
  * Legacy set `secure:true; SameSite=None` unconditionally, which browsers
@@ -12,9 +16,19 @@ export const sessionCookieFlags = () => ({
   httpOnly: true,
   secure: isProd(),
   sameSite: isProd() ? 'none' : 'lax',
-  maxAge: 24 * 60 * 60 * 1000,
+  maxAge: ACCESS_TTL_MS,
   path: '/',
 });
+
+export const refreshCookieFlags = () => ({
+  httpOnly: true,
+  secure: isProd(),
+  sameSite: isProd() ? 'none' : 'lax',
+  maxAge: REFRESH_TTL_MS,
+  path: '/',
+});
+
+const scopeOf = (req) => (sessionCookieName(req) === 'admin_jwt' ? 'admin' : 'partner');
 
 export const makeAuthController = ({
   signup,
@@ -24,6 +38,8 @@ export const makeAuthController = ({
   resetPassword,
   verifyEmail,
   resendVerification,
+  sessions = null,
+  refreshSessions = null,
 }) => ({
   signup: asyncHandler(async (req, res) => {
     const { user, verificationSent } = await signup.execute(req.validated?.body ?? req.body);
@@ -43,7 +59,20 @@ export const makeAuthController = ({
       ip: req.ip ?? req.headers?.['x-forwarded-for'] ?? null,
       agent: req.headers?.['user-agent'] ?? null,
     });
+    const scope = scopeOf(req);
     res.cookie(sessionCookieName(req), token, sessionCookieFlags());
+    if (refreshSessions) {
+      const partnerId = String(user?.id ?? user?._id ?? '');
+      if (partnerId) {
+        const refresh = await refreshSessions.issue({
+          partnerId,
+          scope,
+          ip: req.ip ?? null,
+          userAgent: req.headers?.['user-agent'] ?? null,
+        }).catch(() => null);
+        if (refresh) res.cookie(refreshCookieName(scope), refresh.token, refreshCookieFlags());
+      }
+    }
     // Legacy shape preserved; `data` is additive for new clients.
     // `token` ships in the body as a fallback transport: cross-site
     // third-party-cookie blocking can drop the Set-Cookie while the login
@@ -52,8 +81,35 @@ export const makeAuthController = ({
     res.status(200).json({ message: 'Login successful', success: true, data: { user, token } });
   }),
 
+  refresh: asyncHandler(async (req, res) => {
+    if (!refreshSessions || !sessions) {
+      throw new UnauthorizedException('Session refresh is not available');
+    }
+    const scope = scopeOf(req);
+    const token = req.cookies?.[refreshCookieName(scope)];
+    const rotated = await refreshSessions.rotate({
+      token,
+      scope,
+      ip: req.ip ?? null,
+      userAgent: req.headers?.['user-agent'] ?? null,
+    });
+    const user = await getCurrentPartner.execute({ partnerId: rotated.partnerId });
+    const accessToken = sessions.sign(rotated.partnerId);
+    res.cookie(sessionCookieName(req), accessToken, sessionCookieFlags());
+    res.cookie(refreshCookieName(scope), rotated.token, refreshCookieFlags());
+    res.status(200).json({
+      message: 'Session refreshed',
+      success: true,
+      data: { user, token: accessToken },
+    });
+  }),
+
   signout: asyncHandler(async (req, res) => {
+    const scope = scopeOf(req);
+    const token = req.cookies?.[refreshCookieName(scope)];
+    if (refreshSessions) await refreshSessions.revoke({ token, scope }).catch(() => null);
     res.cookie(sessionCookieName(req), '', { ...sessionCookieFlags(), maxAge: 0 });
+    res.cookie(refreshCookieName(scope), '', { ...refreshCookieFlags(), maxAge: 0 });
     res.status(200).json({ message: 'Logged out successfully', success: true });
   }),
 

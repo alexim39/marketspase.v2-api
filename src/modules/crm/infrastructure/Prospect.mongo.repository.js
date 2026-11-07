@@ -39,11 +39,13 @@ export class MongoProspectRepository {
   }
 
   async findById(id) {
-    return ProspectMapper.toDomain(await ProspectModel.findById(id).lean());
+    return ProspectMapper.toDomain(
+      await ProspectModel.findOne({ _id: id, deletedAt: null }).lean(),
+    );
   }
 
   async findByPartnerId(partnerId, { limit = 100, skip = 0, q, stage, ids } = {}) {
-    const base = { partnerId };
+    const base = { partnerId, deletedAt: null };
     if (q) {
       const escaped = String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(escaped, 'i');
@@ -71,24 +73,24 @@ export class MongoProspectRepository {
 
   /** Goal-engine counters: created + converted within a window. */
   async countCreated(partnerId, start, end) {
-    return ProspectModel.countDocuments({ partnerId, createdAt: { $gte: start, $lte: end } });
+    return ProspectModel.countDocuments({ partnerId, deletedAt: null, createdAt: { $gte: start, $lte: end } });
   }
 
   /** Generic counter passthrough (Member 360 growth reads). */
   async countDocuments(filter) {
-    return ProspectModel.countDocuments(filter);
+    return ProspectModel.countDocuments({ ...filter, deletedAt: null });
   }
 
   /** Bounded prospect reads passthrough (Member 360 growth reads). */
   async find(filter) {
-    return ProspectModel.find(filter);
+    return ProspectModel.find({ ...filter, deletedAt: null });
   }
 
   /** Earliest prospect per partner: {partnerId: ms} (one aggregate). */
   async firstProspectDates(ids) {
     if (ids.length === 0) return {};
     const rows = await ProspectModel.aggregate([
-      { $match: { partnerId: { $in: ids.map(String) } } },
+      { $match: { partnerId: { $in: ids.map(String) }, deletedAt: null } },
       { $group: { _id: '$partnerId', firstAt: { $min: '$createdAt' } } },
     ]);
     return Object.fromEntries(rows.map((r) => [String(r._id), new Date(r.firstAt).getTime()]));
@@ -96,6 +98,7 @@ export class MongoProspectRepository {
   async countConverted(partnerId, start, end) {
     return ProspectModel.countDocuments({
       partnerId,
+      deletedAt: null,
       'status.stage': 'Converted',
       updatedAt: { $gte: start, $lte: end },
     });
@@ -105,6 +108,7 @@ export class MongoProspectRepository {
   async countTouchedSince(partnerId, since) {
     return ProspectModel.countDocuments({
       partnerId,
+      deletedAt: null,
       communications: { $elemMatch: { date: { $gte: since } } },
     });
   }
@@ -115,7 +119,7 @@ export class MongoProspectRepository {
    */
   async stageDistribution(partnerId, start, end) {
     const rows = await ProspectModel.aggregate([
-      { $match: { partnerId, createdAt: { $gte: start, $lte: end } } },
+      { $match: { partnerId, deletedAt: null, createdAt: { $gte: start, $lte: end } } },
       { $group: { _id: { $ifNull: ['$status.stage', 'New'] }, count: { $sum: 1 } } },
     ]);
     return Object.fromEntries(rows.map((r) => [r._id, r.count]));
@@ -124,7 +128,7 @@ export class MongoProspectRepository {
   /** Org-wide funnel: same shape, no partner filter (admin console). */
   async orgStageDistribution(start, end) {
     const rows = await ProspectModel.aggregate([
-      { $match: { createdAt: { $gte: start, $lte: end } } },
+      { $match: { deletedAt: null, createdAt: { $gte: start, $lte: end } } },
       { $group: { _id: { $ifNull: ['$status.stage', 'New'] }, count: { $sum: 1 } } },
     ]);
     return Object.fromEntries(rows.map((r) => [r._id, r.count]));
@@ -141,7 +145,7 @@ export class MongoProspectRepository {
     end.setHours(0, 0, 0, 0);
     end.setDate(end.getDate() + Math.min(Math.max(Number(withinDays) || 7, 1), 30) + 1);
     const rows = await ProspectModel.aggregate([
-      { $match: { partnerId } },
+      { $match: { partnerId, deletedAt: null } },
       { $match: { 'status.stage': { $nin: ['Converted', 'Closed'] } } },
       { $addFields: { __last: { $last: '$communications' } } },
       { $match: { '__last.followUpDate': { $ne: null, $lte: end } } },
@@ -154,7 +158,7 @@ export class MongoProspectRepository {
 
   /** Hottest pipeline: currently in negotiation, most recently touched first. */
   async findReadyToConvert(partnerId, limit = 5) {
-    const docs = await ProspectModel.find({ partnerId, 'status.stage': 'In Negotiation' })
+    const docs = await ProspectModel.find({ partnerId, deletedAt: null, 'status.stage': 'In Negotiation' })
       .sort({ updatedAt: -1 })
       .limit(limit)
       .lean();
@@ -168,7 +172,7 @@ export class MongoProspectRepository {
     // Normalize-aware check: fetch partner's phones/emails and compare in memory
     // so "0803 123 4567" and "08031234567" collide correctly, and legacy
     // spaced values still match. Bounded by partner (hundreds, not thousands).
-    const docs = await ProspectModel.find({ partnerId }).select('prospectPhone prospectEmail').lean();
+    const docs = await ProspectModel.find({ partnerId, deletedAt: null }).select('prospectPhone prospectEmail').lean();
     const hit = docs.find((d) => {
       if (normalizedPhone && normalizePhone(d.prospectPhone ?? '') === normalizedPhone) return true;
       if (normalizedEmail && d.prospectEmail && String(d.prospectEmail).trim().toLowerCase() === normalizedEmail) return true;
@@ -180,7 +184,11 @@ export class MongoProspectRepository {
   async updateFields(id, patch) {
     if (Object.keys(patch).length === 0) return this.findById(id);
     return ProspectMapper.toDomain(
-      await ProspectModel.findByIdAndUpdate(id, { $set: patch }, { new: true, runValidators: true }).lean(),
+      await ProspectModel.findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { $set: patch },
+        { new: true, runValidators: true },
+      ).lean(),
     );
   }
 
@@ -193,7 +201,7 @@ export class MongoProspectRepository {
     // (notes, dates) and no-op rewrites leave history alone.
     const to = overlay?.stage;
     if (to) {
-      const current = await ProspectModel.findById(id).select('status.stage').lean().catch(() => null);
+      const current = await ProspectModel.findOne({ _id: id, deletedAt: null }).select('status.stage').lean().catch(() => null);
       const from = current?.status?.stage ?? null;
       if (from !== to) {
         update.$push = {
@@ -208,14 +216,18 @@ export class MongoProspectRepository {
       }
     }
     return ProspectMapper.toDomain(
-      await ProspectModel.findByIdAndUpdate(id, update, { new: true, runValidators: true }).lean(),
+      await ProspectModel.findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        update,
+        { new: true, runValidators: true },
+      ).lean(),
     );
   }
 
   async pushCommunication(id, communication) {
     return ProspectMapper.toDomain(
-      await ProspectModel.findByIdAndUpdate(
-        id,
+      await ProspectModel.findOneAndUpdate(
+        { _id: id, deletedAt: null },
         { $push: { communications: communication } },
         { new: true, runValidators: true },
       ).lean(),
@@ -224,8 +236,8 @@ export class MongoProspectRepository {
 
   async pullCommunication(prospectId, communicationId) {
     const prospect = ProspectMapper.toDomain(
-      await ProspectModel.findByIdAndUpdate(
-        prospectId,
+      await ProspectModel.findOneAndUpdate(
+        { _id: prospectId, deletedAt: null },
         { $pull: { communications: { _id: communicationId } } },
         { new: true },
       ).lean(),
@@ -236,7 +248,12 @@ export class MongoProspectRepository {
   }
 
   async deleteById(id) {
-    return (await ProspectModel.findByIdAndDelete(id).lean()) !== null;
+    const doc = await ProspectModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { $set: { deletedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return doc !== null;
   }
 
   /** GDPR erasure helper — count of owned prospects removed. */
@@ -247,7 +264,7 @@ export class MongoProspectRepository {
 
   /** Unsubmitted onboarding-list rows, oldest first. */
   async listUnsubmitted(partnerId) {
-    const docs = await ProspectModel.find({ partnerId, listSubmitted: { $ne: true } })
+    const docs = await ProspectModel.find({ partnerId, deletedAt: null, listSubmitted: { $ne: true } })
       .sort({ createdAt: 1 })
       .lean();
     return docs.map(ProspectMapper.toDomain);
@@ -256,7 +273,7 @@ export class MongoProspectRepository {
   /** Submitted batches with per-stage progress, newest batch first. */
   async submittedBatches(partnerId) {
     const rows = await ProspectModel.aggregate([
-      { $match: { partnerId: { $in: matchPartnerIds(partnerId) }, listSubmitted: true } },
+      { $match: { partnerId: { $in: matchPartnerIds(partnerId) }, deletedAt: null, listSubmitted: true } },
       {
         $group: {
           _id: '$listBatch',

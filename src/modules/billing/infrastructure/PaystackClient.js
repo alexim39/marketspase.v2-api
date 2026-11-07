@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import axios from 'axios';
+import { getBreaker } from '../../../shared/resilience/CircuitBreaker.js';
 
 const BASE = 'https://api.paystack.co';
 
@@ -15,7 +16,16 @@ export class PaystackClient {
   constructor({ secretKey = process.env.PAYSTACKTOKEN, baseUrl = process.env.PAYSTACK_BASE_URL || BASE, http = axios } = {}) {
     this.secretKey = String(secretKey ?? '').trim();
     this.baseUrl = String(baseUrl ?? BASE).replace(/\/+$/, '');
-    this.http = http;
+    this.breaker = getBreaker('paystack', {
+      openCode: 'PAYSTACK_UNAVAILABLE',
+      openMessage: 'Paystack is temporarily unavailable — try again shortly.',
+      openFix: 'Wait for the retry_after period, then retry the same action.',
+    });
+    const raw = http;
+    this.http = {
+      get: (...args) => this.breaker.run(() => raw.get(...args)),
+      post: (...args) => this.breaker.run(() => raw.post(...args)),
+    };
   }
 
   get enabled() {

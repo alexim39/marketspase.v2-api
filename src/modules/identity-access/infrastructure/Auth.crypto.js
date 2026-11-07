@@ -31,10 +31,11 @@ export class BcryptPasswordHasher {
   }
 }
 
-/** Infrastructure: JWT session tokens — same `{ id }`, 1d shape as legacy. */
+/** Infrastructure: short-lived access JWTs — same `{ id }` shape as legacy. */
 export class JwtSessionIssuer {
   sign(partnerId) {
-    return jwt.sign({ id: String(partnerId) }, process.env.JWTTOKENSECRET, { expiresIn: '1d' });
+    const ttl = process.env.ACCESS_TOKEN_TTL || '15m';
+    return jwt.sign({ id: String(partnerId) }, process.env.JWTTOKENSECRET, { expiresIn: ttl });
   }
   verify(token) {
     try {

@@ -17,8 +17,8 @@ export class NotificationDeliveryService {
    * (`mail` is `(to, subject, html) => Promise`; defaults must be wired
    * by the caller — the service never imports legacy singletons.)
    */
-  constructor({ stored, notify, mail, sms, push }) {
-    Object.assign(this, { stored, notify, mail, sms, push });
+  constructor({ stored, notify, mail, sms, push, outbox = null }) {
+    Object.assign(this, { stored, notify, mail, sms, push, outbox });
   }
 
   /**
@@ -26,7 +26,7 @@ export class NotificationDeliveryService {
    * (`contact` = {email, phone}; `email` = {subject, html} or null.)
    */
   async deliver({ recipientId, contact = {}, item, email = null, emailPolicy = 'always' }) {
-    const report = { inApp: 'skipped', email: false, sms: false, push: 0, pruned: 0, errors: [] };
+    const report = { inApp: 'skipped', email: false, sms: false, push: 0, pruned: 0, queued: 0, errors: [] };
     const prefs = resolvePreferences(await this.stored.getPreferences(recipientId).catch(() => null));
     const channels = channelsFor({ prefs, category: item.category, emailPolicy });
 
@@ -46,15 +46,24 @@ export class NotificationDeliveryService {
     const stamp = {};
     if (channels.email && email && contact.email && this.mail) {
       try {
-        const receipt = await this.mail(contact.email, email.subject, email.html);
-        // sendEmail resolves {sent:false} instead of throwing — only an
-        // explicit false marks the channel failed (fake senders resolve
-        // undefined, which still counts as delivered).
-        if (receipt && receipt.sent === false) {
-          report.errors.push({ channel: 'email', error: receipt.error ?? 'Send failed' });
-        } else {
+        if (this.outbox) {
+          await this.outbox.enqueue({
+            channel: 'email',
+            payload: { to: contact.email, subject: email.subject, html: email.html, recipientId, rowId },
+          });
           report.email = true;
-          stamp['channels.email'] = new Date();
+          report.queued += 1;
+        } else {
+          const receipt = await this.mail(contact.email, email.subject, email.html);
+          // sendEmail resolves {sent:false} instead of throwing — only an
+          // explicit false marks the channel failed (fake senders resolve
+          // undefined, which still counts as delivered).
+          if (receipt && receipt.sent === false) {
+            report.errors.push({ channel: 'email', error: receipt.error ?? 'Send failed' });
+          } else {
+            report.email = true;
+            stamp['channels.email'] = new Date();
+          }
         }
       } catch (error) {
         report.errors.push({ channel: 'email', error: error?.message ?? String(error) });
@@ -62,9 +71,18 @@ export class NotificationDeliveryService {
     }
     if (channels.sms && contact.phone && this.sms) {
       try {
-        await this.sms.send({ to: contact.phone, title: item.title, body: item.body });
-        report.sms = true;
-        stamp['channels.sms'] = new Date();
+        if (this.outbox) {
+          await this.outbox.enqueue({
+            channel: 'sms',
+            payload: { to: contact.phone, title: item.title, body: item.body, recipientId, rowId },
+          });
+          report.sms = true;
+          report.queued += 1;
+        } else {
+          await this.sms.send({ to: contact.phone, title: item.title, body: item.body });
+          report.sms = true;
+          stamp['channels.sms'] = new Date();
+        }
       } catch (error) {
         report.errors.push({ channel: 'sms', error: error?.message ?? String(error) });
       }
@@ -74,6 +92,22 @@ export class NotificationDeliveryService {
         const subs = await this.stored.listSubscriptions(recipientId).catch(() => []);
         for (const sub of subs) {
           try {
+            if (this.outbox) {
+              await this.outbox.enqueue({
+                channel: 'push',
+                payload: {
+                  subscription: { endpoint: sub.endpoint, keys: sub.keys },
+                  title: item.title,
+                  body: item.body,
+                  link: item.link,
+                  recipientId,
+                  rowId,
+                },
+              });
+              report.push += 1;
+              report.queued += 1;
+              continue;
+            }
             const out = await this.push.send({
               subscription: { endpoint: sub.endpoint, keys: sub.keys },
               title: item.title,
@@ -90,7 +124,7 @@ export class NotificationDeliveryService {
             report.errors.push({ channel: 'push', error: error?.message ?? String(error) });
           }
         }
-        if (report.push > 0) stamp['channels.push'] = new Date();
+        if (report.push > 0 && !this.outbox) stamp['channels.push'] = new Date();
       } catch (error) {
         report.errors.push({ channel: 'push', error: error?.message ?? String(error) });
       }

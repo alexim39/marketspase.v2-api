@@ -2,9 +2,12 @@ import express from 'express';
 import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { idempotency } from '../../../shared/http/idempotency.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { recordAudit } from '../../audit/index.js';
+import { logger } from '../../../shared/observability/logger.js';
 import {
   AdminCreditWalletUseCase, DecideManualDepositUseCase, ListManualQueueUseCase,
   LookupPartnerUseCase, MyManualClaimsUseCase,
@@ -173,25 +176,77 @@ export const buildDepositRouter = (deps = {}) => {
   const lookup = deps.lookup ?? new LookupPartnerUseCase({});
 
   const router = express.Router();
+  const depositInitLimit = rateLimit({
+    name: 'billing-deposit-init',
+    windowMs: 3600000,
+    max: 10,
+    key: userKey,
+  });
 
-  router.post('/deposit/init', requireAuth, validate({ body: InitSchema }), asyncHandler(async (req, res) => {
+  router.post('/deposit/init', requireAuth, depositInitLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await init.execute({
       partnerId: req.auth?.partnerId,
       amountNgn: body.amountNgn,
       contact: { email: body.email, name: body.name, phone: body.phone },
     });
-    res.status(200).json({ message: 'Checkout opened — complete payment with Opay', data, success: true });
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'wallet.deposit.init',
+      targetType: 'deposit',
+      targetId: data.reference,
+      detail: { provider: 'opay', amountNgn: data.amountNgn ?? body.amountNgn, requestId: req.id },
+    });
+    logger.info('money_action', {
+      action: 'wallet.deposit.init', provider: 'opay', partnerId: req.auth?.partnerId,
+      amountNgn: data.amountNgn ?? body.amountNgn, reference: data.reference, requestId: req.id,
+    });
+    res.status(200).json({
+      message: 'Checkout opened — complete payment with Opay',
+      data,
+      meta: {
+        next_steps: {
+          reference: data.reference,
+          action: 'complete_payment',
+          checkout_url: data.cashierUrl,
+          expires_in_minutes: data.expiresInMinutes ?? null,
+        },
+      },
+      success: true,
+    });
   }));
 
-  router.post('/deposit/paystack/init', requireAuth, validate({ body: InitSchema }), asyncHandler(async (req, res) => {
+  router.post('/deposit/paystack/init', requireAuth, depositInitLimit, validate({ body: InitSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await paystackInit.execute({
       partnerId: req.auth?.partnerId,
       amountNgn: body.amountNgn,
       contact: { email: body.email, name: body.name, phone: body.phone },
     });
-    res.status(200).json({ message: 'Checkout opened — complete payment with Paystack', data, success: true });
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'wallet.deposit.init',
+      targetType: 'deposit',
+      targetId: data.reference,
+      detail: { provider: 'paystack', amountNgn: data.amountNgn ?? body.amountNgn, requestId: req.id },
+    });
+    logger.info('money_action', {
+      action: 'wallet.deposit.init', provider: 'paystack', partnerId: req.auth?.partnerId,
+      amountNgn: data.amountNgn ?? body.amountNgn, reference: data.reference, requestId: req.id,
+    });
+    res.status(200).json({
+      message: 'Checkout opened — complete payment with Paystack',
+      data,
+      meta: {
+        next_steps: {
+          reference: data.reference,
+          action: 'complete_payment',
+          checkout_url: data.checkoutUrl,
+          expires_in_minutes: data.expiresInMinutes ?? null,
+        },
+      },
+      success: true,
+    });
   }));
 
   router.get('/deposit/status', requireAuth, validate({ query: StatusQuery }), asyncHandler(async (req, res) => {
@@ -207,6 +262,20 @@ export const buildDepositRouter = (deps = {}) => {
     const body = req.body ?? {};
     try {
       const data = await callback.execute({ payload: body.payload ?? null, sha512: body.sha512 ?? null });
+      if (data?.status === 'success' && !data?.deduped) {
+        void recordAudit({
+          actorId: 'system:opay',
+          action: 'wallet.deposit.credit',
+          targetType: 'deposit',
+          targetId: data.reference ?? null,
+          detail: { provider: 'opay', amountNgn: data.amountNgn ?? null, balanceAfter: data.balance ?? null, requestId: req.id },
+        });
+        logger.info('money_action', {
+          action: 'wallet.deposit.credit', provider: 'opay', partnerId: data.partnerId ?? null,
+          amountNgn: data.amountNgn ?? null, reference: data.reference ?? null,
+          balanceAfter: data.balance ?? null, requestId: req.id,
+        });
+      }
       res.status(200).json({ message: 'Callback handled', data, success: true });
     } catch (err) {
       if (err?.code === 'BAD_SIGNATURE' || err?.code === 'UNKNOWN_REFERENCE') {
@@ -228,6 +297,20 @@ export const buildDepositRouter = (deps = {}) => {
         rawBody: req.rawBody,
         signature: req.get('x-paystack-signature'),
       });
+      if (data?.status === 'success' && !data?.deduped) {
+        void recordAudit({
+          actorId: 'system:paystack',
+          action: 'wallet.deposit.credit',
+          targetType: 'deposit',
+          targetId: data.reference ?? null,
+          detail: { provider: 'paystack', amountNgn: data.amountNgn ?? null, balanceAfter: data.balance ?? null, requestId: req.id },
+        });
+        logger.info('money_action', {
+          action: 'wallet.deposit.credit', provider: 'paystack', partnerId: data.partnerId ?? null,
+          amountNgn: data.amountNgn ?? null, reference: data.reference ?? null,
+          balanceAfter: data.balance ?? null, requestId: req.id,
+        });
+      }
       res.status(200).json({ message: 'Webhook handled', data, success: true });
     } catch (err) {
       if (err?.code === 'BAD_SIGNATURE' || err?.code === 'UNKNOWN_REFERENCE' || err?.code === 'AMOUNT_MISMATCH') {

@@ -25,6 +25,7 @@ import { runMentorBonusDueJob } from './mentor-bonus-due.js';
 import { runCompensationReconcileJob } from './compensation-reconcile.js';
 import { runPayoutReconcileJob } from './payout-reconcile.js';
 import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
+import { runOutboxDueJob } from './outbox-delivery.js';
 
 /**
  * Background jobs — the single scheduling mechanism (the legacy birthday
@@ -91,7 +92,8 @@ export function scheduleJobs() {
   cron.schedule('*/10 * * * *', () => withJobHealth(JobRunModel, 'payout-reconcile', () => runPayoutReconcileJob()));
   cron.schedule('*/5 * * * *', () => withJobHealth(JobRunModel, 'store-order-expiry', () => runStoreOrderExpiryJob()));
   cron.schedule('*/15 * * * *', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob()));
-  console.log('[jobs] scheduled: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes');
+  cron.schedule('*/20 * * * * *', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()));
+  console.log('[jobs] scheduled: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';
@@ -112,3 +114,4 @@ export { runMentorBonusDueJob } from './mentor-bonus-due.js';
 export { runCompensationReconcileJob } from './compensation-reconcile.js';
 export { runPayoutReconcileJob } from './payout-reconcile.js';
 export { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
+export { runOutboxDueJob } from './outbox-delivery.js';

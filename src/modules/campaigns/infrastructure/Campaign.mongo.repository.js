@@ -266,6 +266,8 @@ export class MongoCampaignRepository {
         [{
           partnerId: ownerId,
           amount: total,
+          balanceBefore: Number(debited.balance ?? 0) + Number(total),
+          balanceAfter: debited.balance ?? null,
           reference: fundingReference,
           status: 'Completed',
           paymentMethod: 'Growth Campaign Funding',
@@ -1156,6 +1158,8 @@ export class MongoCampaignRepository {
       [{
         partnerId: ownerId,
         amount: Number(amount),
+        balanceBefore: Number(owner.balance ?? 0) - Number(amount),
+        balanceAfter: owner.balance ?? null,
         reference,
         status: 'Completed',
         paymentMethod: method,

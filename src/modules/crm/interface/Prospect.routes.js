@@ -1,6 +1,7 @@
 import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { idempotency } from '../../../shared/http/idempotency.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
   ProspectIdParam, PartnerIdParam, CreateProspectSchema, ImportContactsSchema, UpdateProspectSchema,
@@ -144,9 +145,9 @@ export const buildProspectRouter = (deps = {}) => {
 
   router.post('/:prospectId/rate', validate({ params: ProspectIdParam, body: RateLeadSchema }), c.rate);
 
-  router.post('/claim', validate({ body: ClaimProspectSchema }), c.claim);
+  router.post('/claim', validate({ body: ClaimProspectSchema }), idempotency(), c.claim);
 
-  router.post('/accept-page-lead', validate({ body: AcceptPageLeadSchema }), asyncHandler(async (req, res) => {
+  router.post('/accept-page-lead', validate({ body: AcceptPageLeadSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const accepter = deps.acceptPageLead ?? new AcceptPageLeadUseCase({});
     const data = await accepter.execute({ partnerId: req.auth?.partnerId, surveyId: body.surveyId });

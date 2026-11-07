@@ -21,6 +21,7 @@ import { NotifyUseCase } from '../../notifications/application/NotificationsCent
 import { NotificationDeliveryService } from '../../notifications/application/NotificationDelivery.js';
 import { NOTIFICATION_EVENTS } from '../../notifications/domain/NotificationEvents.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
+import { MongoOutbox } from '../../../shared/outbox/Outbox.mongo.model.js';
 import { MentionMailer } from '../../notifications/infrastructure/MentionMailer.js';
 import { buildSmsSender } from '../../notifications/infrastructure/SmsSender.js';
 import { buildPushSender } from '../../notifications/infrastructure/PushSender.js';
@@ -92,6 +93,7 @@ export const buildCommunityRouter = (deps = {}) => {
       mail: sendEmail,
       sms: buildSmsSender(env.sms),
       push: buildPushSender(env.push, env.appBaseUrl),
+      outbox: deps.outbox ?? new MongoOutbox(),
     }),
     mailer: new MentionMailer(),
   });

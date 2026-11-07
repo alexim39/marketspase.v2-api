@@ -1,6 +1,7 @@
 import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { idempotency } from '../../../shared/http/idempotency.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
@@ -71,7 +72,7 @@ export const buildCampaignRouter = (deps = {}) => {
     return sendSuccess(res, { data });
   }));
 
-  router.post('/', validate({ body: CreateGrowthCampaignSchema }), asyncHandler(async (req, res) => {
+  router.post('/', validate({ body: CreateGrowthCampaignSchema }), idempotency(), asyncHandler(async (req, res) => {
     const data = await create.execute(req.auth.partnerId, req.validated.body);
     return sendSuccess(res, {
       message: 'Campaign funded and submitted for review',

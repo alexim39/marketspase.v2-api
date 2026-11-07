@@ -172,7 +172,13 @@ test('CreateWithdrawalUseCase refunds when Paystack cannot start the transfer', 
   const created = [];
   let refunds = 0;
   const partners = {
-    findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000 }),
+    findOneAndUpdate: async (_filter, update) => {
+      if (Number(update?.$inc?.balance) > 0) {
+        refunds += 1;
+        return { _id: 'p1', balance: 5000 };
+      }
+      return { _id: 'p1', balance: 4000 };
+    },
     updateOne: async () => { refunds += 1; return {}; },
   };
   const transactions = {

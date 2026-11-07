@@ -91,6 +91,8 @@ const userBookingSchema = mongoose.Schema(
             default: 'Scheduled',
             //required: [true, "Please enter username"]
         },
+        deletedAt: { type: Date, default: null, index: true },
+        deletedBy: { type: String, default: null },
         
        
     },
@@ -100,4 +102,10 @@ const userBookingSchema = mongoose.Schema(
 )
 
 /* Model */
+userBookingSchema.pre(/^find/, function hideDeletedBookings() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+userBookingSchema.pre('countDocuments', function hideDeletedBookingCounts() {
+  if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
 export const BookingModel = mongoose.model('Booking', userBookingSchema);

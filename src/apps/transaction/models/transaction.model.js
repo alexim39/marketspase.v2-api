@@ -8,6 +8,9 @@ const transactionSchema = new mongoose.Schema({
     required: true,
   },
   amount: Number,
+  // Immutable wallet snapshot for disputes and reconciliation.
+  balanceBefore: { type: Number, default: null },
+  balanceAfter: { type: Number, default: null },
   reference: String,
   status: String,
   paymentMethod: String,
@@ -39,5 +42,8 @@ const transactionSchema = new mongoose.Schema({
 
 // Reconcile job lookup: Pending automatic withdrawals by initiation time.
 transactionSchema.index({ paymentMethod: 1, status: 1, payoutMode: 1, payoutInitiatedAt: 1 });
+transactionSchema.index({ partnerId: 1, date: -1 });
+transactionSchema.index({ partnerId: 1, createdAt: -1 });
+transactionSchema.index({ reference: 1 });
 
 export const TransactionModel = mongoose.model('Transaction', transactionSchema);

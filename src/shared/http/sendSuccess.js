@@ -6,6 +6,15 @@
  */
 export const sendSuccess = (res, { message = 'OK', data = null, statusCode = 200, meta } = {}) => {
   const body = { message, success: true, data };
-  if (meta !== undefined) body.meta = meta;
+  if (meta !== undefined) {
+    body.meta = meta;
+  } else if (Array.isArray(data)) {
+    // Never return a bare []: give the client a stable shape it can explain.
+    body.meta = {
+      count: data.length,
+      reason: data.length === 0 ? 'no_items' : 'ok',
+      next_action: null,
+    };
+  }
   return res.status(statusCode).json(body);
 };

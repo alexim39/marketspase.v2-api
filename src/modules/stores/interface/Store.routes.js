@@ -1,6 +1,8 @@
 import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
+import { idempotency } from '../../../shared/http/idempotency.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { recordAudit } from '../../audit/index.js';
@@ -26,6 +28,12 @@ export const buildStoreRouter = (deps = {}) => {
   const auth = deps.auth ?? requireAuth;
   const audit = deps.audit ?? recordAudit;
   const router = express.Router();
+  const listingLimit = rateLimit({
+    name: 'store-listing',
+    windowMs: 3600000,
+    max: 10,
+    key: userKey,
+  });
 
   // ── Partner-owned store management (must precede /:slug) ──────────────
   router.get('/me', auth, asyncHandler(async (req, res) => {
@@ -94,6 +102,7 @@ export const buildStoreRouter = (deps = {}) => {
   router.patch(
     '/me/products/:id',
     auth,
+    listingLimit,
     validate({ params: StoreProductParamsSchema, body: StoreProductUpdateSchema }),
     asyncHandler(async (req, res) => {
       const data = await repo.updateProduct(
@@ -143,6 +152,7 @@ export const buildStoreRouter = (deps = {}) => {
     validate({ query: StoreListQuerySchema }),
     asyncHandler(async (req, res) => {
       const data = await repo.listPublicStores(req.validated.query);
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       return sendSuccess(res, { data });
     }),
   );
@@ -169,11 +179,22 @@ export const buildStoreRouter = (deps = {}) => {
   router.post(
     '/:slug/orders',
     validate({ params: StoreSlugParamsSchema, body: StoreOrderCreateSchema }),
+    idempotency(),
     asyncHandler(async (req, res) => {
       const data = await orderRepo.createOrder(req.validated.params.slug, req.validated.body);
       return sendSuccess(res, {
         message: 'Checkout opened — complete payment with Paystack',
         data,
+        meta: {
+          next_steps: {
+            order_id: data.order?.id ?? null,
+            order_number: data.order?.orderNumber ?? null,
+            reference: data.order?.reference ?? null,
+            action: 'complete_payment',
+            checkout_url: data.checkoutUrl,
+            escrow_status: 'not_funded',
+          },
+        },
       });
     }),
   );
@@ -204,6 +225,7 @@ export const buildStoreRouter = (deps = {}) => {
         req.validated.params.slug,
         req.validated.params.productId,
       );
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       return sendSuccess(res, { data });
     }),
   );
@@ -213,6 +235,7 @@ export const buildStoreRouter = (deps = {}) => {
     validate({ params: StoreSlugParamsSchema }),
     asyncHandler(async (req, res) => {
       const data = await repo.getPublicStore(req.validated.params.slug);
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       return sendSuccess(res, { data });
     }),
   );

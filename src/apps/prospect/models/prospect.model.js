@@ -170,7 +170,10 @@ const prospectSchema = mongoose.Schema(
                 type: String, 
             },
         },
-       
+        // Business records are never hard-deleted. Queries filter this out;
+        // GDPR erasure uses the anonymisation path, not this flag.
+        deletedAt: { type: Date, default: null, index: true },
+        deletedBy: { type: String, default: null },
     },
     {
         timestamps: true
@@ -178,4 +181,16 @@ const prospectSchema = mongoose.Schema(
 )
 
 /* Model */
+// Soft-delete read fence: legacy and slice reads never surface deleted rows.
+// Pass `{ withDeleted: true }` for admin restore/reconciliation queries.
+prospectSchema.pre(/^find/, function hideDeletedProspects() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+prospectSchema.pre('countDocuments', function hideDeletedProspectCounts() {
+    if (!this.getOptions?.().withDeleted) this.where({ deletedAt: null });
+});
+prospectSchema.pre('aggregate', function hideDeletedProspectAggregates() {
+    if (!this.options?.withDeleted) this.pipeline().unshift({ $match: { deletedAt: null } });
+});
+
 export const ProspectModel = mongoose.model('Prospect', prospectSchema);

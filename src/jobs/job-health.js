@@ -31,6 +31,7 @@ export const EXPECTED_EVERY_MIN = {
   'leadpool-sweep': 60,
   'mentor-bonus': 90,
   'compensation-reconcile': 90,
+  'outbox-delivery': 5,
 };
 
 const summarize = (value, max = 2000) => {

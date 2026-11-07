@@ -1,13 +1,15 @@
 /**
- * Per-IP sliding-window rate limiter (in-memory, per process).
- * Covers intentionally-public surfaces (survey/ticket/contact submits,
- * visit recording, username lookups) plus auth endpoints (brute force).
- * Authenticated API abuse is account-bound and handled by ownership
- * guards instead — this is purely an anonymous-flood control.
+ * Per-key sliding-window rate limiter (in-memory, per process).
  *
- * Multi-instance note: buckets live per process. Behind N replicas an
- * attacker gets N× the budget — acceptable for flood control (not for
- * billing); upgrade to Redis only if abuse demands it.
+ * Covers intentionally-public surfaces (survey/ticket/contact submits,
+ * visit recording, username lookups) plus auth, listing and money actions.
+ * `key` defaults to the trusted Express client IP. Behind a proxy set
+ * `TRUST_PROXY_HOPS=1` so Express derives `req.ip` correctly; never trust a
+ * raw `X-Forwarded-For` header.
+ *
+ * Multi-instance note: buckets live per process. For auth and money actions
+ * the caller should attach a user key; a Mongo-backed counter can replace
+ * this adapter later without changing route code.
  */
 const buckets = new Map();
 
@@ -20,15 +22,17 @@ const sweep = () => {
 
 let sweptAt = 0;
 
-/** Client IP behind proxies (no trust-proxy change required). */
+/** Client IP derived by Express (honours `trust proxy` when configured). */
 export const clientIp = (req) =>
-  String(req.headers?.['x-forwarded-for'] ?? '')
-    .split(',')[0]
-    .trim() || req.ip || req.socket?.remoteAddress || 'unknown';
+  req.ip || req.socket?.remoteAddress || 'unknown';
+
+/** Stable per-user key; falls back to the IP for anonymous requests. */
+export const userKey = (req) =>
+  req.auth?.partnerId ? `user:${req.auth.partnerId}` : `ip:${clientIp(req)}`;
 
 /**
  * @param {{name, windowMs, max, key?}} opts (`name` namespaces buckets per route)
- * 429s with Retry-After + RATE_LIMITED envelope when exceeded.
+ * 429s with Retry-After + a JSON `retry_after` field.
  */
 export const rateLimit = ({ name = 'default', windowMs = 60000, max = 30, key = null } = {}) => {
   const limit = Math.max(1, Number(max) || 30);
@@ -55,6 +59,8 @@ export const rateLimit = ({ name = 'default', windowMs = 60000, max = 30, key = 
           message: 'Too many requests — please slow down and try again shortly.',
           success: false,
           code: 'RATE_LIMITED',
+          fix: `Wait ${retryAfter} second${retryAfter === 1 ? '' : 's'}, then retry once.`,
+          retry_after: retryAfter,
         });
       }
       return next();

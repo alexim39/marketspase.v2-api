@@ -6,12 +6,29 @@ export const getTransactions = async (req, res) => {
   try {
     // Session-owned: partners read their own history only.
     const partnerId = req.auth?.partnerId;
-
-    const transaction = await TransactionModel.find({ partnerId });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
+    const filter = { partnerId };
+    const [transaction, total] = await Promise.all([
+      TransactionModel.find(filter)
+        .sort({ date: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      TransactionModel.countDocuments(filter),
+    ]);
 
     res.status(200).json({
       message: "Transaction retrieved successfully!",
       data: transaction,
+      meta: {
+        count: transaction.length,
+        total,
+        limit,
+        skip,
+        hasMore: skip + transaction.length < total,
+        next_action: skip + transaction.length < total ? 'load_more' : null,
+      },
       success: true,
     });
   } catch (error) {
@@ -33,49 +50,38 @@ export const singleSMSCharge = async (req, res) => {
     // a path/body partnerId pointing elsewhere is ignored, never honored.
     const partnerId = req.auth?.partnerId;
 
-    // Find the partner by ID
-    const partner = await PartnersModel.findById(partnerId);
+    // Atomic conditional debit — never load-modify-save the partner doc.
+    const partner = await PartnersModel.findOneAndUpdate(
+      { _id: partnerId, balance: { $gte: SMS_CHARGE } },
+      { $inc: { balance: -SMS_CHARGE } },
+      { new: true },
+    ).lean();
     if (!partner) {
-      //return { success: false, message: 'Partner not found.' };
-      return res.status(400).json({
-        message: "Partner not found",
-        success: false,
-      });
-    }
-
-    // Check if the partner has sufficient balance
-    if (partner.balance >= SMS_CHARGE) {
-      // Deduct the SMS charge
-      partner.balance -= SMS_CHARGE;
-
-      // Save the updated partner balance
-      await partner.save();
-
-      // Record the transaction
-      const transaction = new TransactionModel({
-        partnerId: partner._id,
-        amount: SMS_CHARGE,
-        status: "Completed",
-        paymentMethod: "SMS Charge",
-        transactionType: "Debit",
-        //reference: `Charge for SMS on ${new Date().toISOString()}`,
-        reference: Math.floor(100000000 + Math.random() * 900000000).toString(), // Generate a random 9-digit number as string, ensuring it's always 9 digits
-      });
-
-      await transaction.save();
-
-      //return { success: true, message: 'Charge successful. Transaction recorded.' };
-      res.status(200).json({
-        message: "Charge successful. Transaction recorded.",
-        data: transaction,
-        success: true,
-      });
-    } else {
       return res.status(400).json({
         message: "Insufficient balance for transaction",
         success: false,
       });
     }
+
+    // Record the transaction with the immutable balance snapshot.
+    const transaction = new TransactionModel({
+      partnerId: partner._id,
+      amount: SMS_CHARGE,
+      balanceBefore: Number(partner.balance ?? 0) + Number(SMS_CHARGE),
+      balanceAfter: partner.balance ?? null,
+      status: "Completed",
+      paymentMethod: "SMS Charge",
+      transactionType: "Debit",
+      reference: Math.floor(100000000 + Math.random() * 900000000).toString(),
+    });
+
+    await transaction.save();
+
+    res.status(200).json({
+      message: "Charge successful. Transaction recorded.",
+      data: transaction,
+      success: true,
+    });
   } catch (error) {
     res.status(500).json({
       message: "An error occurred while processing the charge.",

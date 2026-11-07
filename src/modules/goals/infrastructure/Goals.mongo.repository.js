@@ -12,6 +12,8 @@ const goalSchema = new mongoose.Schema(
     // Closed = user declared done/abandoned; old docs default to active.
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
     closedAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: String, default: null },
   },
   { timestamps: true },
 );
@@ -31,21 +33,30 @@ export class MongoGoalStore {
   }
 
   async findById(id) {
-    const doc = await GoalModel.findById(id).lean();
+    const doc = await GoalModel.findOne({ _id: id, deletedAt: null }).lean();
     return doc ? { ...doc, id: oid(doc._id) } : null;
   }
 
   async listByPartner(partnerId) {
-    const docs = await GoalModel.find({ partnerId }).sort({ endDate: 1 }).lean();
+    const docs = await GoalModel.find({ partnerId, deletedAt: null }).sort({ endDate: 1 }).lean();
     return docs.map((d) => ({ ...d, id: oid(d._id) }));
   }
 
   async updateById(id, patch) {
-    const doc = await GoalModel.findByIdAndUpdate(id, { $set: patch }, { new: true }).lean();
+    const doc = await GoalModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { $set: patch },
+      { new: true },
+    ).lean();
     return doc ? { ...doc, id: oid(doc._id) } : null;
   }
 
-  async deleteById(id) {
-    return (await GoalModel.findByIdAndDelete(id).lean()) !== null;
+  async deleteById(id, deletedBy = null) {
+    const doc = await GoalModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: deletedBy ? String(deletedBy) : null } },
+      { new: true },
+    ).lean();
+    return doc !== null;
   }
 }

@@ -877,7 +877,7 @@ export const deleteSingleFromProspect = async (req, res) => {
     }
 
     // Get the prospect based on the provided prospectId
-    const prospect = await ProspectModel.findById(prospectId);
+    const prospect = await ProspectModel.findOne({ _id: prospectId, deletedAt: null });
 
     // Check if exists
     if (!prospect) {
@@ -887,8 +887,11 @@ export const deleteSingleFromProspect = async (req, res) => {
       });
     }
 
-    // Here we delete the survey entry
-    await ProspectModel.findByIdAndDelete(prospectId);
+    // Soft delete: the pipeline record is evidence and must be recoverable.
+    await ProspectModel.updateOne(
+      { _id: prospectId, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: sessionId(req) } },
+    );
 
     res.status(200).json({
       message: "Prospect deleted successfully!",
@@ -965,8 +968,11 @@ export const moveSingleProspectBackToSurvey = async (req, res) => {
     //prospect.surveyId = savedSurvey._id; // Link back to the new survey
     //await prospect.save();
 
-    // Option 2: Delete the prospect entry after moving back to SurveyModel
-    await ProspectModel.findByIdAndDelete(prospectId);
+    // Option 2: Soft-delete the prospect entry after moving back to SurveyModel
+    await ProspectModel.updateOne(
+      { _id: prospectId, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedBy: sessionId(req) } },
+    );
 
     res.status(200).json({
       message: "Prospect moved back to survey list successfully!",

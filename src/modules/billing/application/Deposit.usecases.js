@@ -131,11 +131,11 @@ export class HandleDepositCallbackUseCase {
         { new: false, ...opt },
       ).lean().catch(() => null);
       if (!doc) return null;
-      await PartnersModel.findByIdAndUpdate(
+      const partnerAfter = await PartnersModel.findByIdAndUpdate(
         doc.partnerId,
         { $inc: { balance: doc.amountNgn } },
-        opt,
-      );
+        { new: true, ...opt },
+      ).lean();
       await TransactionModel.create([{
         partnerId: doc.partnerId,
         amount: doc.amountNgn,
@@ -144,14 +144,20 @@ export class HandleDepositCallbackUseCase {
         transactionType: 'Credit',
         reference: doc.reference,
       }], opt);
-      return doc;
+      return { doc, balance: partnerAfter?.balance ?? null };
     }).catch(() => null);
     const deduped = !claimed;
 
     if (this.notifier && claimed) {
-      await this.notifier(intent.partnerId, intent.amountNgn, reference).catch(() => null);
+      await this.notifier(claimed.doc.partnerId, claimed.doc.amountNgn, reference).catch(() => null);
     }
-    return { status: 'success', deduped, reference };
+    return {
+      status: 'success',
+      deduped,
+      reference,
+      amountNgn: claimed?.doc?.amountNgn ?? intent.amountNgn ?? null,
+      balance: claimed?.balance ?? null,
+    };
   }
 }
 
@@ -203,19 +209,27 @@ export const creditPartnerWallet = async ({ partners, transactions }, { partnerI
     { new: true, ...opts },
   );
   if (!updated) throw new NotFoundException('Partner not found');
+  const balanceAfter = updated.balance ?? null;
+  const balanceBefore = balanceAfter === null ? null : Number(balanceAfter) - Number(amountNgn);
   // NOTE: array form is mandatory — Mongoose ignores a `session` passed
   // with a single doc (and misreads the args). Single-doc create here once
   // masked every approval behind a false 409.
   const made = await transactions.create([{
     partnerId,
     amount: amountNgn,
+    balanceBefore,
+    balanceAfter,
     status: 'Completed',
     paymentMethod,
     transactionType: 'Credit',
     reference,
   }], opts);
   const tx = Array.isArray(made) ? made[0] : made;
-  return { transactionId: String(tx._id ?? tx.id), balance: updated.balance ?? null };
+  return {
+    transactionId: String(tx._id ?? tx.id),
+    balance: balanceAfter,
+    balanceBefore,
+  };
 };
 
 /**

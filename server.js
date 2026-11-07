@@ -1,8 +1,11 @@
 import 'dotenv/config';
+import './src/shared/mongo/queryTimeout.js';
 import express from 'express';
 import http from 'http';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import compression from 'compression';
+import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
@@ -85,39 +88,54 @@ import { scheduleJobs } from './src/jobs/schedule.js';
 import { runGrowthAllocationDueJob } from './src/jobs/growth-allocation-due.js';
 import { attachMessagingGateway } from './src/modules/messaging/interface/Messaging.gateway.js';
 import { MongoGroupStore } from './src/modules/messaging/infrastructure/Group.mongo.repository.js';
+import { MongoOutbox } from './src/shared/outbox/Outbox.mongo.model.js';
+import { requestContext } from './src/shared/http/requestContext.js';
+import { safeErrorResponses } from './src/shared/http/safeErrorResponses.js';
+import { csrfGuard } from './src/shared/http/csrfGuard.js';
+import { allowedOrigins } from './src/shared/http/origins.js';
+import { buildHealthRouter } from './src/shared/http/health.routes.js';
+import { logger } from './src/shared/observability/logger.js';
 
 const port = process.env.PORT || 8080;
 const app = express();
+
+// Trust exactly the configured number of proxy hops. Default 0 because
+// trusting a raw X-Forwarded-For header lets clients forge their IP and
+// bypass rate limits. Production behind one load balancer: TRUST_PROXY_HOPS=1.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+  app.set('trust proxy', trustProxyHops);
+}
+app.disable('x-powered-by');
+
+// Security headers. The API serves JSON and cross-origin uploads, so keep
+// CSP off (the web apps own their CSP) and allow cross-origin resources.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+app.use(compression());
+app.use(requestContext);
+
 // Capture raw bytes for provider webhooks (Paystack signs the raw body).
 app.use(express.json({
+  limit: process.env.JSON_BODY_LIMIT || '1mb',
   verify: (req, _res, buf) => { req.rawBody = buf; },
-})); // Use json middleware
-app.use(express.urlencoded({extended: false})); // Use formdata middleware
+}));
+app.use(express.urlencoded({ extended: false, limit: process.env.FORM_BODY_LIMIT || '1mb' }));
 app.use(cookieParser());
+app.use(safeErrorResponses);
+app.use(csrfGuard);
+
+// Health endpoints stay outside auth and are safe for load balancers.
+app.use('/health', buildHealthRouter());
+
 // Extra web origins (comma-separated) for new subdomains without a code
 // change, e.g. EXTRA_CORS_ORIGINS=https://join.c21fg.online. Localhost
 // ports stay so dev builds just work.
-const extraOrigins = String(process.env.EXTRA_CORS_ORIGINS ?? '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
 app.use(cors({
-    credentials: true,
-    origin: [
-        'http://localhost:4200', 
-        'http://localhost:4201', 
-        'http://localhost:4202',
-        'http://localhost:4203',
-        'https://c21fg.online',
-        'https://www.c21fg.online',
-        'https://marketspase.com',
-        'https://www.marketspase.com',
-        'https://admin.marketspase.com',
-        'https://survey.c21fg.online',
-        'https://shop.c21fg.online',
-        'https://diamondproject.c21fg.online',
-        ...extraOrigins,
-    ]
+  credentials: true,
+  origin: allowedOrigins(),
 }));
 
 /* Routes */
@@ -206,12 +224,14 @@ app.use(errorMiddleware);
  * member welcomed; promotions → member + upline notified. */
 {
   const lifecycleStore = new MongoStoredNotificationStore();
+  const lifecycleOutbox = new MongoOutbox();
   const lifecycleDelivery = new NotificationDeliveryService({
     stored: lifecycleStore,
     notify: new NotifyUseCase({ stored: lifecycleStore }),
     mail: sendEmail,
     sms: buildSmsSender(env.sms),
     push: buildPushSender(env.push, env.appBaseUrl),
+    outbox: lifecycleOutbox,
   });
   const lifecyclePartners = new MongoPartnerRepository();
   subscribeActivation({
@@ -267,33 +287,85 @@ app.use(errorMiddleware);
 }
 
 /* DB connection */
+let httpServer = null;
+
+const shutdown = async (signal) => {
+  logger.info('shutdown_started', { signal });
+  try {
+    if (httpServer) {
+      await new Promise((resolve) => {
+        httpServer.close(() => resolve());
+        if (typeof httpServer.closeIdleConnections === 'function') {
+          httpServer.closeIdleConnections();
+        }
+        setTimeout(() => {
+          if (typeof httpServer.closeAllConnections === 'function') {
+            httpServer.closeAllConnections();
+          }
+          resolve();
+        }, 10000).unref();
+      });
+    }
+    await mongoose.connection.close(false);
+    logger.info('shutdown_complete', { signal });
+    process.exit(0);
+  } catch (error) {
+    logger.error('shutdown_failed', { signal, error: error?.message ?? String(error) });
+    process.exit(1);
+  }
+};
+
+if (process.env.NODE_ENV !== 'test') {
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandled_rejection', {
+      error: reason?.message ?? String(reason),
+      stack: reason?.stack,
+    });
+  });
+  process.on('uncaughtException', (error) => {
+    logger.error('uncaught_exception', { error: error?.message ?? String(error), stack: error?.stack });
+    void shutdown('uncaughtException');
+  });
+}
+
 const mongoUri = process.env.MONGODB_URI
   || `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0.ab5nviz.mongodb.net/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`;
 mongoose.connect(mongoUri)
-.then(async () => {
-    // Application Starts Only when MongoDB is connected
-    console.log('Connected to mongoDB')
-    try {
-      const { created, failed } = await ensureIndexes(mongoose);
-      console.log(`Indexes ensured: ${created.length} (failed: ${failed.length})`);
-      for (const f of failed) console.warn(`Index failed: ${f.index} — ${f.error}`);
-    } catch (error) {
-      console.warn('Index ensure skipped:', error?.message ?? error);
-    }
-    scheduleJobs();
-    ensureSeedBonus().then(
-      (r) => console.log(`[bonuses] seed: ${r.seeded ? `created welcome N2500 (${r.id})` : r.retired ? 'welcome campaign removed — not reseeding' : 'welcome campaign present'}`),
-      (error) => console.warn('[bonuses] seed skipped:', error?.message ?? error),
-    );
-    ensureStarterProduct().then(
-      (r) => console.log(`[onboarding] starter product: ${r.seeded ? `created (${r.id})` : 'present'}`),
-      (error) => console.warn('[onboarding] starter product seed skipped:', error?.message ?? error),
-    );
-    const server = http.createServer(app);
-    attachMessagingGateway(server, { groups: new MongoGroupStore() });
-    server.listen(port, () => {
-        console.log(`Server is running on port: http://localhost:${port}`)
-    })
+.then(() => {
+    // Start serving immediately after the DB handshake; index builds and
+    // seeds run in the background so /health and reads are available.
+    logger.info('mongo_connected');
+    httpServer = http.createServer(app);
+    attachMessagingGateway(httpServer, { groups: new MongoGroupStore() });
+    httpServer.listen(port, () => {
+        logger.info('server_started', { port: Number(port) });
+    });
+
+    void (async () => {
+      try {
+        const { created, failed } = await ensureIndexes(mongoose);
+        logger.info('indexes_ensured', { created: created.length, failed: failed.length });
+        for (const f of failed) logger.warn('index_failed', { index: f.index, error: f.error });
+      } catch (error) {
+        logger.warn('index_ensure_skipped', { error: error?.message ?? String(error) });
+      }
+      if (process.env.SKIP_SCHEDULE === '1') {
+        logger.warn('schedule_skipped', { reason: 'SKIP_SCHEDULE=1' });
+      } else {
+        scheduleJobs();
+      }
+      ensureSeedBonus().then(
+        (r) => logger.info('bonus_seed', { seeded: r.seeded, retired: r.retired, id: r.id ?? null }),
+        (error) => logger.warn('bonus_seed_skipped', { error: error?.message ?? String(error) }),
+      );
+      ensureStarterProduct().then(
+        (r) => logger.info('starter_product_seed', { seeded: r.seeded, id: r.id ?? null }),
+        (error) => logger.warn('starter_product_seed_skipped', { error: error?.message ?? String(error) }),
+      );
+    })();
 }).catch((error) => {
-    console.error('Error from mongoDB connection ', error)
+    logger.error('mongo_connect_failed', { error: error?.message ?? String(error), stack: error?.stack });
+    process.exitCode = 1;
 })
