@@ -1,5 +1,6 @@
 import { RANKS, rankDepth } from '../../compensation/domain/Compensation.plan.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
+import { buildOraOpportunities } from '../domain/Ora.opportunities.js';
 
 /**
  * Ora context assembler — one bounded live snapshot per chat call.
@@ -47,6 +48,9 @@ export class OraContextAssembler {
       missing: [],
       nextActions: [],
       prospects: { total: 0, overdue: [], hot: [] },
+      pipeline: { total: 0, overdue: 0, hot: 0 },
+      walletBalance: 0,
+      opportunities: [],
       goals: [],
       events: [],
       unread: 0,
@@ -71,6 +75,7 @@ export class OraContextAssembler {
       ctx.nextLabel = ctx.next;
       const full = [partner.name, partner.surname].filter(Boolean).join(' ').trim();
       ctx.displayName = full || partner.username || 'there';
+      ctx.walletBalance = Number(partner.balance ?? 0);
     }
     const list = prospects?.items ?? [];
     if (list.length > 0) {
@@ -106,6 +111,24 @@ export class OraContextAssembler {
       location: String(e.location ?? '').slice(0, 60) || null,
     }));
     ctx.unread = Number(unread) || 0;
+    ctx.pipeline = {
+      total: Number(prospects?.total ?? list.length) || 0,
+      overdue: 0,
+      hot: 0,
+    };
+    if (list.length > 0) {
+      const noteRows = buildProspectNotifications(list, now);
+      ctx.pipeline.overdue = noteRows.filter((x) => x.urgency === true).length;
+      ctx.pipeline.hot = noteRows.filter((x) => x.tag === 'Hot Lead').length;
+    }
+    ctx.opportunities = buildOraOpportunities({
+      prospects,
+      goals,
+      events,
+      unread: ctx.unread,
+      partner,
+      now,
+    });
     return ctx;
   }
 }

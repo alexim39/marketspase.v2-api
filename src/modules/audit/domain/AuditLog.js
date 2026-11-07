@@ -72,6 +72,8 @@ export const AUDIT_ACTIONS = Object.freeze([
   'tutorial.create',
   'tutorial.update',
   'tutorial.delete',
+  'ora.action.execute',
+  'ora.action.skip',
 ]);
 
 const str = (v, max) => {

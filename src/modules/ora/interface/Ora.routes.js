@@ -2,15 +2,19 @@ import express from 'express';
 import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { env } from '../../../shared/config/env.js';
 import {
-  AskOraUseCase, DeleteOraConversationUseCase, GetOraAnalyticsUseCase, GetOraContextUseCase,
-  GetOraConversationUseCase, ListOraConversationsUseCase, PinOraConversationUseCase,
+  AskOraUseCase, ApproveOraActionUseCase, DeleteOraConversationUseCase, GetOraAnalyticsUseCase,
+  GetOraContextUseCase, GetOraConversationUseCase, ListOraActionsUseCase, ListOraConversationsUseCase,
+  PinOraConversationUseCase, SkipOraActionUseCase,
 } from '../application/Ora.usecases.js';
 import { OraContextAssembler } from '../application/Ora.context.js';
+import { OraActionExecutor } from '../application/Ora.actionExecutor.js';
 import { DeepSeekClient } from '../infrastructure/DeepSeek.client.js';
-import { MongoOraAnalyticsStore, MongoOraConversationStore } from '../infrastructure/Ora.mongo.repository.js';
+import { MongoOraActionStore, MongoOraAnalyticsStore, MongoOraConversationStore } from '../infrastructure/Ora.mongo.repository.js';
+import { recordAudit } from '../../audit/index.js';
 import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import { ListGoalsUseCase } from '../../goals/application/Goals.usecases.js';
@@ -40,6 +44,11 @@ const PinSchema = z.object({ pinned: z.boolean() });
 const AnalyticsQuery = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
 });
+const ActionIdParam = z.object({ actionId: objectId });
+const ActionsQuery = z.object({
+  status: z.enum(['proposed', 'executing', 'executed', 'skipped', 'failed']).optional().default('proposed'),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildOraRouter = (deps = {}) => {
@@ -48,6 +57,7 @@ export const buildOraRouter = (deps = {}) => {
   const orders = deps.orders ?? new MongoOrderReader();
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const conversations = deps.conversations ?? new MongoOraConversationStore();
+  const actionStore = deps.actionStore ?? new MongoOraActionStore();
 
   // Recognition omitted on purpose — Ora reads the journey like the
   // Journey page but never auto-posts promotions from a chat turn.
@@ -73,13 +83,23 @@ export const buildOraRouter = (deps = {}) => {
   const context = deps.context ?? new OraContextAssembler({ journey, goals, prospects, events, notifications, partners });
   const client = deps.client ?? new DeepSeekClient({ ...env.ora, post: deps.post });
   const analytics = deps.analytics ?? new MongoOraAnalyticsStore();
-  const ask = deps.ask ?? new AskOraUseCase({ conversations, client, context, analytics, dailyLimit: env.ora.dailyLimit });
+  const executor = deps.executor ?? new OraActionExecutor();
+  const ask = deps.ask ?? new AskOraUseCase({
+    conversations, client, context, analytics, actions: actionStore, dailyLimit: env.ora.dailyLimit,
+  });
   const oraContext = new GetOraContextUseCase({ context });
   const list = new ListOraConversationsUseCase({ conversations });
   const detail = new GetOraConversationUseCase({ conversations });
   const pin = new PinOraConversationUseCase({ conversations });
   const remove = new DeleteOraConversationUseCase({ conversations });
   const stats = new GetOraAnalyticsUseCase({ analytics });
+  const listActions = deps.listActions ?? new ListOraActionsUseCase({ actions: actionStore });
+  const approveAction = deps.approveAction ?? new ApproveOraActionUseCase({
+    actions: actionStore, executor, audit: deps.audit ?? recordAudit,
+  });
+  const skipAction = deps.skipAction ?? new SkipOraActionUseCase({
+    actions: actionStore, audit: deps.audit ?? recordAudit,
+  });
 
   const router = express.Router();
   // Session identity only — every partner chats as themselves.
@@ -88,6 +108,37 @@ export const buildOraRouter = (deps = {}) => {
   router.get('/context', asyncHandler(async (req, res) => {
     const data = await oraContext.execute({ partnerId: req.auth?.partnerId });
     res.status(200).json({ message: 'Ora context retrieved successfully', data, success: true });
+  }));
+
+  const approveLimit = rateLimit({ name: 'ora-action-approve', windowMs: 60000, max: 20, key: userKey });
+  const skipLimit = rateLimit({ name: 'ora-action-skip', windowMs: 60000, max: 30, key: userKey });
+
+  router.get('/actions', validate({ query: ActionsQuery }), asyncHandler(async (req, res) => {
+    const q = req.validated?.query ?? req.query;
+    const data = await listActions.execute({
+      partnerId: req.auth?.partnerId,
+      status: q?.status ?? 'proposed',
+      limit: q?.limit,
+    });
+    res.status(200).json({ message: 'Ora actions retrieved successfully', data, success: true });
+  }));
+
+  router.post('/actions/:actionId/approve', approveLimit, validate({ params: ActionIdParam }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await approveAction.execute({
+      partnerId: req.auth?.partnerId,
+      actionId: params.actionId,
+    });
+    res.status(200).json({ message: 'Ora action approved', data, success: true });
+  }));
+
+  router.post('/actions/:actionId/skip', skipLimit, validate({ params: ActionIdParam }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await skipAction.execute({
+      partnerId: req.auth?.partnerId,
+      actionId: params.actionId,
+    });
+    res.status(200).json({ message: 'Ora action skipped', data, success: true });
   }));
 
   router.post('/chat', validate({ body: ChatSchema }), asyncHandler(async (req, res) => {

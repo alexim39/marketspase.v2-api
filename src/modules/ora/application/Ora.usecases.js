@@ -1,12 +1,14 @@
-import { AppError, ForbiddenException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
+import { AppError, ConflictException, ForbiddenException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import { buildSystemPrompt, greetingFor, startersForLevel } from '../domain/Ora.persona.js';
-import { extractActions } from '../domain/Ora.actions.js';
+import { extractProposalBlock } from '../domain/Ora.proposals.js';
+import { capabilityByKey } from '../domain/Ora.capabilities.js';
 import { classifyTopic, summarizeAnalytics } from '../domain/Ora.analytics.js';
 
 /** Recent window sent to the model — bounds tokens per call. */
 export const HISTORY_WINDOW = 12;
 /** Per-partner daily message cap (cost control; in-memory, resets on restart). */
 export const DEFAULT_DAILY_LIMIT = 50;
+export const MAX_PENDING_ACTIONS = 20;
 
 const dayKey = (now = new Date()) => {
   const d = now instanceof Date ? now : new Date(now);
@@ -23,14 +25,149 @@ const titleOf = (message) => {
   return s.length > 60 ? `${s.slice(0, 59)}…` : (s || 'New conversation');
 };
 
+const draftFor = (proposal, opportunity) => {
+  const draft = String(proposal?.draft ?? '').trim();
+  if (!draft) return opportunity.payload ?? {};
+  if (opportunity.type === 'send_sms') {
+    return { ...(opportunity.payload ?? {}), body: draft.slice(0, 960) };
+  }
+  if (opportunity.type === 'send_email') {
+    return { ...(opportunity.payload ?? {}), body: draft.slice(0, 20000) };
+  }
+  return opportunity.payload ?? {};
+};
+
+/**
+ * Safety net for pipeline/status questions: if the model forgot the action
+ * block, still surface the best safe opportunity so the member can approve it.
+ */
+const fallbackProposals = (message, snapshot) => {
+  const text = String(message ?? '').toLowerCase();
+  const opportunities = snapshot?.opportunities ?? [];
+  if (/pipeline|prospect|lead|follow.?up|\bcall\b|remind/.test(text)) {
+    const actionable = opportunities.find((o) => o.type === 'send_sms' || o.type === 'send_email');
+    if (actionable) {
+      return [{
+        opportunityId: actionable.id,
+        label: actionable.type === 'send_sms' ? 'Send reminder SMS' : 'Send follow-up email',
+        summary: actionable.summary || actionable.reason,
+      }];
+    }
+    const review = opportunities.find((o) => o.capabilityKey === 'pipeline.followups');
+    if (review) return [{ capability: review.capabilityKey, label: 'Open follow-ups' }];
+  }
+  if (/today|status|business|plan|next|what should i do/.test(text) && opportunities.length > 0) {
+    const first = opportunities[0];
+    return [first.requiresApproval
+      ? { opportunityId: first.id, label: first.title, summary: first.summary || first.reason }
+      : { capability: first.capabilityKey, label: first.title }];
+  }
+  return [];
+};
+
+/** Maps model proposals to safe, persisted approval actions. */
+export const materializeProposals = async ({
+  partnerId,
+  conversationId,
+  snapshot,
+  proposals = [],
+  actions = null,
+  maxPending = MAX_PENDING_ACTIONS,
+} = {}) => {
+  const opportunities = new Map((snapshot?.opportunities ?? []).map((o) => [o.id, o]));
+  const materialized = [];
+  let pending = 0;
+  if (actions?.countProposed) pending = await actions.countProposed(partnerId).catch(() => 0);
+
+  for (const proposal of proposals) {
+    if (materialized.length >= 3) break;
+    const opportunity = proposal.opportunityId ? opportunities.get(proposal.opportunityId) : null;
+
+    if (opportunity) {
+      const common = {
+        partnerId,
+        conversationId,
+        opportunityId: opportunity.id,
+        type: opportunity.type,
+        capabilityKey: opportunity.capabilityKey ?? null,
+        area: opportunity.area ?? '',
+        title: opportunity.title ?? opportunity.id,
+        label: proposal.label || opportunity.title || 'Ora action',
+        summary: proposal.summary || opportunity.summary || opportunity.reason || '',
+        link: opportunity.page ?? '',
+      };
+
+      if (opportunity.type === 'open_page') {
+        materialized.push({
+          id: null,
+          ...common,
+          payload: {},
+          status: 'ready',
+          requiresApproval: false,
+          result: null,
+          error: null,
+        });
+        continue;
+      }
+
+      if (pending >= maxPending) continue;
+      const record = {
+        ...common,
+        payload: draftFor(proposal, opportunity),
+      };
+      if (actions?.create) {
+        try {
+          const saved = await actions.create(record);
+          materialized.push(saved);
+        } catch {
+          continue;
+        }
+      } else {
+        materialized.push({
+          id: null,
+          ...record,
+          status: 'proposed',
+          requiresApproval: true,
+          result: null,
+          error: null,
+        });
+      }
+      pending += 1;
+      continue;
+    }
+
+    const capability = proposal.capability ? capabilityByKey(proposal.capability) : null;
+    if (!capability) continue;
+    materialized.push({
+      id: null,
+      partnerId,
+      conversationId,
+      opportunityId: null,
+      type: 'open_page',
+      capabilityKey: capability.key,
+      area: capability.area,
+      title: capability.title,
+      label: proposal.label || capability.title,
+      summary: proposal.summary || capability.description,
+      link: capability.page,
+      payload: {},
+      status: 'ready',
+      requiresApproval: false,
+      result: null,
+      error: null,
+    });
+  }
+  return materialized;
+};
+
 /** Core chat turn: rate-limit → history → context → model → parse → persist + track. */
 export class AskOraUseCase {
   /**
    * @param {{conversations, client, context, analytics?, dailyLimit?, usage?}} deps
    * (`usage` is a Map for tests; defaults to a module counter.)
    */
-  constructor({ conversations, client, context, analytics = null, dailyLimit = DEFAULT_DAILY_LIMIT, usage = null }) {
-    Object.assign(this, { conversations, client, context, analytics, dailyLimit });
+  constructor({ conversations, client, context, analytics = null, actions = null, dailyLimit = DEFAULT_DAILY_LIMIT, usage = null }) {
+    Object.assign(this, { conversations, client, context, analytics, actions, dailyLimit });
     this.usage = usage ?? new Map();
   }
 
@@ -74,7 +211,15 @@ export class AskOraUseCase {
       }
       throw error;
     }
-    const { text: reply, actions } = extractActions(raw);
+    const { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
+    const proposals = parsedProposals.length > 0 ? parsedProposals : fallbackProposals(text, snapshot);
+    const actions = await materializeProposals({
+      partnerId,
+      conversationId: convo.id,
+      snapshot,
+      proposals,
+      actions: this.actions,
+    });
     await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });
     await this.conversations.appendMessage(convo.id, { role: 'assistant', content: reply, at: new Date() });
     this.usage.set(key, used + 1);
@@ -187,5 +332,109 @@ export class GetOraAnalyticsUseCase {
     const since = new Date(new Date(now).getTime() - windowDays * 86400000);
     const events = await this.analytics.eventsFor(partnerId, since);
     return summarizeAnalytics({ events, days: windowDays });
+  }
+}
+
+/** Pending approvals for the Ora page and chat recovery. */
+export class ListOraActionsUseCase {
+  constructor({ actions }) {
+    this.actions = actions;
+  }
+
+  async execute({ partnerId, status = 'proposed', limit = 20 }) {
+    return this.actions.listByPartner(partnerId, { status, limit });
+  }
+}
+
+/** Approve and execute one proposed action exactly once. */
+export class ApproveOraActionUseCase {
+  constructor({ actions, executor, audit = null }) {
+    Object.assign(this, { actions, executor, audit });
+  }
+
+  async execute({ partnerId, actionId }) {
+    const claimed = await this.actions.claimForExecution(partnerId, actionId);
+    if (!claimed) {
+      const existing = await this.actions.findById(partnerId, actionId);
+      if (!existing) throw new NotFoundException('Ora action not found');
+      if (existing.status === 'executed' || existing.status === 'failed' || existing.status === 'skipped') {
+        return existing;
+      }
+      if (existing.status === 'executing') {
+        throw new ConflictException('Ora is already running this action');
+      }
+      throw new ConflictException(`This Ora action is ${existing.status}`);
+    }
+
+    try {
+      const result = await this.executor.execute({ partnerId, action: claimed });
+      const updated = await this.actions.markExecuted(claimed.id, result);
+      if (this.audit) {
+        void this.audit({
+          actorId: partnerId,
+          action: 'ora.action.execute',
+          targetType: 'ora-action',
+          targetId: claimed.id,
+          detail: {
+            type: claimed.type,
+            opportunityId: claimed.opportunityId,
+            prospectId: claimed.payload?.prospectId ?? null,
+            result,
+          },
+        }).catch(() => null);
+      }
+      return updated;
+    } catch (error) {
+      await this.actions.markFailed(claimed.id, error?.message ?? String(error));
+      if (this.audit) {
+        void this.audit({
+          actorId: partnerId,
+          action: 'ora.action.execute',
+          targetType: 'ora-action',
+          targetId: claimed.id,
+          detail: {
+            type: claimed.type,
+            opportunityId: claimed.opportunityId,
+            prospectId: claimed.payload?.prospectId ?? null,
+            failed: true,
+            error: String(error?.message ?? error).slice(0, 500),
+          },
+        }).catch(() => null);
+      }
+      throw new AppError(
+        error?.message ?? 'Ora action failed',
+        error?.statusCode ?? 500,
+        error?.code ?? 'ORA_ACTION_FAILED',
+        error?.details,
+        error?.fix,
+      );
+    }
+  }
+}
+
+/** Skip a proposed action; idempotent when already skipped. */
+export class SkipOraActionUseCase {
+  constructor({ actions, audit = null }) {
+    Object.assign(this, { actions, audit });
+  }
+
+  async execute({ partnerId, actionId }) {
+    const skipped = await this.actions.skip(partnerId, actionId);
+    if (skipped) {
+      if (this.audit) {
+        void this.audit({
+          actorId: partnerId,
+          action: 'ora.action.skip',
+          targetType: 'ora-action',
+          targetId: skipped.id,
+          detail: { type: skipped.type, opportunityId: skipped.opportunityId },
+        }).catch(() => null);
+      }
+      return skipped;
+    }
+    const existing = await this.actions.findById(partnerId, actionId);
+    if (!existing) throw new NotFoundException('Ora action not found');
+    if (existing.status === 'skipped') return existing;
+    throw new ConflictException(`This Ora action is ${existing.status}`);
   }
 }

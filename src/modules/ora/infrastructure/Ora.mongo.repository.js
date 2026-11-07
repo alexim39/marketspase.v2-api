@@ -95,6 +95,143 @@ export class MongoOraConversationStore {
   }
 }
 
+const oraActionSchema = new mongoose.Schema(
+  {
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
+    conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ora-conversation', default: null, index: true },
+    opportunityId: { type: String, default: null, maxlength: 120 },
+    type: {
+      type: String,
+      enum: ['send_sms', 'send_email', 'schedule_followup', 'advance_stage'],
+      required: true,
+    },
+    capabilityKey: { type: String, default: null, maxlength: 80 },
+    area: { type: String, default: '', maxlength: 40 },
+    title: { type: String, default: '', maxlength: 160 },
+    label: { type: String, default: '', maxlength: 60 },
+    summary: { type: String, default: '', maxlength: 220 },
+    link: { type: String, default: '', maxlength: 200 },
+    payload: { type: mongoose.Schema.Types.Mixed, default: {} },
+    status: {
+      type: String,
+      enum: ['proposed', 'executing', 'executed', 'skipped', 'failed'],
+      default: 'proposed',
+      index: true,
+    },
+    result: { type: mongoose.Schema.Types.Mixed, default: null },
+    error: { type: String, default: null, maxlength: 500 },
+    approvedAt: { type: Date, default: null },
+    executedAt: { type: Date, default: null },
+  },
+  { timestamps: { createdAt: true, updatedAt: true } },
+);
+oraActionSchema.index({ partnerId: 1, status: 1, createdAt: -1 });
+
+export const OraActionModel =
+  mongoose.models['Ora-action'] ?? mongoose.model('Ora-action', oraActionSchema);
+
+const shapedAction = (row) => (row ? {
+  id: oid(row._id),
+  partnerId: oid(row.partnerId),
+  conversationId: row.conversationId ? oid(row.conversationId) : null,
+  opportunityId: row.opportunityId ?? null,
+  type: row.type,
+  capabilityKey: row.capabilityKey ?? null,
+  area: row.area ?? '',
+  title: row.title ?? '',
+  label: row.label || row.title || 'Ora action',
+  summary: row.summary ?? '',
+  link: row.link ?? '',
+  payload: row.payload ?? {},
+  status: row.status ?? 'proposed',
+  result: row.result ?? null,
+  error: row.error ?? null,
+  approvedAt: row.approvedAt ?? null,
+  executedAt: row.executedAt ?? null,
+  createdAt: row.createdAt ?? null,
+  requiresApproval: true,
+} : null);
+
+/** Mongo implementation of the ora action/approval contract. */
+export class MongoOraActionStore {
+  async create(action) {
+    const doc = await OraActionModel.create({
+      partnerId: action.partnerId,
+      conversationId: action.conversationId ?? null,
+      opportunityId: action.opportunityId ?? null,
+      type: action.type,
+      capabilityKey: action.capabilityKey ?? null,
+      area: action.area ?? '',
+      title: action.title ?? '',
+      label: action.label ?? '',
+      summary: action.summary ?? '',
+      link: action.link ?? '',
+      payload: action.payload ?? {},
+      status: 'proposed',
+    });
+    return shapedAction(doc.toObject());
+  }
+
+  async listByPartner(partnerId, { status = 'proposed', limit = 20 } = {}) {
+    const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
+    const filter = { partnerId };
+    if (status) filter.status = status;
+    const rows = await OraActionModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(lim)
+      .lean();
+    return rows.map(shapedAction);
+  }
+
+  async findById(partnerId, id) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+    return shapedAction(await OraActionModel.findOne({ _id: id, partnerId }).lean());
+  }
+
+  /** Atomic proposed -> executing transition. One approval can execute once. */
+  async claimForExecution(partnerId, id) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+    const doc = await OraActionModel.findOneAndUpdate(
+      { _id: id, partnerId, status: 'proposed' },
+      { $set: { status: 'executing', approvedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return shapedAction(doc);
+  }
+
+  async markExecuted(id, result) {
+    const doc = await OraActionModel.findByIdAndUpdate(
+      id,
+      { $set: { status: 'executed', result: result ?? null, error: null, executedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return shapedAction(doc);
+  }
+
+  async markFailed(id, error) {
+    const doc = await OraActionModel.findByIdAndUpdate(
+      id,
+      { $set: { status: 'failed', error: String(error ?? 'Action failed').slice(0, 500), executedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return shapedAction(doc);
+  }
+
+  async skip(partnerId, id) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+    const doc = await OraActionModel.findOneAndUpdate(
+      { _id: id, partnerId, status: 'proposed' },
+      { $set: { status: 'skipped', executedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return shapedAction(doc);
+  }
+
+  async countProposed(partnerId) {
+    return OraActionModel.countDocuments({ partnerId, status: 'proposed' });
+  }
+}
+
 /** Append-only analytics events (one row per answered turn). */
 export class MongoOraAnalyticsStore {
   async recordEvent(event) {
