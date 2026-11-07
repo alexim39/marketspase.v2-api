@@ -105,6 +105,10 @@ No money movement, campaign funding, lead purchase, withdrawal or refund is exec
 
 The model may reference only these opportunity IDs. Contact details never enter the prompt; the executor reloads the prospect and re-checks ownership and consent.
 
+Consent: manual/contact-list prospects need `consentToContact: true`. Survey-sourced leads (`Website`, `Unique Link`) and `Admin Push` leads are opt-in by submission, including older rows.
+
+The live context also carries the pipeline stage mix, wallet balance, goals, next event and unread notifications, so answers can quote real numbers.
+
 ## Safety rules
 
 - No auto-send without approval.

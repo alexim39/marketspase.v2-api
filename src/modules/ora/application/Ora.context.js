@@ -115,11 +115,16 @@ export class OraContextAssembler {
       total: Number(prospects?.total ?? list.length) || 0,
       overdue: 0,
       hot: 0,
+      byStage: {},
     };
     if (list.length > 0) {
       const noteRows = buildProspectNotifications(list, now);
       ctx.pipeline.overdue = noteRows.filter((x) => x.urgency === true).length;
       ctx.pipeline.hot = noteRows.filter((x) => x.tag === 'Hot Lead').length;
+      for (const prospect of list) {
+        const stage = String(prospect?.status?.stage ?? 'New');
+        ctx.pipeline.byStage[stage] = (ctx.pipeline.byStage[stage] ?? 0) + 1;
+      }
     }
     ctx.opportunities = buildOraOpportunities({
       prospects,

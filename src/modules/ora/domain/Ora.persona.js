@@ -102,6 +102,10 @@ export const formatSnapshot = (ctx = {}) => {
   }
   if (ctx.pipeline) {
     lines.push(`Pipeline health: ${ctx.pipeline.total ?? 0} total, ${ctx.pipeline.overdue ?? 0} need attention, ${ctx.pipeline.hot ?? 0} hot.`);
+    const stages = Object.entries(ctx.pipeline.byStage ?? {}).filter(([, count]) => Number(count) > 0);
+    if (stages.length > 0) {
+      lines.push(`Stage mix: ${stages.map(([stage, count]) => `${stage} ${count}`).join(', ')}.`);
+    }
   }
   if (ctx.walletBalance !== undefined) {
     lines.push(`Wallet balance: ₦${Number(ctx.walletBalance ?? 0).toLocaleString('en-NG')}.`);
