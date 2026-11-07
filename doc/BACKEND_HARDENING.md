@@ -114,8 +114,9 @@ backoff and marked `failed` after five attempts for inspection.
   include soft-deleted rows.
 - Legacy requests are tagged `legacy: true` in structured logs so dead routes
   can be measured before removal.
-- Legacy auth, product and team writes now validate and replace `req.body`
-  through `validateBodyInPlace`, stripping unknown fields before controllers.
+- Legacy auth, product, team, booking, partner-profile, prospect, campaign
+  and campaign-allocation writes validate and replace `req.body` through
+  `validateBodyInPlace`, stripping unknown fields before controllers.
 
 ## PII at rest
 
