@@ -5,6 +5,7 @@ const text = (max) => z.string().trim().max(max).optional();
 export const StoreListQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(30),
+  cursor: z.string().trim().max(500).optional(),
 });
 
 export const StoreUpdateSchema = z.object({

@@ -14,6 +14,8 @@ import {
 import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
 import { runInTransaction } from '../../../modules/identity-access/infrastructure/Auth.models.js';
 import { AppError } from '../../../shared/domain/AppError.js';
+import mongoose from 'mongoose';
+import { SearchMissModel } from '../../../modules/search/infrastructure/SearchMiss.mongo.model.js';
 import { cleanShipping } from '../domain/Shipping.js';
 import { canBuyResale, cartSaleMode, resalePrices } from '../domain/Resale.js';
 import { aggregateStockRequirements, isStockTracked } from '../domain/Stock.js';
@@ -227,6 +229,7 @@ export const decideOrder = async (req, res) => {
 };
 
 const cleanText = (value, max) => String(value ?? '').trim().slice(0, max);
+const escapeRegex = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const cleanNumber = (value, label, { min = 0, allowNull = false } = {}) => {
   if (allowNull && (value === null || value === '')) return null;
@@ -337,7 +340,18 @@ export const getAllProducts = async (req, res) => {
     try {
       const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
       const skip = Math.max(Number(req.query.skip) || 0, 0);
+      const q = cleanText(req.query.q, 120);
       const filter = { status: { $nin: ['inactive', 'archived'] } };
+      if (q) {
+        const regex = new RegExp(escapeRegex(q), 'i');
+        filter.$or = [
+          { name: regex },
+          { shortDesc: regex },
+          { desc: regex },
+          { category: regex },
+          { sku: regex },
+        ];
+      }
       // Hidden rows stay in the database for order history, but never show
       // in the member/partner catalog.
       const [products, total] = await Promise.all([
@@ -350,11 +364,20 @@ export const getAllProducts = async (req, res) => {
         ProductModel.countDocuments(filter),
       ]);
 
+      if (q && total === 0 && mongoose.connection?.readyState === 1) {
+        void SearchMissModel.create({
+          q,
+          partnerId: null,
+          groups: { products: 0 },
+        }).catch(() => null);
+      }
+
       res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       res.status(200).json({
         message: 'Products retrieved successfully!',
         data: products,
         meta: {
+          q: q || null,
           count: products.length,
           total,
           limit,

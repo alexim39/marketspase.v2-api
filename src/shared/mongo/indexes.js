@@ -135,7 +135,7 @@ export const INDEXES = [
   { collection: 'mentor_bonuses', keys: { mentorId: 1, status: 1, createdAt: -1 }, options: {} },
   { collection: 'stores', keys: { partnerId: 1 }, options: { unique: true } },
   { collection: 'stores', keys: { slug: 1 }, options: { unique: true } },
-  { collection: 'stores', keys: { status: 1, updatedAt: -1 }, options: {} },
+  { collection: 'stores', keys: { status: 1, updatedAt: -1, _id: -1 }, options: {} },
   { collection: 'stores', keys: { name: 1 } , options: {} },
   { collection: 'stores', keys: { name: 'text', tagline: 'text', bio: 'text' }, options: {} },
   { collection: 'products', keys: { status: 1, sortOrder: 1, createdAt: -1 }, options: {} },

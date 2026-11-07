@@ -61,7 +61,10 @@ app.use('/v1/stores', buildStoreRouter({
       receiptId = id;
       return { orderNumber: 'PRD-1', credited: 3, listings: [{ id: productId }] };
     },
-    listPublicStores: async (query) => ([{ slug: 'ada', name: 'Ada Store', productCount: 2, q: query.q ?? '' }]),
+    listPublicStores: async (query) => ({
+      data: [{ slug: 'ada', name: 'Ada Store', productCount: 2, q: query.q ?? '', cursor: query.cursor ?? '' }],
+      meta: { count: 1, limit: query.limit ?? 30, hasMore: false, nextCursor: null, next_action: null },
+    }),
     getPublicStore: async (slug) => ({
       store: { slug, name: 'Ada Store', status: 'published' },
       products: [{ id: productId, name: 'Liven Coffee', retailPrice: 18000, stock: 3 }],
@@ -107,6 +110,8 @@ describe('store public routes', () => {
 
     assert.equal(list.status, 200);
     assert.equal(list.body.data[0].productCount, 2);
+    assert.equal(list.body.meta.limit, 30);
+    assert.equal(list.body.meta.hasMore, false);
     assert.equal(store.status, 200);
     assert.equal(store.body.data.store.slug, 'ada');
     assert.equal(product.status, 200);

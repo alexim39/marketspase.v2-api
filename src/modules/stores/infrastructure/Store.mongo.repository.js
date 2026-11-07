@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import {
   ConflictException,
   NotFoundException,
@@ -16,6 +17,23 @@ const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value ?? ''));
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const escapeRegex = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const encodeStoreCursor = (updatedAt, id) => Buffer.from(JSON.stringify({
+  at: new Date(updatedAt).toISOString(),
+  id: String(id),
+})).toString('base64url');
+const decodeStoreCursor = (cursor) => {
+  if (!cursor) return null;
+  try {
+    const raw = JSON.parse(Buffer.from(String(cursor), 'base64url').toString('utf8'));
+    const at = new Date(raw?.at);
+    if (!raw?.id || Number.isNaN(at.getTime()) || !/^[a-fA-F0-9]{24}$/.test(String(raw.id))) {
+      return null;
+    }
+    return { at, id: new mongoose.Types.ObjectId(String(raw.id)) };
+  } catch {
+    return null;
+  }
+};
 const labelOf = (partner) => (
   [partner?.name, partner?.surname].filter(Boolean).join(' ') || partner?.username || 'Partner'
 );
@@ -346,40 +364,71 @@ export class StoreRepository {
     });
   }
 
-  async listPublicStores({ q, limit = 30 } = {}) {
+  async listPublicStores({ q, limit = 30, cursor = null } = {}) {
     const size = Math.min(Math.max(Number(limit) || 30, 1), 50);
-    const filter = { status: 'published' };
+    const match = { status: 'published' };
     const query = text(q, 120);
     if (query) {
       const regex = new RegExp(escapeRegex(query), 'i');
-      filter.$or = [{ name: regex }, { slug: regex }, { tagline: regex }];
+      match.$or = [{ name: regex }, { slug: regex }, { tagline: regex }];
     }
-    const stores = await StoreModel.find(filter).sort({ updatedAt: -1 }).limit(size).lean();
-    if (stores.length === 0) return [];
+    const after = decodeStoreCursor(cursor);
+    if (after) {
+      match.$and = [{
+        $or: [
+          { updatedAt: { $lt: after.at } },
+          { updatedAt: after.at, _id: { $lt: after.id } },
+        ],
+      }];
+    }
 
-    const storeIds = stores.map((store) => store._id);
-    const rows = await StoreProductModel.aggregate([
-      { $match: { storeId: { $in: storeIds }, status: 'published' } },
+    const rows = await StoreModel.aggregate([
+      { $match: match },
       {
-        $group: {
-          _id: '$storeId',
-          productCount: { $sum: 1 },
-          categories: { $addToSet: '$category' },
+        $lookup: {
+          from: StoreProductModel.collection.name,
+          let: { storeId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$storeId', '$$storeId'] },
+                status: 'published',
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                productCount: { $sum: 1 },
+                categories: { $addToSet: '$category' },
+              },
+            },
+          ],
+          as: 'catalog',
         },
       },
+      { $match: { 'catalog.0': { $exists: true } } },
+      { $sort: { updatedAt: -1, _id: -1 } },
+      { $limit: size + 1 },
     ]);
-    const stats = new Map(rows.map((row) => [String(row._id), row]));
 
-    return stores
-      .map((store) => {
-        const stat = stats.get(String(store._id));
-        return publicStore(
-          store,
-          stat?.productCount ?? 0,
-          stat?.categories ?? [],
-        );
-      })
-      .filter((store) => store.productCount > 0);
+    const hasMore = rows.length > size;
+    const page = hasMore ? rows.slice(0, size) : rows;
+    const data = page.map((store) => {
+      const stat = store.catalog?.[0] ?? {};
+      return publicStore(store, stat.productCount ?? 0, stat.categories ?? []);
+    });
+    const last = page[page.length - 1];
+
+    return {
+      data,
+      meta: {
+        count: data.length,
+        limit: size,
+        hasMore,
+        nextCursor: hasMore && last ? encodeStoreCursor(last.updatedAt, last._id) : null,
+        next_action: hasMore ? 'load_more' : null,
+      },
+    };
   }
 
   async getPublicStore(slug) {

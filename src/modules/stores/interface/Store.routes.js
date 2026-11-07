@@ -161,7 +161,7 @@ export const buildStoreRouter = (deps = {}) => {
     asyncHandler(async (req, res) => {
       const data = await repo.listPublicStores(req.validated.query);
       res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-      return sendSuccess(res, { data });
+      return sendSuccess(res, { data: data.data, meta: data.meta });
     }),
   );
 

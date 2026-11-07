@@ -85,6 +85,17 @@ backoff and marked `failed` after five attempts for inspection.
 - Both routes require an admin session and write a `content.restore` audit row.
 - Search, limit and skip are supported; responses include the standard `meta`.
 
+## Catalog pagination and search
+
+- `GET /v1/stores` is cursor-paginated: read `meta.nextCursor` and send it back
+  as `?cursor=`. The cursor is opaque and ordered by `updatedAt` + `_id` so new
+  stores cannot shift a page.
+- Store rows are filtered in one aggregation to published stores that have at
+  least one published product, then trimmed to `limit + 1` for `hasMore`.
+- `GET /products/getAll?q=` searches product name, short and full description,
+  category and SKU. Zero-result product searches are logged to `searchmisses`
+  (90-day TTL) for catalogue planning.
+
 ## Health
 
 - `GET /health/live` — process liveness only.
