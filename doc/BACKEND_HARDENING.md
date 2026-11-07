@@ -2,6 +2,8 @@
 
 This document is the source of truth for the reliability, security and
 operational controls added to the API. Keep it in sync with route changes.
+Deploy order, alert thresholds and incident playbooks live in
+[`RUNBOOK.md`](./RUNBOOK.md).
 
 ## Error envelope
 

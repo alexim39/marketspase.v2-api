@@ -21,6 +21,7 @@ test('health reports a healthy database', async () => {
   const out = await call(router);
   assert.equal(out.status, 200);
   assert.equal(out.body.checks.database.status, 'up');
+  assert.equal(typeof out.body.checks.slowQueries.thresholdMs, 'number');
 });
 
 test('health returns 503 when the database is down', async () => {

@@ -27,11 +27,13 @@ export const JobRunModel =
 export const EXPECTED_EVERY_MIN = {
   'campaign-allocation': 60,
   'growth-campaign-allocation': 60,
-  'growth-campaign-allocation': 60,
   'campaign-expiry': 26 * 60,
   'leadpool-sweep': 60,
   'mentor-bonus': 90,
   'compensation-reconcile': 90,
+  'payout-reconcile': 45,
+  'store-order-expiry': 30,
+  'store-escrow-release': 60,
   'outbox-delivery': 5,
 };
 

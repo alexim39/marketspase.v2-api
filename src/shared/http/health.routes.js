@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { logger } from '../observability/logger.js';
+import { slowQueryStats } from '../observability/slowQueries.js';
 import { providerHealth } from '../resilience/CircuitBreaker.js';
 
 const withTimeout = async (promise, ms, code) => {
@@ -84,6 +85,7 @@ export const buildHealthRouter = ({ db = mongoose, paystack = paystackCheck } = 
         database,
         payments,
         providers: providerHealth(),
+        slowQueries: slowQueryStats(Date.now(), { collections: false }),
       },
     };
     if (!healthy) {

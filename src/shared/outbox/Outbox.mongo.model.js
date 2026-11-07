@@ -15,6 +15,7 @@ const outboxSchema = new mongoose.Schema(
     attempts: { type: Number, default: 0, min: 0 },
     nextAttemptAt: { type: Date, default: Date.now, index: true },
     lockedAt: { type: Date, default: null },
+    lastAttemptAt: { type: Date, default: null },
     lastError: { type: String, default: null },
     completedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 30 },
@@ -48,7 +49,7 @@ export class MongoOutbox {
           nextAttemptAt: { $lte: now },
         },
         {
-          $set: { status: 'processing', lockedAt: now },
+          $set: { status: 'processing', lockedAt: now, lastAttemptAt: now },
           $inc: { attempts: 1 },
         },
         { new: true, sort: { createdAt: 1 } },

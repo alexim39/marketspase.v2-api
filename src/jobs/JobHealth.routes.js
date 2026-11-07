@@ -3,6 +3,7 @@ import { requireAuth } from '../shared/http/requireAuth.js';
 import { requireRole } from '../modules/identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../shared/http/asyncHandler.js';
 import { JobRunModel, jobsHealth } from './job-health.js';
+import { slowQueryStats } from '../shared/observability/slowQueries.js';
 
 /** Admin automation health — are the sweeps actually firing? */
 const router = express.Router();
@@ -12,7 +13,12 @@ router.get(
   '/health',
   asyncHandler(async (_req, res) => {
     const data = await jobsHealth(JobRunModel);
-    res.status(200).json({ message: 'Automation health retrieved', data, success: true });
+    res.status(200).json({
+      message: 'Automation health retrieved',
+      data,
+      slowQueries: slowQueryStats(),
+      success: true,
+    });
   }),
 );
 

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { recordSlowQuery } from '../observability/slowQueries.js';
 
 const timeoutMs = Math.max(250, Number(process.env.MONGO_QUERY_TIMEOUT_MS || 2000));
 
@@ -34,5 +35,40 @@ export const queryTimeoutPlugin = (schema) => {
 };
 
 mongoose.plugin(queryTimeoutPlugin);
+
+const SLOW_HOOKS = /^(find|findOne|findOneAndUpdate|findOneAndDelete|findOneAndReplace|updateOne|updateMany|deleteOne|deleteMany|replaceOne|countDocuments|estimatedDocumentCount)/;
+
+const collectionName = (ctx) => ctx?.model?.collection?.name
+  ?? ctx?.mongooseCollection?.name
+  ?? ctx?._model?.collection?.name
+  ?? 'unknown';
+
+/**
+ * Wall-clock timing for every Mongoose read/write/aggregate. Only samples
+ * above `MONGO_SLOW_QUERY_MS` are logged, so normal traffic pays just two
+ * hook calls. Filters and documents are never touched.
+ */
+export const slowQueryPlugin = (schema) => {
+  schema.pre(SLOW_HOOKS, function markSlowQueryStart() {
+    this.__marketspaseQueryStartedAt = process.hrtime.bigint();
+  });
+  schema.post(SLOW_HOOKS, function reportSlowQuery() {
+    const startedAt = this.__marketspaseQueryStartedAt;
+    if (!startedAt) return;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    recordSlowQuery({ collection: collectionName(this), op: this.op, durationMs });
+  });
+  schema.pre('aggregate', function markSlowAggregateStart() {
+    this.__marketspaseQueryStartedAt = process.hrtime.bigint();
+  });
+  schema.post('aggregate', function reportSlowAggregate() {
+    const startedAt = this.__marketspaseQueryStartedAt;
+    if (!startedAt) return;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    recordSlowQuery({ collection: collectionName(this), op: 'aggregate', durationMs });
+  });
+};
+
+mongoose.plugin(slowQueryPlugin);
 
 export const MONGO_QUERY_TIMEOUT_MS = timeoutMs;
