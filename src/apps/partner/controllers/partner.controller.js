@@ -569,34 +569,6 @@ export const checkFollowStatus = async (req, res) => {
   }
 };
 
-// Update partner's social media links — own account only.
-const updateSocialMediaLink = async (req, res, platform, field) => {
-  try {
-    const { url, partnerId } = req.body;
-    if (!requireSelf(req, res, partnerId)) return;
-    const updateData = { [field]: url };
-
-    const partner = await PartnersModel.findByIdAndUpdate(partnerId, updateData, { new: true });
-    if (!partner) {
-      return res.status(404).json({ message: `Partner not found`, success: false });
-    }
-
-    res.status(200).json({ message: "Partner updated successfully!", data: safePartner(partner), success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message, message: "Error updating social link", success: false });
-  }
-};
-
-// Social media update handlers
-export const updateWhatsappGroupLink = (req, res) => updateSocialMediaLink(req, res, "whatsappGroupLink", "whatsappGroupLink");
-export const updateWhatsappChatLink = (req, res) => updateSocialMediaLink(req, res, "whatsappChatLink", "whatsappChatLink");
-export const updateFacebookPage = (req, res) => updateSocialMediaLink(req, res, "facebookPage", "facebookPage");
-export const updateLinkedinPage = (req, res) => updateSocialMediaLink(req, res, "linkedinPage", "linkedinPage");
-export const updateYoutubePage = (req, res) => updateSocialMediaLink(req, res, "youtubePage", "youtubePage");
-export const updateInstagramPage = (req, res) => updateSocialMediaLink(req, res, "instagramPage", "instagramPage");
-export const tiktokPage = (req, res) => updateSocialMediaLink(req, res, "tiktokPage", "tiktokPage");
-export const twitterPage = (req, res) => updateSocialMediaLink(req, res, "twitterPage", "twitterPage");
-
 // Update Testimonial — own account only.
 export const updateTestimonial = async (req, res) => {
   try {

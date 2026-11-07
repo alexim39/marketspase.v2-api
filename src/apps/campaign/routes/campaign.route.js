@@ -4,15 +4,10 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit } from '../../../shared/http/rateLimit.js';
 import { requireRole } from '../../../modules/identity-access/interface/RequireRole.js';
 import { validateBodyInPlace } from '../../../shared/http/validate.js';
-import { idempotency } from '../../../shared/http/idempotency.js';
 import {
-    createCampaign,
-    createFacebookCampaign,
     getCampaignsCreatedBy,
     listCampaignsForAdmin,
     recordVisits,
-    createYoutubeCampaign,
-    createLinkedinCampaign,
     getCampaign,
     updateCampaignStatus,
     allocateCampaignNow,
@@ -30,50 +25,6 @@ import {
     estimateSupply,
 } from '../controllers/campaign.controller.js'
 const CampaignRouter = express.Router();
-
-const dateValue = z.union([z.string().trim().min(1).max(40), z.date()]);
-const channel = z.enum(['facebook', 'youtube', 'linkedin']);
-
-const CampaignCreate = z.object({
-  channel: channel.optional(),
-  campaignName: z.string().trim().min(2).max(160),
-  category: z.string().trim().max(80).optional(),
-  userDevice: z.string().trim().max(200).optional(),
-  targetAudience: z.object({
-    ageRangeTarget: z.string().trim().max(40).optional(),
-    genderTarget: z.string().trim().max(40).optional(),
-    locationTarget: z.string().trim().max(40).optional(),
-    locationTargets: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
-    educationTarget: z.string().trim().max(60).optional(),
-    relationshipTarget: z.string().trim().max(60).optional(),
-    industryTarget: z.string().trim().max(60).optional(),
-  }).optional(),
-  marketingObjectives: z.object({
-    adObjective: z.string().trim().min(1).max(200),
-    successMeasurement: z.string().trim().max(500).optional(),
-  }),
-  budget: z.object({
-    budgetType: z.string().trim().min(1).max(40),
-    budgetAmount: z.coerce.number().min(0).max(100000000),
-  }),
-  adDuration: z.object({
-    campaignStartDate: dateValue,
-    noEndDate: z.boolean(),
-    campaignEndDate: dateValue.optional(),
-  }),
-  adFormat: z.object({
-    adFormat: z.string().trim().min(1).max(80),
-    deviceType: z.string().trim().min(1).max(80),
-    adPreferences: z.object({
-      FacebookFeed: z.boolean().optional(),
-      InstagramFeed: z.boolean().optional(),
-      InstagramStories: z.boolean().optional(),
-      FacebookStories: z.boolean().optional(),
-      AudienceNetwork: z.boolean().optional(),
-      MessengerInbox: z.boolean().optional(),
-    }).optional(),
-  }),
-});
 
 const CampaignStatusUpdate = z.object({
   status: z.enum(['Pending', 'Active', 'Rejected', 'Ended', 'Cancelled']),
@@ -108,18 +59,8 @@ const CampaignAllocate = z.object({
   limit: z.coerce.number().int().min(1).max(25).optional(),
 });
 
-// unified creation (one wizard, per-channel minimums enforced inside)
-// — session-owned: wallet + record always hit the caller's account.
-CampaignRouter.post('/', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createCampaign);
-
-// create facebook campaign
-CampaignRouter.post('/facebook', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createFacebookCampaign);
-
-// create youtbue campaign
-CampaignRouter.post('/youtube', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createYoutubeCampaign);
-
-// create linkedin campaign
-CampaignRouter.post('/linkedin', requireAuth, idempotency(), validateBodyInPlace(CampaignCreate), createLinkedinCampaign);
+// Campaign creation lives only at POST /v1/campaigns. The legacy unified and
+// per-channel create endpoints were retired; read and management routes stay.
 
 // Get all campaigns createdBy — owner, upline or admin.
 CampaignRouter.get('/all-createdBy/:createdBy', requireAuth, getCampaignsCreatedBy);

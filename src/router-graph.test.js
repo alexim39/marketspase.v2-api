@@ -43,7 +43,6 @@ const ROUTERS = [
   './apps/product/routes/product.route.js',
   './apps/transaction/routes/transaction.route.js',
   './apps/campaign/routes/campaign.route.js',
-  './apps/auth/routes/auth.route.js',
 ];
 
 describe('router graph', () => {

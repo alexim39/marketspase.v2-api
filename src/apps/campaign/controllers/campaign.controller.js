@@ -28,11 +28,6 @@ const guard = buildProspectAccess({
 const sessionId = (req) => (req.auth?.partnerId ? String(req.auth.partnerId) : null);
 const deny = (res, err) => res.status(err?.statusCode ?? 403).json({ message: err?.message ?? 'Forbidden', success: false });
 
-/** Force wallet + record ownership to the session (blocks draining others). */
-const ownBody = (req) => {
-  if (req.body && typeof req.body === 'object') req.body.createdBy = sessionId(req);
-};
-
 const ADMIN_STATUSES = ['Pending', 'Active', 'Rejected', 'Ended', 'Cancelled'];
 const ALLOWED_TRANSITIONS = {
   Pending: ['Active', 'Rejected', 'Cancelled'],
@@ -41,22 +36,6 @@ const ALLOWED_TRANSITIONS = {
   Ended: [],
   Cancelled: [],
 };
-
-/** Campaign themes (wizard dropdown) — unknown values are rejected. */
-export const CAMPAIGN_CATEGORIES = [
-  'Health optimization',
-  'Financial leverage system',
-  'Network marketing',
-  'Online business opportunity',
-  'Personal development',
-  'Wealth & investing',
-  'Fitness & wellness',
-  'Beauty & skincare',
-  'Business & entrepreneurship',
-  'Education & skills',
-  'Real estate',
-  'Youth empowerment',
-];
 
 /** Return the full held budget to the owner (reject + owner-cancel share it). */
 async function refundHeldBudget(campaign, paymentMethod) {
@@ -152,186 +131,11 @@ const purchaseCampaign = async ({ body, amount, label, campaign }) => runInTrans
   return { campaign: created, transaction };
 });
 
-// Unified campaign creation (one wizard for all channels).
-// Same economics as the legacy per-channel endpoints (minimum hold per
-// channel, full-budget wallet debit, Pending admin flow); those endpoints
-// stay mounted untouched for old clients.
-export const createCampaign = async (req, res) => {
-  try {
-    const { body } = req;
-    ownBody(req);
-    const channel = String(body.channel ?? '').toLowerCase();
-
-    if (!CHANNEL_MINIMUM[channel]) {
-      return res.status(400).json({
-        message: 'Pick a valid channel: Facebook, YouTube or LinkedIn.',
-        success: false,
-      });
-    }
-
-    const budgetAmount = Number(body.budget?.budgetAmount);
-    if (!Number.isFinite(budgetAmount)) {
-      return res.status(400).json({
-        message: 'Enter a valid budget amount.',
-        success: false,
-      });
-    }
-
-    // Explicit location targets back the scope for the admin record.
-    const locationTargets = Array.isArray(body.targetAudience?.locationTargets)
-      ? [...new Set(body.targetAudience.locationTargets.map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 100)
-      : [];
-    const locationScope = String(body.targetAudience?.locationTarget ?? '');
-    if ((locationScope === 'States' || locationScope === 'Countries') && locationTargets.length === 0) {
-      return res.status(400).json({
-        message: 'Pick at least one target state or country for the admin team.',
-        success: false,
-      });
-    }
-
-    if (budgetAmount < CHANNEL_MINIMUM[channel]) {
-      return res.status(402).json({
-        message: `Minimum budget for ${CHANNEL_LABEL[channel]} is ₦${CHANNEL_MINIMUM[channel].toLocaleString()}.`,
-        success: false,
-      });
-    }
-
-    const title = String(body.title ?? '').trim().slice(0, 120);
-    const category = String(body.category ?? '').trim().slice(0, 80);
-    if (!CAMPAIGN_CATEGORIES.includes(category)) {
-      return res.status(400).json({
-        message: 'Pick a valid campaign category.',
-        success: false,
-      });
-    }
-
-    const { campaign, transaction } = await purchaseCampaign({
-      body,
-      amount: budgetAmount,
-      label: CHANNEL_LABEL[channel],
-      campaign: {
-        ...body,
-        budget: { ...body.budget, budgetAmount },
-        targetAudience: { ...body.targetAudience, locationTargets },
-        campaignName: title ? `${title} · ${CHANNEL_LABEL[channel]}` : CHANNEL_LABEL[channel],
-        category,
-      },
-    });
-
-    return res.status(200).json({
-      message: 'Ad campaign created successfully! Our admin team will run it and leads will land in your general contact list.',
-      data: campaign,
-      transaction,
-      success: true,
-    });
-  } catch (error) {
-    const status = error.statusCode ?? 500;
-    return res.status(status).json({
-      message: status === 500 ? 'Error creating campaign' : error.message,
-      success: false,
-    });
-  }
-};
-
-// facebook campaign/ads
-export const createFacebookCampaign = async (req, res) => {
-  try {
-    const { body } = req;
-    ownBody(req);
-    const amount = Number(body.budget?.budgetAmount);
-    if (!Number.isFinite(amount)) {
-      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
-    }
-    if (amount < 6500) {
-      return res.status(402).json({ message: 'Insufficient amount for transaction', success: false });
-    }
-    const { campaign, transaction } = await purchaseCampaign({
-      body,
-      amount,
-      label: 'Facebook',
-      campaign: body,
-    });
-    return res.status(200).json({
-      message: 'Ad campaign created successfully!',
-      data: campaign,
-      transaction,
-      success: true,
-    });
-  } catch (error) {
-    const status = error.statusCode ?? 500;
-    return res.status(status).json({
-      message: status === 500 ? 'Error creating Facebook campaign' : error.message,
-      success: false,
-    });
-  }
-};
+// Campaign creation is served by the v1 `/v1/campaigns` route. The legacy
+// create endpoints (unified plus per-channel) were retired after the web
+// client moved to v1; only read/management routes remain below.
 
 
-// youtube campaign
-export const createYoutubeCampaign = async (req, res) => {
-  try {
-    const { body } = req;
-    ownBody(req);
-    const amount = Number(body.budget?.budgetAmount);
-    if (!Number.isFinite(amount)) {
-      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
-    }
-    if (amount < 18000) {
-      return res.status(402).json({ message: 'Insufficient amount for transaction', success: false });
-    }
-    const { campaign, transaction } = await purchaseCampaign({
-      body,
-      amount,
-      label: 'Youtube',
-      campaign: body,
-    });
-    return res.status(200).json({
-      message: 'Ad campaign created successfully!',
-      data: campaign,
-      transaction,
-      success: true,
-    });
-  } catch (error) {
-    const status = error.statusCode ?? 500;
-    return res.status(status).json({
-      message: status === 500 ? 'Error creating Youtube campaign' : error.message,
-      success: false,
-    });
-  }
-};
-
-// linkedin campaign
-export const createLinkedinCampaign = async (req, res) => {
-  try {
-    const { body } = req;
-    ownBody(req);
-    const amount = Number(body.budget?.budgetAmount);
-    if (!Number.isFinite(amount)) {
-      return res.status(400).json({ message: 'Enter a valid budget amount.', success: false });
-    }
-    if (amount < 10500) {
-      return res.status(400).json({ message: 'Insufficient amount for transaction', success: false });
-    }
-    const { campaign, transaction } = await purchaseCampaign({
-      body,
-      amount,
-      label: 'LinkedIn',
-      campaign: body,
-    });
-    return res.status(200).json({
-      message: 'Ad campaign created successfully!',
-      data: campaign,
-      transaction,
-      success: true,
-    });
-  } catch (error) {
-    const status = error.statusCode ?? 500;
-    return res.status(status).json({
-      message: status === 500 ? 'Error creating LinkedIn campaign' : error.message,
-      success: false,
-    });
-  }
-};
 
 // Route handler to fetch all Ads by createdBy — owner, upline or admin.
 export const getCampaignsCreatedBy = async (req, res) => {
@@ -912,43 +716,30 @@ export const duplicateCampaign = async (req, res) => {
     if (!Number.isFinite(budgetAmount) || budgetAmount < CHANNEL_MINIMUM[channel]) {
       return res.status(402).json({ message: `Minimum budget for ${CHANNEL_LABEL[channel]} is ₦${CHANNEL_MINIMUM[channel].toLocaleString()}.`, success: false });
     }
-    const partner = await PartnersModel.findById(source.createdBy);
-    if (!partner) {
-      return res.status(400).json({ message: 'Partner not found', success: false });
-    }
-    if (Number(partner.balance ?? 0) < budgetAmount) {
-      return res.status(401).json({ message: 'Insufficient balance for transaction', success: false });
-    }
-    partner.balance -= budgetAmount;
-    await partner.save();
-    await TransactionModel.create({
-      partnerId: partner._id,
-      amount: budgetAmount,
-      status: 'Completed',
-      paymentMethod: `${CHANNEL_LABEL[channel]} Ads`,
-      transactionType: 'Debit',
-      reference: Math.floor(100000000 + Math.random() * 900000000).toString(),
-    });
     const { _id, createdAt, updatedAt, __v, ...rest } = source;
-    const copy = new CampaignModel({
-      ...rest,
-      campaignName: `${source.campaignName ?? 'Campaign'} (copy)`,
-      deliveryStatus: 'Pending',
-      visits: 0,
-      closeout: {},
-      allocation: {
-        ...(source.allocation ?? {}),
-        enabled: true,
-        paused: false,
-        delivered: 0,
-        spent: 0,
-        fundsSkips: 0,
-        lastRunAt: null,
-        lastFundsNoticeAt: null,
-        lastDigestAt: null,
+    const { campaign: copy } = await purchaseCampaign({
+      body: { createdBy: source.createdBy },
+      amount: budgetAmount,
+      label: CHANNEL_LABEL[channel],
+      campaign: {
+        ...rest,
+        campaignName: `${source.campaignName ?? 'Campaign'} (copy)`,
+        deliveryStatus: 'Pending',
+        visits: 0,
+        closeout: {},
+        allocation: {
+          ...(source.allocation ?? {}),
+          enabled: true,
+          paused: false,
+          delivered: 0,
+          spent: 0,
+          fundsSkips: 0,
+          lastRunAt: null,
+          lastFundsNoticeAt: null,
+          lastDigestAt: null,
+        },
       },
     });
-    await copy.save();
     void recordAudit({
       actorId: sessionId(req), action: 'campaign.duplicate',
       targetType: 'campaign', targetId: String(copy._id),
@@ -956,7 +747,11 @@ export const duplicateCampaign = async (req, res) => {
     });
     res.status(200).json({ message: 'Campaign duplicated — review and publish from My campaigns', data: copy, success: true });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to duplicate campaign', error: error.message, success: false });
+    const status = error.statusCode ?? 500;
+    res.status(status).json({
+      message: status === 500 ? 'Failed to duplicate campaign' : error.message,
+      success: false,
+    });
   }
 };
 

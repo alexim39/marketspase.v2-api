@@ -9,7 +9,6 @@ import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
-import AuthRouter from './src/apps/auth/index.js';
 import PartnerRouter from './src/apps/partner/index.js';
 import BookingRouter from './src/apps/booking/index.js';
 import CampaignRouter from './src/apps/campaign/index.js';
@@ -141,7 +140,8 @@ app.use(cors({
 
 /* Routes */
 app.get('/', (req, res) => res.send('Node server is up and running'));
-app.use('/auth', AuthRouter);
+// Legacy auth surface retired — /v1/auth owns signin, signout, refresh, reset
+// and session checks. Keeping the old mount would duplicate credential paths.
 app.use('/partners', PartnerRouter);
 app.use('/booking', BookingRouter);
 app.use('/campaign', CampaignRouter);

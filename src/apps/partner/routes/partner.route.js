@@ -6,11 +6,8 @@ import { validateBodyInPlace } from '../../../shared/http/validate.js';
 import { 
     checkPartnerUsername, getAllUsers, searchPartnersPublic,
      getPartnerByNames, getPartnerByName,
-    tiktokPage, twitterPage, updateTestimonial, updateLandingPage,
-    updateYoutubePage, updateInstagramPage,
-    updateFacebookPage, updateLinkedinPage,
-    updateProfile, updateWhatsappGroupLink, updateWhatsappChatLink,
-    updateUsername, unfollowPartner, checkFollowStatus,
+    updateTestimonial, updateLandingPage,
+    updateProfile, updateUsername, unfollowPartner, checkFollowStatus,
     changePassword, updateProfession, followPartner, getPartnersOf, getPartnerById
 } from '../controllers/partner.controller.js'
 const PartnerRouter = express.Router();
@@ -23,7 +20,12 @@ const ProfileUpdate = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   phone: z.string().trim().min(7).max(30),
   bio: z.string().trim().max(1000).optional(),
-  address: z.unknown().optional(),
+  address: z.object({
+    street: z.string().trim().max(300).optional(),
+    city: z.string().trim().max(120).optional(),
+    state: z.string().trim().max(120).optional(),
+    country: z.string().trim().max(80).optional(),
+  }).optional(),
   dobDatePicker: z.union([z.string(), z.date()]).optional(),
 });
 const ProfessionUpdate = z.object({
@@ -85,15 +87,8 @@ PartnerRouter.post('/unfollow/:searchPartnerId', requireAuth, unfollowPartner);
 // check follow
 PartnerRouter.get('/check-follow-status/:partnerId/:searchPartnerId', requireAuth, checkFollowStatus);
 
-// Update partner social media pages
-PartnerRouter.put('/whatsappgrouplink', requireAuth, updateWhatsappGroupLink);
-PartnerRouter.put('/whatsappchatlink', requireAuth, updateWhatsappChatLink);
-PartnerRouter.put('/facebookPage', requireAuth, updateFacebookPage);
-PartnerRouter.put('/linkedinPage', requireAuth, updateLinkedinPage);
-PartnerRouter.put('/youtubePage', requireAuth, updateYoutubePage);
-PartnerRouter.put('/instagramPage', requireAuth, updateInstagramPage);
-PartnerRouter.put('/tiktokPage', requireAuth, tiktokPage);
-PartnerRouter.put('/twitterPage', requireAuth, twitterPage);
+// Social links are saved in one request through /landing-page; the individual
+// legacy social write routes were retired.
 // update testimonial
 PartnerRouter.put('/testimonial', requireAuth, updateTestimonial);
 // unified public one-pager save (/:partnerUsername content)

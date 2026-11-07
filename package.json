@@ -15,7 +15,8 @@
     "smoke:store:seed": "node scripts/seed-store-e2e.js",
     "smoke:store": "node scripts/smoke-store-flow.js",
     "ci:mongo": "node scripts/ci-init-mongo-replica.js",
-    "migrate:pii": "node scripts/migrate-pii-encryption.js"
+    "migrate:pii": "node scripts/migrate-pii-encryption.js",
+    "audit:legacy": "node scripts/legacy-route-audit.mjs"
   },
   "author": "Imenwo Alex",
   "license": "ISC",

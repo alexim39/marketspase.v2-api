@@ -2,15 +2,12 @@ import express from 'express';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import {
     deleteSMS,
-    getSMSCreatedBy
 } from '../controllers/sms.controller.js'
 const SmsRouter = express.Router();
 
-// Legacy write route retired — sends go through session-owned
-// v1/outreach/sms. Read/delete stay for historical inbox rows.
-// get sms
-SmsRouter.get('/getById/:partnerId', requireAuth, getSMSCreatedBy);
-// delete sms
+// Legacy send and read routes retired — the SPA sends through session-owned
+// v1/outreach/sms and reads historical rows through v1 message endpoints.
+// Delete stays so old inbox rows can be tidied.
 SmsRouter.delete('/delete-single/:id', requireAuth, deleteSMS );
 
 
