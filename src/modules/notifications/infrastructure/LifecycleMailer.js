@@ -101,7 +101,7 @@ export const buildWelcome = ({ memberName }) => ({
     ${steps([
       'Complete your profile — phone number and address, plus a photo so prospects recognise you.',
       'Take the IPO course in the Training Center — it unlocks your first promotion.',
-      'Add your first prospect from people you already know.',
+      'Activate your online business, then create your first partner acquisition campaign.',
       'Set your first goal so your pace is tracked from day one.',
     ])}
     <p><a href="${appLink('/dashboard')}">Open your Daily Action Center</a></p>
