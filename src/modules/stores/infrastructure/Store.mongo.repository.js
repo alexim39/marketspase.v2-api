@@ -170,16 +170,9 @@ export class StoreRepository {
       if (!['draft', 'published'].includes(body.status)) {
         throw new ValidationException('Store status must be draft or published');
       }
-      if (body.status === 'published') {
-        const published = await StoreProductModel.countDocuments({
-          partnerId,
-          status: 'published',
-          stock: { $gt: 0 },
-        });
-        if (published === 0) {
-          throw new ConflictException('Publish at least one in-stock product before opening your store');
-        }
-      }
+      // A store can open before its first listing. It will be reachable by
+      // direct link right away and enters the public directory once at least
+      // one in-stock listing is published.
       fields.status = body.status;
     }
 

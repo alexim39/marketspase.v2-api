@@ -84,7 +84,7 @@ export class CloudinaryImageStore extends ImageStore {
 
 export class DisabledImageStore extends ImageStore {
   async upload() {
-    const error = new Error('Profile photo uploads are not configured yet');
+    const error = new Error('Image uploads are not configured yet');
     error.statusCode = 503;
     error.code = 'CLOUDINARY_NOT_CONFIGURED';
     throw error;

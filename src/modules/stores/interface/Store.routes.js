@@ -6,9 +6,13 @@ import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
 import { idempotency } from '../../../shared/http/idempotency.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
+import { ValidationException } from '../../../shared/domain/AppError.js';
+import { env } from '../../../shared/config/env.js';
 import { recordAudit } from '../../audit/index.js';
+import { buildImageStore } from '../../settings/infrastructure/CloudinaryClient.js';
 import { StoreRepository } from '../infrastructure/Store.mongo.repository.js';
 import { StoreOrderRepository } from '../infrastructure/StoreOrder.mongo.repository.js';
+import { storeImageUpload } from './StoreImage.upload.js';
 import {
   StoreListQuerySchema,
   StoreOrderCreateSchema,
@@ -26,6 +30,11 @@ import {
 export const buildStoreRouter = (deps = {}) => {
   const repo = deps.repo ?? new StoreRepository();
   const orderRepo = deps.orderRepo ?? new StoreOrderRepository();
+  const images = deps.images ?? buildImageStore({
+    ...(env.cloudinary ?? {}),
+    folder: 'marketspase-stores',
+    label: 'Store image',
+  });
   const auth = deps.auth ?? requireAuth;
   const audit = deps.audit ?? recordAudit;
   const router = express.Router();
@@ -62,6 +71,26 @@ export const buildStoreRouter = (deps = {}) => {
         detail: { status: data.status, autoPublish: data.autoPublish },
       });
       return sendSuccess(res, { message: 'Store updated', data });
+    }),
+  );
+
+  router.post(
+    '/me/images',
+    auth,
+    storeImageUpload.single('image'),
+    asyncHandler(async (req, res) => {
+      const kind = String(req.body?.kind ?? '').trim().toLowerCase();
+      if (!['logo', 'banner'].includes(kind)) {
+        throw new ValidationException('Choose logo or banner for this image');
+      }
+      if (!req.file?.buffer) throw new ValidationException('Choose an image to upload');
+      const stored = await images.upload(req.file.buffer, {
+        publicId: `store-${req.auth.partnerId}-${kind}-${Date.now()}`,
+      });
+      return sendSuccess(res, {
+        message: `${kind === 'logo' ? 'Logo' : 'Banner'} uploaded`,
+        data: { url: stored.url, kind },
+      });
     }),
   );
 

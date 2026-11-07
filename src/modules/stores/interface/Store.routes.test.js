@@ -16,12 +16,19 @@ const auth = (req, _res, next) => {
 let updateBody = null;
 let receiptId = null;
 let orderUpdateBody = null;
+let seenImageUpload = null;
 
 const app = express();
 app.use(express.json());
 app.use('/v1/stores', buildStoreRouter({
   auth,
   audit: async () => null,
+  images: {
+    upload: async (buffer, meta) => {
+      seenImageUpload = { bytes: buffer.length, meta };
+      return { url: 'https://res.cloudinary.com/demo/image/upload/store-logo.png' };
+    },
+  },
   orderRepo: {
     createOrder: async (slug, body) => ({
       order: {
@@ -161,6 +168,29 @@ describe('store partner routes', () => {
     assert.equal(mine.body.data.counts.published, 1);
     assert.equal(updated.status, 200);
     assert.equal(updateBody.name, 'Ada Beauty');
+  });
+
+  it('uploads a store logo through the image endpoint', async () => {
+    const form = new FormData();
+    form.append('kind', 'logo');
+    form.append('image', new Blob(['fake-image'], { type: 'image/png' }), 'logo.png');
+    const response = await fetch(`${baseUrl}/v1/stores/me/images`, { method: 'POST', body: form });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.kind, 'logo');
+    assert.match(body.data.url, /cloudinary/);
+    assert.equal(seenImageUpload.bytes, 10);
+    assert.match(seenImageUpload.meta.publicId, new RegExp(`store-${partnerId}-logo-`));
+  });
+
+  it('rejects an unknown store image kind', async () => {
+    const form = new FormData();
+    form.append('kind', 'poster');
+    form.append('image', new Blob(['x'], { type: 'image/png' }), 'poster.png');
+    const response = await fetch(`${baseUrl}/v1/stores/me/images`, { method: 'POST', body: form });
+
+    assert.equal(response.status, 400);
   });
 
   it('updates a listing and validates the price', async () => {
