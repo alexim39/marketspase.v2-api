@@ -8,7 +8,6 @@ export class GetMyCoachUseCase {
   constructor({ network, progression, training }) {
     Object.assign(this, { network, progression, training });
   }
-
   async execute({ partnerId }) {
     const node = await this.network.findNode(partnerId);
     const coachId = node?.parentId ? String(node.parentId) : null;

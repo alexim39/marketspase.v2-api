@@ -39,8 +39,8 @@ const deps = (over = {}) => ({
 test('readOnly resolves the ladder without mutating or celebrating', async () => {
   const uc = new GetMyProgressionUseCase(deps());
   const res = await uc.execute({ partnerId: 'p1', readOnly: true });
-  // 1 recruit + confirmed IPO/QSG → qualified_active, without promotion write.
-  assert.equal(res.level, 'qualified_active');
+  // 1 recruit + confirmed IPO/QSG → builder, without promotion write.
+  assert.equal(res.level, 'builder');
   assert.equal(res.promoted, null);
 });
 
@@ -66,7 +66,7 @@ test('normal reads still promote', async () => {
     recognition: { promotion: async () => { celebrated += 1; } },
   }));
   const res = await uc.execute({ partnerId: 'p1' });
-  assert.equal(leveled, 'qualified_active');
+  assert.equal(leveled, 'builder');
   assert.equal(celebrated, 1);
   assert.ok(res.promoted);
 });

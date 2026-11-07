@@ -24,7 +24,7 @@ test('retention rolls cohorts into rank distributions', async () => {
       ],
     },
     progress: {
-      levelsFor: async () => ({ a: 'partner', b: 'kingsman', c: 'active' }),
+      levelsFor: async () => ({ a: 'partner', b: 'leader', c: 'builder' }),
     },
   });
   const res = await uc.execute({ months: 6 });
@@ -33,7 +33,7 @@ test('retention rolls cohorts into rank distributions', async () => {
   assert.equal(aug.cohort, 3);
   assert.equal(aug.ranked, 3);
   assert.equal(aug.advanced, 2);
-  assert.equal(aug.distribution.kingsman, 1);
+  assert.equal(aug.distribution.leader, 1);
   assert.equal(res.cohorts[1].advancedRate, null);
 });
 

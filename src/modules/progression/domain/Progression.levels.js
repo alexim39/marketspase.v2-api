@@ -1,39 +1,48 @@
 /**
- * Legacy journey-stage ladder — pure rules, unit-testable without Mongo.
+ * Four-rank journey ladder — pure rules, unit-testable without Mongo.
  *
- * This is separate from the four-rank commission model (Partner → Builder →
- * Leader → Ambassador), which is assigned on the Compensation desk and
- * controls earning depth. Journey stages remain for training/coaching reads.
+ * The training/coaching ladder now uses the same four ranks as the
+ * compensation plan: Partner → Builder → Leader → Ambassador. Commission
+ * depth is still assigned on the Compensation desk; this ladder only decides
+ * which training/coaching gate comes next.
  *
- * Stages auto-derive by walking entry gates from the bottom up. A gate is
- * a mix of COMPUTED signals (recruits, active team, maintenance — read
- * from source aggregates, never stored) and ATTESTED milestones (training,
- * office, nominations — stored on the progression record with timestamps).
+ * Older staged names (emerging_active, kingsman, ecl, etc.) normalize to the
+ * nearest current rank on read, so existing progression rows are never
+ * demoted or made unreadable.
+ *
+ * Gates auto-derive from COMPUTED signals (recruits, active team, maintenance)
+ * and ATTESTED milestones (training, office, nominations) stored on the
+ * progression record.
  */
 
-export const LEVELS = [
-  'prospect',
-  'partner',
-  'emerging_active',
-  'qualified_active',
-  'active',
-  'kingsman',
-  'ecl',
-  'cell_leader',
-  'g_leader',
-];
+export const LEVELS = ['partner', 'builder', 'leader', 'ambassador'];
 
 export const LEVEL_LABELS = {
-  prospect: 'Prospect',
   partner: 'Partner',
-  emerging_active: 'Emerging Active Partner',
-  qualified_active: 'Qualified Active Partner',
-  active: 'Active Partner',
-  kingsman: 'Kingsman',
-  ecl: 'Emerging Cell Leader',
-  cell_leader: 'Cell Leader',
-  g_leader: 'G Leader',
+  builder: 'Builder',
+  leader: 'Leader',
+  ambassador: 'Ambassador',
 };
+
+/** Legacy journey-stage values → current four-rank ladder. */
+export const LEGACY_LEVEL_MAP = Object.freeze({
+  prospect: 'partner',
+  emerging_active: 'builder',
+  qualified_active: 'builder',
+  active: 'builder',
+  kingsman: 'leader',
+  ecl: 'leader',
+  cell_leader: 'ambassador',
+  g_leader: 'ambassador',
+});
+
+/** Always returns one of LEVELS; unknown values fall back to Partner. */
+export const normalizeLevel = (level) => {
+  const key = String(level ?? '').trim().toLowerCase();
+  if (LEVELS.includes(key)) return key;
+  return LEGACY_LEVEL_MAP[key] ?? 'partner';
+};
+
 
 /** Leader nominations approve at this many distinct Leader/admin approvals. */
 export const NOMINATION_APPROVALS_REQUIRED = 3;
@@ -131,7 +140,7 @@ export const leadershipSkills = (signals = {}) => {
 
 /**
  * Entry gates. Each requirement: {key, label, action, met}.
- * `signals`: {recruits, activeDownline, maintenanceOk, kingsmen, ecls}
+ * `signals`: {recruits, activeDownline, maintenanceOk, downlineLeaders}
  * `m`: milestones subdoc (all fields optional — absent means undone).
  */
 /**
@@ -142,54 +151,30 @@ export const leadershipSkills = (signals = {}) => {
 export const confirmed = (x) => x?.done === true && !!x?.confirmedAt;
 
 export const gate = (level, signals = {}, m = {}) => {
-  const done = (x) => x?.done === true;
   const req = (key, label, action, met) => ({ key, label, action, met: met === true });
-  switch (level) {
-    case 'emerging_active':
+  switch (normalizeLevel(level)) {
+    case 'builder':
       return [
         req('ipo', 'Complete IPO', 'Take the IPO course in the Training Center', confirmed(m.ipo)),
         req('qsg', 'Complete QSG', 'Take the QSG course in the Training Center', confirmed(m.qsg)),
-      ];
-    case 'qualified_active':
-      return [
         req('recruits', 'Connect one new partner', 'Recruit your first partner from the pipeline', (signals.recruits ?? 0) >= 1),
       ];
-    case 'active':
-      // The letter is the member's action: `submitted` passes. An `approved`
-      // value is inert here on purpose — only an elevated path may grant it.
-      // Onboarding needs upline eyes, same as training — self-tap alone
-      // must not open the gate.
+    case 'leader':
       return [
         req('g8Request', 'Submit request letter to your Leader', 'Send your qualification request letter', m.g8Request?.status === 'submitted'),
         req('onboardingSession', 'Attend onboarding session', 'Schedule your onboarding session and get it confirmed', confirmed(m.onboardingSession)),
-      ];
-    case 'kingsman':
-      return [
         req('activeTeam', 'Grow 5 active partners', 'Activate 5 team members with recent orders', (signals.activeDownline ?? 0) >= 5),
         req('accounts', 'Maintain 3 DTC accounts', 'Record your 3 DTC accounts with evidence for upline confirmation', (m.accounts?.count ?? 0) >= 3 && confirmed(m.accounts)),
         req('maintenance', 'Monthly maintenance compliance', 'Keep personal volume flowing monthly (shop orders auto-count, or record DTC receipt for confirmation)', signals.maintenanceOk === true || confirmed(m.maintenance)),
         req('smo', 'Complete SMO', 'Take the SMO course in the Training Center', confirmed(m.smo)),
       ];
-    case 'ecl':
+    case 'ambassador': {
+      const skills = leadershipSkills(signals);
       return [
-        req('kingsmen', 'Raise 5 Kingsmen', 'Develop 5 downline Kingsmen', (signals.kingsmen ?? 0) >= 5),
         req('fullTime', 'Full-time participation', 'Commit to full-time and get it confirmed', confirmed(m.fullTime)),
         req('office', 'Office ownership', 'Register your office and get it confirmed', confirmed(m.office)),
-      ];
-    case 'cell_leader': {
-      const skills = leadershipSkills(signals);
-      return [
-        req('kingsmenTeam', 'Manage 5 downline Kingsmen', 'Develop 5 downline members to Kingsman', (signals.kingsmenExact ?? 0) >= 5),
-        req('office', 'Office ownership', 'Register your office (1 or more) and get it confirmed', confirmed(m.office)),
         req('leadership', 'Demonstrated leadership', skills.missing.length > 0 ? `To demonstrate: ${skills.missing.join('; ')}` : 'Keep leading visibly', skills.met),
-      ];
-    }
-    case 'g_leader': {
-      const skills = leadershipSkills(signals);
-      return [
-        req('eclTeam', 'Manage 5 Emerging Cell Leaders', 'Develop 5 downline members to ECL', (signals.eclsExact ?? 0) >= 5),
-        req('office', 'Office ownership', 'Register your office (1 or more) and get it confirmed', confirmed(m.office)),
-        req('leadership', 'Demonstrated leadership', skills.missing.length > 0 ? `To demonstrate: ${skills.missing.join('; ')}` : 'Keep leading visibly', skills.met),
+        req('downlineLeaders', 'Raise 5 downline Leaders', 'Develop 5 downline members to Leader or Ambassador', (signals.downlineLeaders ?? 0) >= 5),
         req('nomination', 'Nominated by your Leader', 'Request nomination from your Leader', (m.nomination?.approvals?.length ?? 0) >= 1),
       ];
     }
@@ -203,7 +188,7 @@ export const gate = (level, signals = {}, m = {}) => {
  * @returns {{level, next, percent, completed, missing, remainingActions}}
  */
 export const resolveProgression = (signals = {}, m = {}, from = 'partner') => {
-  let level = LEVELS.includes(from) ? from : 'partner';
+  let level = normalizeLevel(from);
   for (;;) {
     const idx = LEVELS.indexOf(level);
     const next = LEVELS[idx + 1] ?? null;
@@ -226,13 +211,13 @@ export const resolveProgression = (signals = {}, m = {}, from = 'partner') => {
   return { level, next: null, percent: 100, completed: [], missing: [], remainingActions: [] };
 };
 
-export const RANK = (level) => LEVELS.indexOf(level);
+export const RANK = (level) => LEVELS.indexOf(normalizeLevel(level));
 
 const DAY_MS = 86400000;
 
 /**
  * Journey forecast — honest linear ETA for countable gates only.
- * Uses 30-day recruit pace; duplication legs (raise 5 Kingsmen/ECLs)
+ * Uses 30-day recruit pace; duplication legs (raise 5 downline Leaders)
  * return null because linear projection would mislead.
  * @param {object} signals live signals (recruits, activeDownline)
  * @param {Array} missing unresolved requirements [{key}]

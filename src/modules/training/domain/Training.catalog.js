@@ -73,7 +73,7 @@ export const COURSES = [
       lesson(
         'ipo-3',
         'Your first 30 days',
-        'Welcome home, partner — you made the right decision, and you are not walking this road alone. Feeling excited and nervous at the same time is completely normal; every leader you admire, every Kingsman on that stage, started exactly where you are now, with the same butterflies and the same questions. You already did the hardest part, which was starting. The diamond in you is waiting to shine, and the next 30 days are simply about cutting the first facets — small, simple, visible basics, done daily.\n\nWeek one is foundation week: finish this IPO orientation and the Quick Start Guide, set up your profile and landing page, write down 50 prospects, and book your onboarding session with your upline. Your upline is your coach, not your boss — lean on them shamelessly, ask every “silly” question, and let them sit in on your first presentations. Do not wait until you feel ready; readiness comes from action, not before it.\n\nWeeks two to four are rhythm weeks, and rhythm is how you succeed here. Present the opportunity every single day, follow up warmly, and log every touch in the CRM — presented, interested, follow-up required. Attend the weekly team training without fail, review your numbers against your calendar, and keep your contact list growing faster than your excuses. Success in network marketing is not talent; it is basics, repeated daily, in front of witnesses.\n\nConsistency is the whole secret, and consistency is a design choice, not a mood. Decide your business hours, guard them like appointments, and let discipline carry the days motivation skips — that stoic steadiness is the second pillar of this project for a reason. Track your streaks: presentations made, follow-ups kept, touches logged. Momentum in month one predicts year one, because a calendar full of small wins compounds into a business, while waiting for inspiration compounds into nothing.\n\nYou will hear “no” — and a “no” today is not a “no” forever, it is redirection, not rejection. Thank every prospect, note the follow-up date, and move on to the next conversation; the fortune lives in warm, honest follow-up. On the hard days, do not go silent — silence is the only real failure here. Call your upline, show up to training, borrow belief until your own results arrive. Duplication starts with you being duplicable: do the simple things so visibly that your first recruit can copy you without a manual.\n\nAt day 30, stop and look back: orientation done, 50 names listed, daily presenting habit alive, first touches logged, training attended, upline relationship strong. That version of you is already unrecognizable from day one — and it is only the first facet. Hold the rhythm for 90 days and you will not just understand this business, you will be becoming the ultimate version of yourself. One year from now, you will be so glad you started today. Welcome to Diamond Project — now go shine.',
+        'Welcome home, partner — you made the right decision, and you are not walking this road alone. Feeling excited and nervous at the same time is completely normal; every leader you admire, every Leader on that stage, started exactly where you are now, with the same butterflies and the same questions. You already did the hardest part, which was starting. The diamond in you is waiting to shine, and the next 30 days are simply about cutting the first facets — small, simple, visible basics, done daily.\n\nWeek one is foundation week: finish this IPO orientation and the Quick Start Guide, set up your profile and landing page, write down 50 prospects, and book your onboarding session with your upline. Your upline is your coach, not your boss — lean on them shamelessly, ask every “silly” question, and let them sit in on your first presentations. Do not wait until you feel ready; readiness comes from action, not before it.\n\nWeeks two to four are rhythm weeks, and rhythm is how you succeed here. Present the opportunity every single day, follow up warmly, and log every touch in the CRM — presented, interested, follow-up required. Attend the weekly team training without fail, review your numbers against your calendar, and keep your contact list growing faster than your excuses. Success in network marketing is not talent; it is basics, repeated daily, in front of witnesses.\n\nConsistency is the whole secret, and consistency is a design choice, not a mood. Decide your business hours, guard them like appointments, and let discipline carry the days motivation skips — that stoic steadiness is the second pillar of this project for a reason. Track your streaks: presentations made, follow-ups kept, touches logged. Momentum in month one predicts year one, because a calendar full of small wins compounds into a business, while waiting for inspiration compounds into nothing.\n\nYou will hear “no” — and a “no” today is not a “no” forever, it is redirection, not rejection. Thank every prospect, note the follow-up date, and move on to the next conversation; the fortune lives in warm, honest follow-up. On the hard days, do not go silent — silence is the only real failure here. Call your upline, show up to training, borrow belief until your own results arrive. Duplication starts with you being duplicable: do the simple things so visibly that your first recruit can copy you without a manual.\n\nAt day 30, stop and look back: orientation done, 50 names listed, daily presenting habit alive, first touches logged, training attended, upline relationship strong. That version of you is already unrecognizable from day one — and it is only the first facet. Hold the rhythm for 90 days and you will not just understand this business, you will be becoming the ultimate version of yourself. One year from now, you will be so glad you started today. Welcome to Diamond Project — now go shine.',
         ['You belong here — every leader started where you are', '50-prospect list in week one', 'Present daily, log everything, lean on your upline'],
         [
           { q: 'Week-one target for prospects listed?', options: ['10', '50', '200'], answer: 1 },
@@ -202,13 +202,13 @@ export const COURSES = [
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Maintenance and compliance (Standard Method of Operation). Monthly maintenance is the membership fee of compounding: it keeps your accounts qualified and your downline paid. Review your maintenance history in the app every month — shop orders count automatically. If you maintain through DTC, record the receipt as evidence in My Journey so your upline can confirm it. Three maintained accounts is the Kingsman bar. Never let a month slip silently: one quiet gap breaks compounding for everyone below you, and trust, once broken over money rhythm, is slow to rebuild.',
+          transcript: 'TRANSCRIPT — Maintenance and compliance (Standard Method of Operation). Monthly maintenance is the membership fee of compounding: it keeps your accounts qualified and your downline paid. Review your maintenance history in the app every month — shop orders count automatically. If you maintain through DTC, record the receipt as evidence in My Journey so your upline can confirm it. Three maintained accounts is the Leader bar. Never let a month slip silently: one quiet gap breaks compounding for everyone below you, and trust, once broken over money rhythm, is slow to rebuild.',
         },
       ),
       lesson(
         'smo-3',
         'Leading by the method',
-        'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nKingsmen run SMO visibly: post your numbers, hold the weekly training, and inspect your leaders’ calendars kindly. The standard only works when leaders submit to it first. Recognition follows consistency, not intensity.',
+        'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nLeaders run SMO visibly: post your numbers, hold the weekly training, and inspect your leaders’ calendars kindly. The standard only works when leaders submit to it first. Recognition follows consistency, not intensity.',
         ['Run it visibly', 'Inspect kindly, consistently', 'Never ask what you do not do'],
         [
           { q: 'Who must submit to the standard first?', options: ['Leaders', 'Only new partners', 'No one'], answer: 0 },
@@ -218,7 +218,7 @@ export const COURSES = [
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Leading by the method (Standard Method of Operation). The standard holds only if leaders submit to it first. A Kingsman posts his own numbers before asking anyone else’s, holds the weekly training whether five attend or fifty, and inspects his leaders’ calendars kindly — weekly, with care, never with blame. People do what leaders do, not what leaders say. Intensity impresses for a week; consistency compounds for a career. Recognition in this project follows consistency, not intensity — run the method visibly and the rank takes care of itself.',
+          transcript: 'TRANSCRIPT — Leading by the method (Standard Method of Operation). The standard holds only if leaders submit to it first. A Leader posts his own numbers before asking anyone else’s, holds the weekly training whether five attend or fifty, and inspects his leaders’ calendars kindly — weekly, with care, never with blame. People do what leaders do, not what leaders say. Intensity impresses for a week; consistency compounds for a career. Recognition in this project follows consistency, not intensity — run the method visibly and the rank takes care of itself.',
         },
       ),
     ],
@@ -226,12 +226,12 @@ export const COURSES = [
   {
     id: 'leadership',
     title: 'Leadership Development',
-    tagline: 'From Kingsman to Cell Leader.',
+    tagline: 'From Builder to Leader and Ambassador.',
     milestone: null,
     lessons: [
       lesson(
         'leadership-1',
-        'Raising Kingsmen',
+        'Raising Leaders',
         'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nYou do not promote people; you develop them until promotion is obvious. Each emerging leader needs a goal, a calendar, and a weekly review with you. Track their journey stages the way you track prospects — leadership is a pipeline too.',
         ['Develop until promotion is obvious', 'Weekly reviews, no exceptions', 'Leadership is a pipeline — track it'],
         [
@@ -242,7 +242,7 @@ export const COURSES = [
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Raising Kingsmen (Leadership Development). You do not promote people; you develop them until promotion is obvious to everyone. Each emerging leader under you needs three things: a written goal, a calendar with business blocks, and a weekly review with you — no exceptions, no skipped weeks. Track their journey stages the way you track prospects in the pipeline: who needs IPO confirmed, who needs their fifth active, who is stalled. Leadership is a pipeline too, and pipelines you inspect weekly move. Your job is not to be the hero of their story but the coach who makes heroes obvious.',
+          transcript: 'TRANSCRIPT — Raising Leaders (Leadership Development). You do not promote people; you develop them until promotion is obvious to everyone. Each emerging leader under you needs three things: a written goal, a calendar with business blocks, and a weekly review with you — no exceptions, no skipped weeks. Track their journey stages the way you track prospects in the pipeline: who needs IPO confirmed, who needs their fifth active, who is stalled. Leadership is a pipeline too, and pipelines you inspect weekly move. Your job is not to be the hero of their story but the coach who makes heroes obvious.',
         },
       ),
       lesson(
@@ -258,23 +258,23 @@ export const COURSES = [
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Running a cell (Leadership Development). A cell runs on exactly three recurring meetings: weekly training for skill, monthly recognition for culture, quarterly planning for direction. Keep each under an hour, start on time to the minute, and end with named assignments — a meeting without assignments was entertainment. Culture is not what you declare; it is what repeats. Design the repetition deliberately: same rhythms, same standards, same warmth, until new members absorb the culture without being taught it. Boring consistency at the top creates exciting growth at the bottom.',
+          transcript: 'TRANSCRIPT — Running a cell (Leadership Development). A cell runs on exactly three recurring meetings: weekly training for skill, monthly recognition for culture, quarterly planning for direction. Keep each under an hour, start on time to the minute, and end with named assignments — a meeting without assignments was entertainment. Culture is not what you dLeaderare; it is what repeats. Design the repetition deliberately: same rhythms, same standards, same warmth, until new members absorb the culture without being taught it. Boring consistency at the top creates exciting growth at the bottom.',
         },
       ),
       lesson(
         'leadership-3',
         'Succession and scale',
-        'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nYour cell outgrows you exactly when your leaders no longer need you in the room. Document the method, hand over the training rotation, and measure yourself by leaders raised, not recruits signed. That is the whole game above Kingsman.',
+        'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nYour cell outgrows you exactly when your leaders no longer need you in the room. Document the method, hand over the training rotation, and measure yourself by leaders raised, not recruits signed. That is the whole game above Leader.',
         ['Measure leaders raised', 'Document, then delegate', 'Success is a room that works without you'],
         [
-          { q: 'Above Kingsman you measure yourself by…', options: ['Recruits signed', 'Leaders raised', 'Messages sent'], answer: 1 },
+          { q: 'Above Leader you measure yourself by…', options: ['Recruits signed', 'Leaders raised', 'Messages sent'], answer: 1 },
           { q: 'Scaling requires…', options: ['More hours from you', 'Documenting and delegating the training rotation', 'Random assignments'], answer: 1 },
           { q: 'Handing over the training rotation proves…', options: ['Your leaders can carry the method alone', 'You are tired', 'Training is finished'], answer: 0 },
           { q: 'A leader who is still the bottleneck should…', options: ['Document more and delegate sooner', 'Work longer hours', 'Recruit faster'], answer: 0 },
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Succession and scale (Leadership Development). The final test of leadership is absence: your cell outgrows you exactly when your leaders no longer need you in the room. Get there by documenting the method so it survives without your memory, then handing over the training rotation one slot at a time. Above Kingsman, stop counting recruits and start counting leaders raised — that is the whole game. If growth still depends on your personal hours, you have not scaled, you have just worked harder. Build the room that works without you, and you have built an organization.',
+          transcript: 'TRANSCRIPT — Succession and scale (Leadership Development). The final test of leadership is absence: your cell outgrows you exactly when your leaders no longer need you in the room. Get there by documenting the method so it survives without your memory, then handing over the training rotation one slot at a time. Above Leader, stop counting recruits and start counting leaders raised — that is the whole game. If growth still depends on your personal hours, you have not scaled, you have just worked harder. Build the room that works without you, and you have built an organization.',
         },
       ),
     ],

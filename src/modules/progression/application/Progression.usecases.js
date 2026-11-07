@@ -1,7 +1,7 @@
 import {
   ConflictException, ForbiddenException, NotFoundException, ValidationException,
 } from '../../../shared/domain/AppError.js';
-import { LEVELS, LEVEL_LABELS, RANK, STALE_CONFIRM_MS, TRAINING_CONFIRM_KEYS, CONFIRMABLE_KEYS, confirmed, forecastJourney, medianOf, resolveProgression } from '../domain/Progression.levels.js';
+import { LEVELS, LEVEL_LABELS, RANK, STALE_CONFIRM_MS, TRAINING_CONFIRM_KEYS, CONFIRMABLE_KEYS, confirmed, forecastJourney, medianOf, normalizeLevel, resolveProgression } from '../domain/Progression.levels.js';
 import { PROGRESSION_EVENTS, promotedPayload } from '../domain/ProgressionEvents.js';
 import { collectDownlineIds } from '../../network/infrastructure/Network.mongo.repository.js';
 
@@ -39,7 +39,10 @@ export async function assembleSignals(
     safe(progress.listPendingConfirmations?.(downline.slice(0, 2000), CONFIRMABLE_KEYS, 200), []),
   ]);
   const counts = {};
-  for (const lvl of Object.values(levels)) counts[lvl] = (counts[lvl] ?? 0) + 1;
+  for (const lvl of Object.values(levels ?? {})) {
+    const key = normalizeLevel(lvl);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
   const reportsSubmitted = (authored ?? []).filter((r) => {
     const t = new Date(r.createdAt ?? 0).getTime();
     return !Number.isNaN(t) && t >= end.getTime() - 60 * DAY;
@@ -71,10 +74,8 @@ export async function assembleSignals(
     activeDownline: active,
     downlineTotal: downline.length,
     maintenanceOk: cur.total > 0 && prev.total > 0,
-    kingsmen: (counts.kingsman ?? 0) + (counts.ecl ?? 0) + (counts.cell_leader ?? 0) + (counts.g_leader ?? 0),
-    ecls: (counts.ecl ?? 0) + (counts.cell_leader ?? 0) + (counts.g_leader ?? 0),
-    kingsmenExact: counts.kingsman ?? 0,
-    eclsExact: counts.ecl ?? 0,
+    downlineLeaders: (counts.leader ?? 0) + (counts.ambassador ?? 0),
+    downlineBuilders: counts.builder ?? 0,
     touchedProspects: touched,
     communityPosts: posts,
     eventRsvps: rsvps,
@@ -160,9 +161,15 @@ export const buildMilestonePatch = (input = {}) => {
 
 /** My journey: derived level, next gate, promotion detection (recognition hook). */
 export class GetMyProgressionUseCase {
-  /** @param {{progress, network, orders, recognition, events?}} deps (recognition optional — auto-posts promotions; events optional — promotion fan-out) */
-  constructor({ progress, network, orders, recognition, events = null }) {
-    Object.assign(this, { progress, network, orders, recognition, events });
+  /** @param {{progress, network, orders, recognition, events?, prospects?, community?, eventStore?, reports?}} deps (recognition optional - auto-posts promotions; events optional - promotion fan-out) */
+  constructor({
+    progress, network, orders, recognition, events = null,
+    prospects = null, community = null, eventStore = null, reports = null,
+  }) {
+    Object.assign(this, {
+      progress, network, orders, recognition, events,
+      prospects, community, eventStore, reports,
+    });
   }
 
   async execute({ partnerId, now = new Date(), readOnly = false }) {
@@ -172,8 +179,9 @@ export class GetMyProgressionUseCase {
     let promoted = null;
     // Read-only coaching reads (upline/admin viewing a member) never
     // mutate the ladder, post recognition, or fan out events.
-    if (!readOnly && RANK(resolved.level) > RANK(doc.level ?? 'partner')) {
-      const from = doc.level ?? 'partner';
+    const currentLevel = normalizeLevel(doc.level ?? 'partner');
+    if (!readOnly && RANK(resolved.level) > RANK(currentLevel)) {
+      const from = currentLevel;
       await this.progress.setLevel(partnerId, resolved.level);
       promoted = { from, to: resolved.level };
       // Community recognition — best-effort, never fails the read.
@@ -287,20 +295,18 @@ export class TeamDistributionUseCase {
       const lvl = byId[String(id)];
       if (lvl !== undefined) {
         counted += 1;
-        if (lvl in dist) dist[lvl] += 1;
-        else dist.partner += 1;
+        dist[normalizeLevel(lvl)] += 1;
       }
     }
     // Members with no progression row yet are brand-new Partners (the
     // stored default) — previously they vanished while `total` counted
     // them, so the bars never summed to the headline.
     dist.partner += bounded.length - counted;
-    dist.prospect = 0;
     return {
       total: bounded.length,
       capped: ids.length > bounded.length,
       distribution: dist,
-      leaders: (dist.ecl ?? 0) + (dist.cell_leader ?? 0) + (dist.g_leader ?? 0),
+      leaders: (dist.leader ?? 0) + (dist.ambassador ?? 0),
     };
   }
 }

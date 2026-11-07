@@ -1,4 +1,5 @@
 import { readinessScore } from '../domain/Training.readiness.js';
+import { LEVEL_LABELS, normalizeLevel } from '../../progression/domain/Progression.levels.js';
 
 /** GET /v1/training/readiness — promotion readiness for the next rank. */
 export class ReadinessUseCase {
@@ -26,14 +27,18 @@ export class ReadinessUseCase {
   }
 
   async loadJourney(partnerId) {
+    if (this.progression?.execute) {
+      return this.progression.execute({ partnerId, readOnly: true });
+    }
     if (this.progression?.mine) return this.progression.mine(partnerId);
     if (this.progression?.findByPartner) {
       const doc = await this.progression.findByPartner(partnerId);
-      if (!doc) return { level: 'partner', levelLabel: 'Partner', next: 'emerging_active', nextLabel: 'Emerging Active Partner', percent: 0, missing: [], remainingActions: [] };
+      if (!doc) return { level: 'partner', levelLabel: 'Partner', next: 'builder', nextLabel: 'Builder', percent: 0, missing: [], remainingActions: [] };
+      const level = normalizeLevel(doc.level);
       return {
-        level: doc.level ?? doc.levelLabel ?? 'partner',
-        levelLabel: doc.levelLabel ?? doc.level ?? 'Partner',
-        next: doc.next ?? doc.nextLabel ?? null,
+        level,
+        levelLabel: LEVEL_LABELS[level],
+        next: doc.next ?? null,
         nextLabel: doc.nextLabel ?? null,
         percent: doc.percent ?? 0,
         missing: doc.missing ?? [],

@@ -9,6 +9,10 @@ import { MongoNetworkRepository } from '../../network/infrastructure/Network.mon
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
+import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
+import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
+import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
+import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { MongoTrainingStore } from '../../training/infrastructure/Training.mongo.repository.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
@@ -22,6 +26,10 @@ export const buildCoachingRouter = (deps = {}) => {
     network,
     orders: deps.orders ?? new MongoOrderReader(),
     recognition: null,
+    prospects: deps.prospects ?? new MongoProspectRepository(),
+    community: deps.community ?? new MongoCommunityStore(),
+    eventStore: deps.eventStore ?? new MongoEventStore(),
+    reports: deps.reportStore ?? new MongoReportStore(),
   });
   const training = deps.training ?? new MongoTrainingStore();
 

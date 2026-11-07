@@ -139,10 +139,10 @@ describe('PlatformStatsUseCase', () => {
     const rollup = { total: 10, new7d: 2, new30d: 5, roles: { user: 7, leader: 1, g8: 1, admin: 1 }, suspended: 1 };
     const uc = new PlatformStatsUseCase({
       partners: { platformStats: async () => rollup },
-      progress: { levelDistribution: async () => ({ partner: 4, kingsman: 3 }) },
+      progress: { levelDistribution: async () => ({ partner: 4, leader: 3 }) },
     });
     const res = await uc.execute();
-    assert.deepEqual(res.levels, { partner: 4, kingsman: 3 });
+    assert.deepEqual(res.levels, { partner: 4, leader: 3 });
     assert.equal(res.unranked, 3);
   });
 

@@ -9,7 +9,7 @@ export const POST_KIND_LABELS = {
   event: 'Event',
 };
 export const AUDIENCE_SCOPES = ['global', 'team', 'leadership'];
-export const LEADERSHIP_LEVELS = ['ecl', 'cell_leader', 'g_leader'];
+export const LEADERSHIP_LEVELS = ['leader', 'ambassador'];
 
 const text = (value, field, { min = 1, max = 2000 } = {}) => {
   const s = String(value ?? '').trim();

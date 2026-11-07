@@ -1,6 +1,6 @@
 /**
  * Contracts for the community slice. Visibility derives from the network
- * (team = author's downline) and the ladder (leadership = ECL and above).
+ * (team = author's downline) and the ladder (leadership = Leader and above).
  */
 export class CommunityStore {
   async createPost(data) { throw new Error('Not implemented'); }

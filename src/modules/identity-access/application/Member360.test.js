@@ -34,7 +34,7 @@ const deps = (over = {}) => ({
     countDocuments: async () => 4,
     find: () => ({ select: () => ({ lean: async () => [{ rating: { score: 5 } }, { rating: { score: 3 } }] }) }),
   },
-  progress: { levelsFor: async () => ({ p9: 'kingsman' }) },
+  progress: { levelsFor: async () => ({ p9: 'leader' }) },
   ...over,
 });
 
@@ -54,7 +54,7 @@ test('360 composes identity, login, money, growth, journey, upline and risks', a
     assert.equal(res.money.txCount, 2);
     assert.equal(res.growth.activeLeads, 4);
     assert.equal(res.growth.rating, 4);
-    assert.equal(res.journey.level, 'kingsman');
+    assert.equal(res.journey.level, 'leader');
     assert.equal(res.upline.username, 'upline');
     assert.deepEqual(res.risks, []);
   } finally {

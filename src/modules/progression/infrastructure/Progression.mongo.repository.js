@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { LEVELS, normalizeLevel } from '../domain/Progression.levels.js';
 
 const stampSchema = new mongoose.Schema(
   {
@@ -224,7 +225,7 @@ export class MongoProgressionStore {
     const rows = await ProgressionModel.find({ partnerId: { $in: partnerIds } })
       .select('partnerId level')
       .lean();
-    return Object.fromEntries(rows.map((r) => [oid(r.partnerId), r.level ?? 'partner']));
+    return Object.fromEntries(rows.map((r) => [oid(r.partnerId), normalizeLevel(r.level)]));
   }
 
   /** Org-wide journey-rank distribution (indexed `level` leg, one aggregation). */
@@ -232,7 +233,11 @@ export class MongoProgressionStore {
     const rows = await ProgressionModel.aggregate([
       { $group: { _id: { $ifNull: ['$level', 'partner'] }, count: { $sum: 1 } } },
     ]);
-    return Object.fromEntries(rows.map((r) => [String(r._id), r.count]));
+    const out = Object.fromEntries(LEVELS.map((level) => [level, 0]));
+    for (const row of rows) {
+      out[normalizeLevel(row._id)] += Number(row.count) || 0;
+    }
+    return out;
   }
 
   async requestNomination(partnerId, note) {

@@ -8,6 +8,8 @@
  * with follow-ups, leaders lead with goals.
  */
 
+import { normalizeLevel } from './Progression.levels.js';
+
 export const DAILY_SKIP_REASONS = ['opted-out', 'nothing-actionable'];
 
 /** @param {{level, candidateCount, dailyOptIn}} input @returns {{eligible, reason}} */
@@ -18,9 +20,9 @@ export const dailyEligibility = ({ level = 'partner', candidateCount = 0, dailyO
   return { eligible: true, reason: 'actionable' };
 };
 
-const LEADERSHIP_LEVELS = ['ecl', 'cell_leader', 'g_leader'];
+const LEADERSHIP_LEVELS = ['leader', 'ambassador'];
 
-/** Journey stage decides brief ordering — recomputed daily, never stored. */
+/** Journey rank decides brief ordering — recomputed daily, never stored. */
 export const briefFocus = (level = 'partner') => (
-  LEADERSHIP_LEVELS.includes(String(level ?? 'partner')) ? 'leadership' : 'growth'
+  LEADERSHIP_LEVELS.includes(normalizeLevel(level)) ? 'leadership' : 'growth'
 );

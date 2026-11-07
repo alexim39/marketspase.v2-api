@@ -1,6 +1,6 @@
 /**
  * Contracts for the events slice. Visibility mirrors the community slice
- * (global / downline-team / ECL+ leadership); RSVPs are one-per-partner.
+ * (global / downline-team / Leader+ leadership); RSVPs are one-per-partner.
  */
 export class EventStore {
   async createEvent(data) { throw new Error('Not implemented'); }

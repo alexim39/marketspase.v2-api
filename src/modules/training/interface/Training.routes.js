@@ -11,9 +11,14 @@ import { NotifyUseCase } from '../../notifications/application/NotificationsCent
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { ListPathsUseCase } from '../application/Training.paths.usecase.js';
 import { ReadinessUseCase } from '../application/Training.readiness.usecase.js';
+import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
 import { MongoTrainingStore } from '../infrastructure/Training.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
+import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
+import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
+import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
+import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { RecognitionUseCases } from '../../community/application/Community.usecases.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
 
@@ -28,8 +33,8 @@ export const buildTrainingRouter = (deps = {}) => {
   const training = deps.training ?? new MongoTrainingStore();
   const progress = deps.progress ?? new MongoProgressionStore();
   const network = deps.network ?? new MongoNetworkRepository();
-  const recognition = deps.recognition
-    ?? new RecognitionUseCases({ community: deps.community ?? new MongoCommunityStore() });
+  const communityStore = deps.community ?? new MongoCommunityStore();
+  const recognition = deps.recognition ?? new RecognitionUseCases({ community: communityStore });
 
   const list = new ListCoursesUseCase({ training });
   const detail = new GetCourseUseCase({ training });
@@ -47,7 +52,18 @@ export const buildTrainingRouter = (deps = {}) => {
   });
   const certs = new MyCertificatesUseCase({ training });
   const paths = new ListPathsUseCase({ progress: deps.progress ?? progress, training });
-  const readiness = new ReadinessUseCase({ progression: progress });
+  const readiness = new ReadinessUseCase({
+    progression: deps.progression ?? new GetMyProgressionUseCase({
+      progress,
+      network,
+      orders: deps.orders ?? new MongoOrderReader(),
+      recognition: null,
+      prospects: deps.prospects ?? new MongoProspectRepository(),
+      community: communityStore,
+      eventStore: deps.eventStore ?? new MongoEventStore(),
+      reports: deps.reports ?? new MongoReportStore(),
+    }),
+  });
 
   const router = express.Router();
   router.use(requireAuth);

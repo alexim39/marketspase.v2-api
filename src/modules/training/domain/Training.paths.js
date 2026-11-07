@@ -2,30 +2,24 @@ import { LEVELS, gate } from '../../progression/domain/Progression.levels.js';
 import { COURSES } from './Training.catalog.js';
 
 /**
- * Learning Paths — legacy journey-stage checklists.
- * Each path is the gate requirements for a journey stage, rendered as a
- * checklist. This is not the four-rank commission model; commission rank is
- * assigned on the Compensation desk. Pure, unit-testable.
+ * Learning paths — four rank-based checklists.
+ * Each path is the gate requirements for a rank, rendered as a checklist.
+ * These are the same four ranks used across the app.
  */
 
 const courseForMilestone = (key) => COURSES.find((c) => c.milestone === key)?.id ?? null;
 
 const PATH_META = {
-  prospect: { title: 'Prospect Path', tagline: 'Discover Diamond Project.' },
-  partner: { title: 'Partner Path', tagline: 'Your first steps as a partner.' },
-  emerging_active: { title: 'Emerging Active Partner Path', tagline: 'Build the habit of activity.' },
-  qualified_active: { title: 'Qualified Active Partner Path', tagline: 'Prove you can recruit.' },
-  active: { title: 'Active Partner Path', tagline: 'Full commitment, qualified account.' },
-  kingsman: { title: 'Kingsman Path', tagline: 'Lead by doing — team and system.' },
-  ecl: { title: 'Emerging Cell Leader Path', tagline: 'Begin leading leaders.' },
-  cell_leader: { title: 'Cell Leader Path', tagline: 'Run your cell.' },
-  g_leader: { title: 'G Leader Path', tagline: 'Multiply leadership.' },
+  partner: { title: 'Partner Path', tagline: 'Start strong and activate your business.' },
+  builder: { title: 'Builder Path', tagline: 'Build the habit and recruit your first partner.' },
+  leader: { title: 'Leader Path', tagline: 'Lead a team and run the system.' },
+  ambassador: { title: 'Ambassador Path', tagline: 'Multiply leadership and scale.' },
 };
 
 /** Precomputed: for each rank, the gate reqs and their backing course. */
 export const PATHS = LEVELS.map((level) => {
   const meta = PATH_META[level] ?? { title: level, tagline: '' };
-  // Gates are defined for the NEXT rank (gate('emerging_active') = reqs to BECOME emerging_active).
+  // Gates are defined for the NEXT rank (gate('builder') = reqs to BECOME Builder).
   // For the path named after a rank, we show the reqs to REACH that rank.
   const reqs = gate(level, {}, {});
   // Attach course links where a req matches a training milestone.
