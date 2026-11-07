@@ -78,6 +78,25 @@ circuit breaker is open.
 - If a bad release is writing money/PII data, stop traffic first
   (`/health/live` is the load-balancer probe), then roll back.
 
+### Production host notes (2026-11-07)
+
+- The API host currently remains the Back4App `b4a.run` service. A push to
+  GitHub runs CI only; the service must be redeployed from the dashboard (or
+  its build hook) after CI is green.
+- The live API did **not** expose `/health` before this release. After the
+  redeploy, verify `GET /health` returns `200` and `checks.database.status` is
+  `up`; a `404` means the old build is still serving.
+- Set `EXTRA_CORS_ORIGINS` in the API host environment for the new platform
+  origins:
+  `EXTRA_CORS_ORIGINS=https://marketspase.com,https://www.marketspase.com`.
+  Verify a preflight to `/v1/auth/signin` returns the matching
+  `access-control-allow-origin`.
+- Deploy the platform build (`ng build platform`) to the platform host after
+  the API is healthy. The full web CI (`npm run ci`) already builds platform,
+  store and admin.
+- The `/emailSubscription/*` redirect removal is calendar-bound: keep it until
+  the 7-day audit window ends.
+
 ---
 
 ## 3. Alerts
