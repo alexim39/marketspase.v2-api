@@ -1,4 +1,42 @@
 import mongoose from 'mongoose';
+import { open, seal } from '../../../shared/security/fieldCrypto.js';
+
+const ADDRESS_FIELDS = ['street', 'city', 'state', 'country'];
+
+const sealAddress = (address) => {
+  if (!address || typeof address !== 'object') return address;
+  for (const key of ADDRESS_FIELDS) {
+    if (address[key] !== undefined && address[key] !== null && address[key] !== '') {
+      address[key] = seal(address[key]);
+    }
+  }
+  return address;
+};
+
+const openAddress = (address) => {
+  if (!address || typeof address !== 'object') return address;
+  for (const key of ADDRESS_FIELDS) {
+    if (address[key]) address[key] = open(address[key]);
+  }
+  return address;
+};
+
+const sealAddressUpdate = (update) => {
+  if (!update || typeof update !== 'object') return;
+  for (const container of [update, update.$set, update.$setOnInsert]) {
+    if (!container || typeof container !== 'object') continue;
+    if (container.address && typeof container.address === 'object') {
+      sealAddress(container.address);
+    }
+    for (const key of Object.keys(container)) {
+      if (!key.startsWith('address.')) continue;
+      const value = container[key];
+      if (value !== undefined && value !== null && value !== '') {
+        container[key] = seal(value);
+      }
+    }
+  }
+};
 
 /* Schema partners */
 const partnersSchema = mongoose.Schema(
@@ -18,12 +56,14 @@ const partnersSchema = mongoose.Schema(
     },
     address: {
       type: {
-        street: { type: String },
-        city: { type: String },
-        state: { type: String },
-        country: { 
+        street: { type: String, get: open, set: seal },
+        city: { type: String, get: open, set: seal },
+        state: { type: String, get: open, set: seal },
+        country: {
           type: String,
-          default: 'Nigeria'
+          default: 'Nigeria',
+          get: open,
+          set: seal,
         },
       },
     },
@@ -118,7 +158,9 @@ const partnersSchema = mongoose.Schema(
       default: 0
     }, 
     dobDatePicker: {
-      type: Date
+      type: String,
+      get: open,
+      set: seal,
     },
     // Derived calendar parts for indexed birthday lookup (R6 follow-up).
     // Maintained by schema hooks below + one-shot backfill — never set directly.
@@ -334,7 +376,9 @@ const partnersSchema = mongoose.Schema(
     },
   },
   {
-    timestamps: true
+    timestamps: true,
+    toObject: { getters: true },
+    toJSON: { getters: true },
   }
 );
 
@@ -353,11 +397,25 @@ export const dobParts = (dob) => {
 };
 
 /** Document-save path (create + .save()). Testable without Mongo. */
+const dobText = (value) => {
+  if (value instanceof Date) return value.toISOString();
+  return String(value ?? '').trim();
+};
+
 export const applyDobSave = (doc) => {
   if (typeof doc.isModified === 'function' && !doc.isModified('dobDatePicker')) return false;
-  const { dobMonth, dobDay } = dobParts(doc.dobDatePicker);
+  const raw = typeof doc.get === 'function'
+    ? doc.get('dobDatePicker', null, { getters: false })
+    : doc.dobDatePicker;
+  const plain = open(raw);
+  const { dobMonth, dobDay } = dobParts(plain);
   doc.dobMonth = dobMonth ?? undefined;
   doc.dobDay = dobDay ?? undefined;
+  if (plain !== undefined && plain !== null && String(plain).trim() !== '') {
+    doc.dobDatePicker = dobText(plain);
+  } else {
+    doc.dobDatePicker = null;
+  }
   return true;
 };
 
@@ -375,13 +433,16 @@ export const applyDobUpdate = (update) => {
     : ('dobDatePicker' in update ? update.dobDatePicker : undefined);
   if (raw === undefined) return false;
   const target = set ?? update;
-  const { dobMonth, dobDay } = dobParts(raw);
+  const plain = open(raw);
+  const { dobMonth, dobDay } = dobParts(plain);
   if (dobMonth == null) {
+    target.dobDatePicker = null;
     delete target.dobMonth;
     delete target.dobDay;
     const unset = update.$unset && typeof update.$unset === 'object' ? update.$unset : {};
     update.$unset = { ...unset, dobMonth: 1, dobDay: 1 };
   } else {
+    target.dobDatePicker = seal(dobText(plain));
     target.dobMonth = dobMonth;
     target.dobDay = dobDay;
     if (update.$unset && typeof update.$unset === 'object') {
@@ -392,8 +453,27 @@ export const applyDobUpdate = (update) => {
   return true;
 };
 
-partnersSchema.pre('save', function () { applyDobSave(this); });
-partnersSchema.pre('findOneAndUpdate', function () { applyDobUpdate(this.getUpdate() ?? {}); });
+export const sealPartnerUpdate = (update) => {
+  sealAddressUpdate(update);
+  applyDobUpdate(update);
+};
+
+const openLeanPartnerAddress = (doc) => {
+  if (doc && !doc.$__) openAddress(doc.address);
+};
+
+partnersSchema.pre('save', function () {
+  if (this.address) sealAddress(this.address);
+  applyDobSave(this);
+});
+partnersSchema.pre('findOneAndUpdate', function () { sealPartnerUpdate(this.getUpdate() ?? {}); });
+partnersSchema.pre('updateOne', function () { sealPartnerUpdate(this.getUpdate() ?? {}); });
+partnersSchema.pre('updateMany', function () { sealPartnerUpdate(this.getUpdate() ?? {}); });
+partnersSchema.post('find', function (docs) {
+  for (const doc of docs ?? []) openLeanPartnerAddress(doc);
+});
+partnersSchema.post('findOne', openLeanPartnerAddress);
+partnersSchema.post('findOneAndUpdate', openLeanPartnerAddress);
 
 /* Model */
 export const PartnersModel = mongoose.models.Partner ?? mongoose.model('Partner', partnersSchema);

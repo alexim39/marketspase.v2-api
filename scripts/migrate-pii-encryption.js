@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { TransactionModel } from '../src/apps/transaction/models/transaction.model.js';
 import { DepositIntentModel } from '../src/modules/billing/infrastructure/Deposit.mongo.model.js';
 import { KycSubmissionModel } from '../src/modules/onboarding/infrastructure/Onboarding.models.js';
+import { PartnersModel } from '../src/apps/partner/models/partner.model.js';
 import { isSealed, seal } from '../src/shared/security/fieldCrypto.js';
 
 const APPLY = process.env.APPLY === '1';
@@ -94,11 +95,44 @@ const run = async () => {
     for (const batch of chunks(claimOps)) await DepositIntentModel.bulkWrite(batch, { ordered: false });
   }
 
+  let partnersSealed = 0;
+  const partnerRows = await PartnersModel.collection.find({
+    $or: [
+      { 'address.street': { $nin: [null, ''] } },
+      { 'address.city': { $nin: [null, ''] } },
+      { 'address.state': { $nin: [null, ''] } },
+      { 'address.country': { $nin: [null, ''] } },
+      { dobDatePicker: { $nin: [null, ''] } },
+    ],
+  }, { projection: { address: 1, dobDatePicker: 1 } }).toArray();
+  const partnerOps = [];
+  for (const row of partnerRows) {
+    const set = {};
+    for (const field of ['street', 'city', 'state', 'country']) {
+      const value = row.address?.[field];
+      if (value && !isSealed(value)) set[`address.${field}`] = seal(value);
+    }
+    if (row.dobDatePicker && !isSealed(row.dobDatePicker)) {
+      const plain = row.dobDatePicker instanceof Date
+        ? row.dobDatePicker.toISOString()
+        : String(row.dobDatePicker);
+      if (plain.trim()) set.dobDatePicker = seal(plain);
+    }
+    if (Object.keys(set).length > 0) {
+      partnerOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
+    }
+  }
+  partnersSealed = partnerOps.length;
+  if (!DRY_RUN) {
+    for (const batch of chunks(partnerOps)) await PartnersModel.bulkWrite(batch, { ordered: false });
+  }
+
   console.log(JSON.stringify({
     dryRun: DRY_RUN,
     transactionsToSeal: txSealed,
     kycToSeal: kycSealed,
     manualClaimsToSeal: claimsSealed,
+    partnersToSeal: partnersSealed,
   }, null, 2));
   await mongoose.connection.close(false);
 };

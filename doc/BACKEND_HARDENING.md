@@ -119,18 +119,35 @@ backoff and marked `failed` after five attempts for inspection.
   include soft-deleted rows.
 - Legacy requests are tagged `legacy: true` in structured logs so dead routes
   can be measured before removal.
-- Legacy auth, product, team, booking, partner-profile, prospect, campaign
-  and campaign-allocation writes validate and replace `req.body` through
+- Legacy product, team, booking, partner-profile, prospect, campaign and
+  campaign-allocation writes validate and replace `req.body` through
   `validateBodyInPlace`, stripping unknown fields before controllers.
+- Retired legacy mounts: `/auth` (use `/v1/auth`), campaign create endpoints
+  (use `/v1/campaigns`), legacy email/SMS inbox reads (use v1 message reads)
+  and individual partner social-link writes (use `/partners/landing-page`).
+
+- Legacy email/SMS sends, inbox reads and campaign creation are retired in
+  favour of their `/v1` slices.
+- Run `npm run audit:legacy -- <jsonl-log>` (or pipe structured logs) to see
+  request counts per normalised legacy path. The report only counts
+  `http_request` rows with `legacy: true`; use it to prove a route is unused
+  before removing it. `--since=YYYY-MM-DD` narrows the window.
 
 ## PII at rest
 
-- Bank account numbers and KYC address fields are AES-256-GCM sealed with
-  `PII_ENCRYPTION_KEY` (fallback `KYC_HASH_SECRET`, then `JWTTOKENSECRET`).
+- Bank account numbers, KYC address fields, partner address fields and
+  date-of-birth values are AES-256-GCM sealed with `PII_ENCRYPTION_KEY`
+  (fallback `KYC_HASH_SECRET`, then `JWTTOKENSECRET`).
 - `enc:v1:` values are transparently read by the API; legacy plaintext rows
-  keep working.
+  keep working. Partner address/DOB getters open on documents and a find hook
+  opens lean results used by analytics and campaign matching.
 - Run `APPLY=1 npm run migrate:pii` once against a backed-up database to seal
   existing rows. Without `APPLY=1` it is a dry run that only reports counts.
+  Partner counts are reported as `partnersToSeal`; rerun the dry run and expect
+  `0` to confirm idempotency.
+- Deploy the API code before applying the migration: the new DOB field reads
+  both legacy dates and sealed strings, while the old schema cannot read sealed
+  values.
 
 ## Environment
 

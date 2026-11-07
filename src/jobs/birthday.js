@@ -1,4 +1,5 @@
 import { PartnersModel } from '../apps/partner/models/partner.model.js';
+import { open } from '../shared/security/fieldCrypto.js';
 import { sendEmail } from '../services/emailService.js';
 import { userBirthdayEmailTemplate } from '../apps/partner/services/email/birthday.js';
 
@@ -40,7 +41,7 @@ export async function runBirthdayJob(deps = {}) {
   try {
     // Belt-and-braces: $expr already matched, but skip anything unparseable
     // rather than mailing on a garbage date.
-    const rows = (await celebrantsToday(partners, today)).filter((u) => u.email && isBirthdayToday(u.dobDatePicker, today));
+    const rows = (await celebrantsToday(partners, today)).filter((u) => u.email && isBirthdayToday(open(u.dobDatePicker), today));
     for (const user of rows) {
       try {
         await mailer(user.email, `Happy Birthday, ${String(user.name ?? '').toUpperCase()}!`, template(user));

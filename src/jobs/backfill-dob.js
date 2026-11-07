@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { PartnersModel, dobParts } from '../apps/partner/models/partner.model.js';
+import { open } from '../shared/security/fieldCrypto.js';
 
 /**
  * One-shot backfill for derived birthday parts (R6 follow-up).
@@ -29,7 +30,7 @@ export async function backfillDobParts({ partners = PartnersModel, batchSize = 5
     if (docs.length === 0) break;
     const ops = [];
     for (const d of docs) {
-      const { dobMonth, dobDay } = dobParts(d.dobDatePicker);
+      const { dobMonth, dobDay } = dobParts(open(d.dobDatePicker));
       if (dobMonth == null) {
         skipped += 1;
         continue;
