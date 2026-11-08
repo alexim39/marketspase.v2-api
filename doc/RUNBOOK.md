@@ -329,13 +329,15 @@ execution writes an `ora.action.execute` audit event.
   marked **Fulfilled**. The hourly `compensation-reconcile` also catches up
   pending activation commissions for orders that were already fulfilled before
   their allocation accrued. Manual **Release** is for exceptions only.
-- Sponsor placement: `/join?ref=<partner-username>` sets `partnerOf` and
-  `placementParentId` when the referrer is active, KYC-verified and not
-  suspended. Unknown or inactive referrers still create the account, marked
-  `systemOwned: true`. Campaign allocation only touches system-owned members
-  and sets both parent fields to the campaign owner. Converted pipeline leads
-  bind through `lead=<prospectId>` or a matching signup email. Never reparent a
-  referred member into a campaign.
+- Sponsor placement: `/join?ref=<partner-username>` sets `partnerOf` when the
+  referrer is active, KYC-verified and not suspended. Unknown or inactive
+  referrers still create the account, marked `systemOwned: true`. Campaign
+  allocation only touches system-owned members (`partnerOf: null`) and sets
+  `partnerOf` to the campaign owner plus `placementCampaignId`/`placedAt` for
+  history. Converted pipeline leads bind through `lead=<prospectId>` or a
+  matching signup email. Never reparent a referred member into a campaign.
+  `partnerOf` is the only upline edge for network, team, commissions and
+  mentor bonuses; a referred member keeps that upline for life.
 - The **MarketSpase root** is virtual (`system-root`), not a partner row. It has
   no login, wallet, KYC, rank or commission entitlement, and must never appear
   in member counts, commission walks, mentor bonuses or payout runs. Network
