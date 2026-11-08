@@ -19,8 +19,6 @@ import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
 import { GetNotificationFeedUseCase } from '../../notifications/application/Notifications.usecases.js';
 import { ListGoalsUseCase } from '../../goals/application/Goals.usecases.js';
-import { ProspectSurveyModel } from '../../../apps/survey/models/survey.model.js';
-import { normalizeState } from '../../../shared/geo/nigerianStates.js';
 
 const WindowQuery = z.object({
   days: z.coerce.number().int().min(7).max(365).optional().default(30),
@@ -54,19 +52,7 @@ export const buildAnalyticsRouter = (deps = {}) => {
   const team = new GetTeamUseCase({ orders, network, prospects, snapshots, goalProgress: (pid) => goals.execute({ partnerId: pid }) });
   const eventStore = deps.eventStore ?? new MongoEventStore();
   const partners = deps.partners ?? new MongoPartnerRepository();
-  // Recruitment-opportunity count: pool rows in the member's normalized
-  // state (bounded, cheap). Null-safe — actions skip the card when unknown.
-  const poolCount = deps.poolCount ?? (async (partnerId) => {
-    try {
-      const me = await partners.findById(partnerId).catch(() => null);
-      const want = normalizeState(me?.address?.state);
-      if (!want) return 0;
-      return ProspectSurveyModel.countDocuments({ username: 'business', stateNorm: want }).catch(() => 0);
-    } catch {
-      return 0;
-    }
-  });
-  const actions = new GetActionsUseCase({ feed, goals, prospects, stuck, progression, events: eventStore, poolCount, reminders });
+  const actions = new GetActionsUseCase({ feed, goals, prospects, stuck, progression, events: eventStore, reminders });
   const orgFunnel = deps.orgFunnel ?? new GetOrgFunnelUseCase({ prospects });
   const retention = deps.retention ?? new GetRetentionUseCase({ partners, progress: progressStore });
   const activation = new GetActivationUseCase({ partners, prospects, progress: progressStore, network });

@@ -34,7 +34,7 @@ const pageLeadShape = (d) => ({
 /**
  * GET /v1/prospects/admin/page-leads — private page-lead desk.
  * Every row here belongs to exactly one partner (username != 'business'):
- * submissions via /:partnerUsername. Never in the Buy Prospect pool.
+ * submissions via /:partnerUsername. Never part of the retired pool.
  */
 export class ListAdminPageLeadsUseCase {
   constructor({ surveys } = {}) {
@@ -116,7 +116,7 @@ export class ReassignAdminPageLeadUseCase {
     if (!/^[a-fA-F0-9]{24}$/.test(String(id ?? ''))) throw new ValidationException('Invalid lead id');
     const target = String(owner ?? '').trim();
     if (!target) throw new ValidationException('Provide a valid partner username');
-    if (target.toLowerCase() === 'business') throw new ValidationException('Cannot reassign to business — business is the shared Buy Prospect pool. Enter a real partner username (e.g. market)');
+    if (target.toLowerCase() === 'business') throw new ValidationException('Cannot reassign to business - business is the unassigned survey owner. Enter a real partner username');
     const partner = await this.partners.findOne({ username: target }).select('_id username').lean().catch(() => null);
     if (!partner) throw new NotFoundException('Target partner not found');
     const doc = await this.surveys.findOneAndUpdate(

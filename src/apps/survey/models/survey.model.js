@@ -99,26 +99,13 @@ const userSurveySchema = mongoose.Schema(
           state: { 
             type: String, 
         },
-        // Normalized state (lowercase, FCT/Abuja aliased) for pool geo
+        // Normalized state (lowercase, FCT/Abuja aliased) for lead
         // matching — set at write; read paths fall back to normalizing.
         stateNorm: {
             type: String,
             default: '',
             index: true,
         },
-        // Buy Prospect engine: times returned to the pool (sinks future
-        // rank) + partner quality ratings guiding prioritization.
-        claimCount: {
-            type: Number,
-            default: 0,
-        },
-        ratings: [{
-            score: { type: Number, min: 1, max: 5 },
-            by: { type: String },
-            at: { type: Date },
-            note: { type: String, maxlength: 500 },
-        }],
-       
     },
     {
         timestamps: true

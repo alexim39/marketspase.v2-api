@@ -101,23 +101,10 @@ export const ConvertProspectSchema = z.object({
   byName: z.string().trim().max(120).optional(),
 });
 
-/** POST /v1/prospects/claim — paid Buy Prospect pickup (fee from wallet). */
-export const ClaimProspectSchema = z.object({
-  surveyId: objectId,
-  source: z.enum(['website', 'link']).optional().default('website'),
-});
 
 /** POST /v1/prospects/accept-page-lead — free accept of your own page lead. */
 export const AcceptPageLeadSchema = z.object({
   surveyId: objectId,
-});
-
-/** GET /v1/prospects/pool — geo-fenced scored shelf (admins may filter state). */
-export const PoolQuery = z.object({
-  state: z.string().trim().max(80).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  skip: z.coerce.number().int().min(0).optional(),
-  q: z.string().trim().max(60).optional(),
 });
 
 /** POST /v1/prospects/:prospectId/rate — 1–5 star quality vote. */
@@ -125,23 +112,6 @@ export const RateLeadSchema = z.object({
   score: z.number().min(1).max(5),
   note: z.string().trim().max(500).optional().default(''),
 });
-
-/** POST /v1/admin/leads/import — bulk pool seeding (admin). */
-export const ImportLeadsSchema = z.object({
-  rows: z.array(z.object({}).passthrough()).min(1).max(500),
-});
-
-/** GET /v1/prospects/admin/leads — filterable pool desk (admin). */
-export const AdminLeadsQuery = z.object({
-  q: z.string().trim().max(60).optional(),
-  state: z.string().trim().max(80).optional(),
-  status: z.enum(['Not Moved', 'Claimed', 'Moved to Contact', 'all']).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  skip: z.coerce.number().int().min(0).optional(),
-});
-
-/** :leadId for admin pool rows (survey ObjectIds). */
-export const LeadIdParam = z.object({ leadId: objectId });
 
 /** GET /v1/prospects/admin/page-leads — private page-lead desk (admin). */
 export const AdminPageLeadsQuery = z.object({
@@ -161,10 +131,6 @@ export const ReassignPageLeadSchema = z.object({
   owner: z.string().trim().min(2).max(80),
 });
 
-/** POST /v1/prospects/admin/leads/:leadId/push — grant a pool lead to a partner, free. */
-export const PushPoolLeadSchema = z.object({
-  username: z.string().trim().min(2).max(80),
-});
 
 /** POST /v1/prospects/contact-list/resolve-phone — id-only booking match. */
 export const ResolveContactPhoneSchema = z.object({

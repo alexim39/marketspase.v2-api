@@ -1,10 +1,10 @@
 /**
- * Shared Nigerian state normalization — single source for pool geo
- * matching (leadpool engine), survey writes, and arrival alerts.
+ * Shared Nigerian state normalization - single source for lead
+ * matching, survey writes, and arrival alerts.
  * Free-text states arrive messy ("Lagos", " lagos", "FCT (Abuja)").
  */
 
-/** Normalize free-text Nigerian states so pool rows match partner states. */
+/** Normalize free-text Nigerian states so lead rows match partner states. */
 const STATE_ALIASES = new Map([
   ['abuja', 'fct abuja'],
   ['fct', 'fct abuja'],

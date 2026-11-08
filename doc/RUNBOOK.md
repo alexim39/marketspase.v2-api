@@ -367,8 +367,8 @@ execution writes an `ora.action.execute` audit event.
 - **Legacy campaign lead allocation is removed.** Ad campaigns no longer buy
   pool leads at ₦300 with daily/total caps, and no campaign-allocation job or
   ledger runs. Historical `campaigns` records and `/campaign` read/refund
-  routes remain only for reconciliation. The separate Buy Prospect pool
-  backend still exists but its partner/admin UI is retired.
+  routes remain only for reconciliation. The separate Buy Prospect pool and its
+  ₦250 claim/refund workflow are removed end to end (routes, job and ledger).
 - Mentor bonus timing: the ₦1,000 activation mentor bonus is paid immediately
   when activation is recorded, to the member's `partnerOf` mentor. If the
   mentor is not yet known (system-owned member) or not KYC-qualified yet, the

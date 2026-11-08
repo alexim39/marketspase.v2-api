@@ -110,20 +110,19 @@ const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
  * upcoming gatherings, journey milestones, then the rest.
  */
 export class GetActionsUseCase {
-  /** @param {{feed, goals, prospects, stuck, progression, events, poolCount, reminders}} deps (stuck/progression/events/poolCount/reminders optional) */
-  constructor({ feed, goals, prospects, stuck, progression, events, poolCount = null, reminders = null }) {
-    Object.assign(this, { feed, goals, prospects, stuck, progression, events, poolCount, reminders });
+  /** @param {{feed, goals, prospects, stuck, progression, events, reminders}} deps (stuck/progression/events/reminders optional) */
+  constructor({ feed, goals, prospects, stuck, progression, events, reminders = null }) {
+    Object.assign(this, { feed, goals, prospects, stuck, progression, events, reminders });
   }
 
   async execute({ partnerId, now = new Date(), limit = 15 }) {
-    const [feed, goals, hot, stuck, journey, gatherings, poolAvailable, due] = await Promise.all([
+    const [feed, goals, hot, stuck, journey, gatherings, due] = await Promise.all([
       this.feed.execute({ partnerId, now, limit: 50 }),
       this.goals.execute({ partnerId, now }),
       this.prospects.findReadyToConvert(partnerId, 5),
       this.stuck ? this.stuck.execute({ partnerId, now }) : [],
       this.progression ? this.progression.summarize({ partnerId, now }) : null,
       this.events ? this.events.upcomingRsvps(partnerId, now) : [],
-      this.poolCount ? this.poolCount(partnerId).catch(() => null) : null,
       this.reminders ? this.reminders.execute({ partnerId, now }).catch(() => null) : null,
     ]);
 
@@ -229,16 +228,6 @@ export class GetActionsUseCase {
         title: isTraining ? `${m.label} overdue` : m.label,
         detail: isTraining ? `${m.action} — upline confirms` : m.action,
         link: isTraining ? '/dashboard/training' : '/dashboard/progress',
-      });
-    }
-    if (poolAvailable !== null && poolAvailable !== undefined && Number(poolAvailable) > 0) {
-      actions.push({
-        id: `action:pool:${poolAvailable}`,
-        priority: 'medium',
-        category: 'recruitment-opportunity',
-        title: `${poolAvailable} fresh leads near you`,
-        detail: 'Buy Prospect pool has new leads in your state — claim first',
-        link: '/dashboard/prospects/general-list',
       });
     }
 

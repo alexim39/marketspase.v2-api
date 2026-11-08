@@ -1,21 +1,8 @@
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { PartnersModel } from '../infrastructure/Prospect.models.js';
-import { adminBootstrapEmails, lenientRole } from '../../identity-access/domain/PartnerRole.js';
 import { maskProspectContact } from '../domain/Prospect.visibility.js';
 
 const pid = (req) => req.validated?.params?.prospectId ?? req.params.prospectId;
-
-/** Admin check mirroring requireRole (pool reads stay open to members). */
-const isAdminRequest = async (req) => {
-  try {
-    const doc = await PartnersModel.findById(req.auth?.partnerId).select('role email').lean();
-    if (!doc) return false;
-    if (lenientRole(doc.role) === 'admin') return true;
-    return adminBootstrapEmails().includes(String(doc.email ?? '').toLowerCase());
-  } catch {
-    return false;
-  }
-};
 
 /** Interface: HTTP adapters preserving legacy envelopes (+ additive `data`/`meta`). */
 export const makeProspectController = (uc, opts = {}) => {
@@ -73,78 +60,17 @@ export const makeProspectController = (uc, opts = {}) => {
     res.status(200).json({ message: 'Prospect deleted successfully!', success: true });
   }),
 
-  release: asyncHandler(async (req, res) => {
-    const data = await uc.release.execute({ partnerId: req.auth?.partnerId, prospectId: pid(req) });
-    res.status(200).json({
-      message: data.refunded > 0
-        ? `Lead returned to Buy Prospect — ₦${Number(data.refunded).toLocaleString()} refunded to your wallet.`
-        : 'Lead returned to Buy Prospect — others can claim it now.',
-      data,
-      success: true,
-    });
-  }),
-
-  claim: asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await uc.claim.execute({
-      partnerId: req.auth?.partnerId,
-      surveyId: body.surveyId,
-      source: body.source ?? 'website',
-    });
-    res.status(200).json({ message: `Lead claimed — ₦${Number(data.fee).toLocaleString()} from your wallet.`, data, success: true });
-  }),
-
-  pool: asyncHandler(async (req, res) => {
-    const q = req.validated?.query ?? req.query;
-    const data = await uc.pool.execute({
-      partnerId: req.auth?.partnerId,
-      isAdmin: await isAdminRequest(req),
-      state: q.state,
-      limit: q.limit,
-      skip: q.skip,
-      q: q.q,
-    });
-    res.status(200).json({ message: 'Lead pool retrieved successfully', data, success: true });
-  }),
-
   rate: asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await uc.rate.execute({
-      partnerId: req.auth?.partnerId,
+      partnerId: me(req),
       prospectId: pid(req),
       score: body.score,
       note: body.note ?? '',
     });
-    res.status(200).json({ message: 'Thanks — your rating sharpens future leads.', data, success: true });
+    res.status(200).json({ message: 'Lead rating saved', data, success: true });
   }),
 
-  importLeads: asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await uc.importLeads.execute({ rows: body.rows });
-    res.status(200).json({ message: `Imported ${data.inserted} of ${data.total} leads`, data, success: true });
-  }),
-
-  adminLeads: asyncHandler(async (req, res) => {
-    const q = req.validated?.query ?? req.query;
-    const data = await uc.adminLeads.execute({
-      q: q.q, state: q.state,
-      status: q.status && q.status !== 'all' ? q.status : null,
-      limit: q.limit, skip: q.skip,
-    });
-    res.status(200).json({ message: 'Pool leads retrieved successfully', data, success: true });
-  }),
-
-  adminLeadDelete: asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    const data = await uc.adminLeadDelete.execute({ id: params.leadId });
-    res.status(200).json({ message: `Pool lead deleted${data.name ? ` (${data.name})` : ''}`, data, success: true });
-  }),
-
-  adminLeadReset: asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    const data = await uc.adminLeadReset.execute({ id: params.leadId });
-    res.status(200).json({ message: 'Pool lead reopened — it is claimable again', data, success: true });
-  }),
   getById: asyncHandler(async (req, res) => {
     // Read — owner, upline or admin (outsiders get 404, never confirm).
     const access = guard ? await guard.requireRead(me(req), pid(req)) : null;

@@ -26,7 +26,7 @@ export class GetMember360UseCase {
     const id = String(member._id ?? member.id ?? partnerId);
     const [money, leads, journey, upline] = await Promise.all([
       this.money(id).catch(() => ({ balance: Number(member.balance ?? 0), in30d: null, txCount: null })),
-      this.growth(id).catch(() => ({ activeLeads: null, claims7d: null, rating: null })),
+      this.growth(id).catch(() => ({ activeLeads: null, deposits: null })),
       this.journey(id).catch(() => ({ level: '—', rankAt: null })),
       this.resolveUpline(member).catch(() => null),
     ]);
@@ -111,21 +111,13 @@ export class GetMember360UseCase {
   }
 
   async growth(id) {
-    const since = new Date(Date.now() - 7 * 86400000);
-    const [activeLeads, claims, ratings] = await Promise.all([
+    const [activeLeads, deposits] = await Promise.all([
       this.prospects ? this.prospects.countDocuments({ partnerId: id, 'status.stage': { $ne: 'Converted' } }).catch(() => null) : null,
-      this.prospects
-        ? this.prospects.find({ partnerId: id, claimedAt: { $gte: since } }).select('rating').lean().catch(() => [])
-        : [],
       this.deposits ? this.deposits.countDocuments({ partnerId: id }).catch(() => null) : null,
     ]);
-    const scores = (claims ?? []).map((c) => Number(c?.rating?.score)).filter((n) => n >= 1 && n <= 5);
     return {
       activeLeads,
-      claims7d: (claims ?? []).length,
-      rating: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null,
-      ratingCount: scores.length,
-      deposits: ratings,
+      deposits,
     };
   }
 
@@ -156,9 +148,6 @@ export class GetMember360UseCase {
     if (days === null || Number.isNaN(days)) flags.push({ tone: 'warn', label: 'Never signed in' });
     else if (days >= 30) flags.push({ tone: 'bad', label: `Dormant ${days}d` });
     if (member.suspendedAt) flags.push({ tone: 'bad', label: 'Suspended' });
-    if (Number(money?.balance ?? 0) < 250 && (growth?.activeLeads ?? 0) > 0) {
-      flags.push({ tone: 'warn', label: 'Low wallet for claims' });
-    }
     if (!member.phone) flags.push({ tone: 'warn', label: 'No phone on file' });
     return flags;
   }

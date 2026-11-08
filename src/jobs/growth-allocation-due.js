@@ -5,7 +5,7 @@ import { JobRunModel, withJobHealth } from './job-health.js';
 /**
  * Growth campaign partner allocation sweep.
  *
- * The legacy `allocation-due` job allocates shared-pool leads to the old
+ * The retired `allocation-due` job allocated shared-pool leads to the old
  * `CampaignModel`. This job is the one that places activated partners into
  * new Growth Campaigns (`GrowthCampaignModel`) automatically, so campaign
  * owners do not need an admin to press "Run allocation".

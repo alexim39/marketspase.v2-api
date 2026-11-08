@@ -53,7 +53,6 @@ test('360 composes identity, login, money, growth, journey, upline and risks', a
     assert.equal(res.money.in30d, 2500);
     assert.equal(res.money.txCount, 2);
     assert.equal(res.growth.activeLeads, 4);
-    assert.equal(res.growth.rating, 4);
     assert.equal(res.journey.level, 'leader');
     assert.equal(res.upline.username, 'upline');
     assert.deepEqual(res.risks, []);
@@ -62,7 +61,7 @@ test('360 composes identity, login, money, growth, journey, upline and risks', a
   }
 });
 
-test('flags never-seen, dormant, suspended, wallet-thin and missing phone', async () => {
+test('flags never-seen, dormant, suspended and missing phone', async () => {
   const d = deps({
     partners: {
       findById: async (id) => {
@@ -84,7 +83,6 @@ test('flags never-seen, dormant, suspended, wallet-thin and missing phone', asyn
   const labels = res.risks.map((r) => r.label);
   assert.ok(labels.includes('Never signed in'));
   assert.ok(labels.includes('Suspended'));
-  assert.ok(labels.includes('Low wallet for claims'));
   assert.ok(labels.includes('No phone on file'));
   assert.equal(res.identity.suspended, true);
 });

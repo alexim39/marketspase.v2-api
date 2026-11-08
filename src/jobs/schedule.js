@@ -14,7 +14,6 @@ import { runDigestJob } from './digest.js';
 import { runDormantNudgeJob } from './dormant-nudge.js';
 import { runOutreachDueJob } from './outreach-due.js';
 import { runBroadcastDueJob } from './broadcast-due.js';
-import { runLeadPoolDueJob } from './leadpool-due.js';
 import { runGrowthAllocationDueJob } from './growth-allocation-due.js';
 import { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 import { JobRunModel, withJobHealth } from './job-health.js';
@@ -40,7 +39,6 @@ import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
  * - dormant nudge (09:00 server-local): one-time "we miss you" mail.
  * - scheduled outreach (every minute): fire due bulk-SMS outbox rows.
  * - scheduled broadcasts (every minute): fire due multi-channel campaigns.
- * - lead-pool sweep (every 15 minutes): warn + auto-return idle claims.
  * - campaign flight expiry (daily 01:30 server-local): end fixed flights
  *   whose end date passed so spend never continues past the paid flight.
  * - session reminders (every 15 minutes): T-24h SMS + T-1h SMS/push for bookings.
@@ -49,7 +47,7 @@ import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
  * Jobs never throw into the scheduler — failures are logged, not fatal.
  * `runSnapshotJob` / `runBirthdayJob` / `runDailyBriefJob` /
  * `runWeeklyReviewJob` / `runDigestJob` / `runDormantNudgeJob` / `runOutreachDueJob` /
- * `runBroadcastDueJob` / `runLeadPoolDueJob` / `runSessionRemindersJob` are
+ * `runBroadcastDueJob` / `runSessionRemindersJob` are
  * exported for tests and triggers.
  */
 export const buildSnapshotJob = (deps = {}) => new BuildTeamSnapshotsUseCase({
@@ -100,7 +98,6 @@ export function scheduleJobs() {
   cron.schedule('0 19 * * *', run('digests', () => runDigestJob()));
   cron.schedule('* * * * *', run('outreach-due', () => runOutreachDueJob()));
   cron.schedule('* * * * *', run('broadcast-due', () => runBroadcastDueJob()));
-  cron.schedule('*/15 * * * *', run('leadpool-sweep', () => withJobHealth(JobRunModel, 'leadpool-sweep', () => runLeadPoolDueJob())));
   cron.schedule('*/15 * * * *', run('growth-campaign-allocation', () => withJobHealth(JobRunModel, 'growth-campaign-allocation', () => runGrowthAllocationDueJob())));
   cron.schedule('30 1 * * *', run('campaign-expiry', () => withJobHealth(JobRunModel, 'campaign-expiry', () => runCampaignExpiryDueJob())));
   cron.schedule('*/15 * * * *', run('session-reminders', () => runSessionRemindersJob()));
@@ -113,7 +110,7 @@ export function scheduleJobs() {
   cron.schedule('*/15 * * * *', run('store-escrow-release', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob())));
   cron.schedule('*/20 * * * * *', run('outbox-delivery', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()), 2 * 60 * 1000));
   cron.schedule('45 2 * * *', run('rank-group-sync', () => withJobHealth(JobRunModel, 'rank-group-sync', () => runRankGroupSyncJob()), 30 * 60 * 1000));
-  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
+  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';
@@ -123,7 +120,6 @@ export { runDigestJob } from './digest.js';
 export { runDormantNudgeJob } from './dormant-nudge.js';
 export { runOutreachDueJob } from './outreach-due.js';
 export { runBroadcastDueJob } from './broadcast-due.js';
-export { runLeadPoolDueJob } from './leadpool-due.js';
 export { runGrowthAllocationDueJob } from './growth-allocation-due.js';
 export { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 export { runSessionRemindersJob } from './session-reminders.js';

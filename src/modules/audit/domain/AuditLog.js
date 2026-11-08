@@ -48,7 +48,6 @@ export const AUDIT_ACTIONS = Object.freeze([
   'broadcast.campaign.queue',  'broadcast.campaign.cancel',
   'broadcast.campaign.retry',
   'broadcast.delete',
-  'lead.import', 'lead.delete', 'lead.status',
   'pagelead.delete', 'pagelead.reassign',
   'partnersurvey.delete',
   'chat.group.create', 'chat.group.delete', 'chat.group.ban',

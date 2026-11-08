@@ -11,7 +11,7 @@ import { adminBootstrapEmails, lenientRole } from '../../identity-access/domain/
  *            by an upline ride `by/byName` attribution + owner notify
  *            downstream. Strangers get 403.
  * - owner:   owner or admin only. PII edits, history deletes, prospect
- *            deletes, converts and pool returns move money/identity/credit.
+ *            deletes, converts and payouts move money/identity/credit.
  *
  * Upline = requester appears in the owner's `partnerOf` ancestor chain
  * (single source of truth, bounded, cycle-safe). Admin = role check incl.
@@ -108,7 +108,7 @@ export const buildProspectAccess = ({ findProspectById, findPartnerById }) => { 
       throw new ForbiddenException(`Only the prospect owner can ${action}`);
     },
 
-    /** Admin-only desks (e.g. full pool dump). */
+    /** Admin-only desks (e.g. page-lead reassignment). */
     async requireAdmin(requesterId) {
       const me = await requester(requesterId);
       if (!isAdminDoc(me)) throw new ForbiddenException('Admin access required');

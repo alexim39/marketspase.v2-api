@@ -21,9 +21,9 @@ const fakeStore = (rows = []) => {
 describe('job health ledger', () => {
   it('records ok and failed runs', async () => {
     const store = fakeStore();
-    await recordJobRun(store, 'campaign-allocation', { ok: true, summary: { delivered: 2 } });
-    await recordJobRun(store, 'campaign-allocation', { ok: false, error: new Error('boom') });
-    const row = store.rows.get('campaign-allocation');
+    await recordJobRun(store, 'growth-campaign-allocation', { ok: true, summary: { delivered: 2 } });
+    await recordJobRun(store, 'growth-campaign-allocation', { ok: false, error: new Error('boom') });
+    const row = store.rows.get('growth-campaign-allocation');
     assert.equal(row.runs, 2);
     assert.equal(row.fails, 1);
     assert.equal(row.lastOk, false);
@@ -32,11 +32,11 @@ describe('job health ledger', () => {
 
   it('withJobHealth returns the result and records it', async () => {
     const store = fakeStore();
-    const out = await withJobHealth(store, 'leadpool-sweep', async () => ({ warned: 1 }));
+    const out = await withJobHealth(store, 'growth-campaign-allocation', async () => ({ warned: 1 }));
     assert.deepEqual(out, { warned: 1 });
-    assert.equal(store.rows.get('leadpool-sweep').runs, 1);
-    await assert.rejects(withJobHealth(store, 'leadpool-sweep', async () => { throw new Error('down'); }), /down/);
-    assert.equal(store.rows.get('leadpool-sweep').fails, 1);
+    assert.equal(store.rows.get('growth-campaign-allocation').runs, 1);
+    await assert.rejects(withJobHealth(store, 'growth-campaign-allocation', async () => { throw new Error('down'); }), /down/);
+    assert.equal(store.rows.get('growth-campaign-allocation').fails, 1);
   });
 
   it('flags sweeps with no recent success as stale', async () => {
@@ -44,13 +44,13 @@ describe('job health ledger', () => {
     const store = fakeStore([
       { job: 'growth-campaign-allocation', lastFinishedAt: new Date('2026-03-01T11:50:00Z'), lastOk: true, runs: 10, fails: 0 },
       { job: 'campaign-expiry', lastFinishedAt: new Date('2026-02-27T01:30:00Z'), lastOk: true, runs: 4, fails: 0 },
-      { job: 'leadpool-sweep', lastFinishedAt: new Date('2026-03-01T11:50:00Z'), lastOk: false, runs: 10, fails: 1 },
+      { job: 'compensation-reconcile', lastFinishedAt: new Date('2026-03-01T11:50:00Z'), lastOk: false, runs: 10, fails: 1 },
     ]);
     const health = await jobsHealth(store, now);
     const byJob = Object.fromEntries(health.map((h) => [h.job, h]));
     assert.equal(byJob['growth-campaign-allocation'].stale, false);
     assert.equal(byJob['campaign-expiry'].stale, true);
-    assert.equal(byJob['leadpool-sweep'].stale, true);
+    assert.equal(byJob['compensation-reconcile'].stale, true);
   });
 
   it('marks never-ran jobs stale', async () => {

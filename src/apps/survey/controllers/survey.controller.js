@@ -27,7 +27,7 @@ export const ProspectSurveyForm = async (req, res) => {
       });
     }
 
-    // Save the survey data to MongoDB (state normalized for pool geo matching).
+    // Save the survey data to MongoDB (state normalized for lead matching).
     const survey = new ProspectSurveyModel({ ...surveyData, stateNorm: normalizeState(surveyData.state) });
     await survey.save();
 
@@ -39,9 +39,9 @@ export const ProspectSurveyForm = async (req, res) => {
           category: 'system',
           priority: 'medium',
           title: `New lead in ${surveyData.state || 'your area'}`,
-          body: `${surveyData.name ?? 'Someone'} just asked to be contacted — open Buy Prospect to claim first.`,
+          body: `${surveyData.name ?? 'Someone'} just asked to be contacted — open Pipeline → Page leads to accept.`,
           icon: 'person_add',
-          link: '/dashboard/prospects/general-list',
+          link: '/dashboard/prospects/personal-list',
           key: `new-lead:${String(survey._id)}:${String(partner._id)}`,
         });
       } catch { /* arrival alerts never fail the submit */ }

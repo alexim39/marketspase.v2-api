@@ -97,32 +97,7 @@ const prospectSchema = mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Survey',
         },
-        // Buy Prospect pickup timestamp — starts the 7-day return window
-        // (partners may send a pool-claimed lead back within 7 days).
-        // Absent on manually added contacts and pre-tracking claims.
-        claimedAt: {
-            type: Date,
-            default: null,
-            index: true,
-        },
-        // Claim fee actually debited (₦). Null/0 = pre-fee claim → no
-        // refund moves on return. Set by the paid claim path only.
-        claimFeePaid: {
-            type: Number,
-            default: null,
-        },
-        // Pool return count snapshot at pickup — release restores
-        // claimCount = poolReturns + 1 so chronic returners keep sinking.
-        poolReturns: {
-            type: Number,
-            default: null,
-        },
-        // Expiry-warning bookkeeping (engine sets it once per claim).
-        claimWarningAt: {
-            type: Date,
-            default: null,
-        },
-        // Partner quality rating (1–5) feeding pool prioritization.
+        // Partner quality rating (1–5) from the pipeline after conversion.
         rating: {
             score: { type: Number, min: 1, max: 5 },
             note: { type: String, maxlength: 500 },

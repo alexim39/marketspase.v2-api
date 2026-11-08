@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import {
-    CreateContactList,  GetContactsCreatedBy,  importSurveyToContact, getAllMySurveyProspect, ImportSingleProspectFromSurveyToContact,
+    CreateContactList,  GetContactsCreatedBy,  importSurveyToContact, getAllMySurveyProspect,
     getProspectById, UpdateProspectStatus, UpdateProspectsStatusMany, UpdateProspectRemark, deleteSingleFromProspect, UpdateContactList, getSurveyProspectFor, moveSingleProspectBackToSurvey
 } from '../controllers/prospect.controller.js'
 import { UpdateProspectCommunications, DeleteProspectCommunication} from '../controllers/communictions.controller.js'
@@ -95,14 +95,11 @@ ProspectRouter.put('/update', requireAuth, validateBodyInPlace(ProspectUpdate), 
 ProspectRouter.get('/all-createdBy/:createdBy', requireAuth, GetContactsCreatedBy);
 // Get all surver prospect for — owner, upline or admin
 ProspectRouter.get('/for/:createdBy', requireAuth, getSurveyProspectFor);
-// REMOVED: GET /all (unbounded unmasked pool dump, no callers) — admins use
-// the paginated, geo-fenced Buy Prospect pool and Admin → Lead pool desks.
+// REMOVED: GET /all (unbounded unmasked dump, no callers).
 // Get all surver prospect gotton by the system (Username !== business) — owner or admin
 ProspectRouter.get('/my/:username', requireAuth, getAllMySurveyProspect);
-// import prospect for user — owner, upline or admin of the target
+// import prospect for user - owner, upline or admin of the target
 ProspectRouter.get('/import/:partnerId', requireAuth, importSurveyToContact );
-// import signle prospect for user — paid claim, session must own the partnerId
-ProspectRouter.get('/import-single/:partnerId/:prospectId/:source', requireAuth, ImportSingleProspectFromSurveyToContact );
 // delete signle prospect for user on survey model
 //ProspectRouter.get('/delete-single/:prospectId', deleteSingleFromSurvey );
 // get signle prospect byid — owner, upline or admin

@@ -6,8 +6,8 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
   ProspectIdParam, PartnerIdParam, CreateProspectSchema, ImportContactsSchema, UpdateProspectSchema,
   UpdateStatusSchema, LogCommunicationSchema, PaginationQuery, CommIdsParam, StuckQuery,
-  ConvertProspectSchema, ClaimProspectSchema, AcceptPageLeadSchema, PoolQuery, RateLeadSchema, ImportLeadsSchema,
-  AdminLeadsQuery, LeadIdParam, AdminPageLeadsQuery, PageLeadIdParam, ReassignPageLeadSchema, PushPoolLeadSchema,
+  ConvertProspectSchema, AcceptPageLeadSchema,
+  AdminPageLeadsQuery, PageLeadIdParam, ReassignPageLeadSchema, RateLeadSchema,
   ResolveContactPhoneSchema,
 } from './Prospect.validator.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
@@ -34,15 +34,8 @@ import { ConvertProspectToPartnerUseCase } from '../application/Prospect.convert
 import { ImportContactsUseCase } from '../application/Prospect.import.js';
 import { buildProspectAccess } from '../application/Prospect.access.js';
 import { PartnersModel } from '../infrastructure/Prospect.models.js';
-import { ReleaseProspectToPoolUseCase } from '../application/Prospect.release.js';
-import { ClaimPoolLeadUseCase } from '../application/Prospect.claim.js';
-import { PushPoolLeadToPartnerUseCase } from '../application/Prospect.push.js';
-import { AssignPoolLeadToPartnerUseCase } from '../application/Prospect.push.js';
 import { AcceptPageLeadUseCase } from '../application/Prospect.accept.js';
-import { GetPoolUseCase, RateLeadUseCase, ImportLeadsUseCase } from '../application/Prospect.pool.js';
-import {
-  ListAdminLeadsUseCase, DeleteAdminLeadUseCase, ResetAdminLeadUseCase,
-} from '../application/Prospect.pool.js';
+import { RateLeadUseCase } from '../application/Prospect.rate.js';
 import {
   ListAdminPageLeadsUseCase, DeleteAdminPageLeadUseCase, ReassignAdminPageLeadUseCase,
 } from '../application/Prospect.pageLeads.js';
@@ -85,14 +78,7 @@ export const buildProspectRouter = (deps = {}) => {
     stuck: new GetStuckProspectsUseCase({ prospects }),
     reminders: new GetFollowUpRemindersUseCase({ prospects }),
     convert: new ConvertProspectToPartnerUseCase({ prospects }),
-    release: new ReleaseProspectToPoolUseCase({ prospects }),
-    claim: new ClaimPoolLeadUseCase({}),
-    pool: new GetPoolUseCase({}),
     rate: new RateLeadUseCase({}),
-    importLeads: new ImportLeadsUseCase({}),
-    adminLeads: new ListAdminLeadsUseCase({}),
-    adminLeadDelete: new DeleteAdminLeadUseCase({}),
-    adminLeadReset: new ResetAdminLeadUseCase({}),
     contactListMine: new GetMyContactListUseCase({ prospects }),
     contactListSubmit: deps.contactListSubmit
       ?? new SubmitContactListUseCase({ prospects, network, events }),
@@ -117,33 +103,6 @@ export const buildProspectRouter = (deps = {}) => {
   router.get('/contact-list/downline', c.contactListDownline);
   router.get('/contact-list/activation', c.contactListActivation);
   router.post('/contact-list/resolve-phone', validate({ body: ResolveContactPhoneSchema }), c.contactListResolvePhone);
-  router.get('/pool', validate({ query: PoolQuery }), c.pool);
-  router.put('/update', validate({ body: UpdateProspectSchema }), c.update);
-  router.put('/:prospectId', validate({ params: ProspectIdParam, body: UpdateProspectSchema }), c.update);
-
-  router.get('/by-partner/:partnerId', validate({ params: PartnerIdParam, query: PaginationQuery }), c.getByPartner);
-  router.get('/all-createdBy/:createdBy', validate({ query: PaginationQuery }), c.getByPartner);
-
-  // Session-owned follow-up reminders — static path precedes `/:prospectId`.
-  router.get('/reminders/mine', c.remindersMine);
-
-  router.get('/notifications/:partnerId', validate({ params: PartnerIdParam }), c.notifications);
-
-  router.get('/stuck/:partnerId', validate({ params: PartnerIdParam, query: StuckQuery }), c.stuck);
-
-  router.get('/:prospectId', validate({ params: ProspectIdParam }), c.getById);
-  router.get('/getById/:prospectId', validate({ params: ProspectIdParam }), c.getById);
-
-  router.post('/:prospectId/status', validate({ params: ProspectIdParam, body: UpdateStatusSchema }), c.updateStatus);
-  router.post('/updateStatus', validate({ body: UpdateStatusSchema }), c.updateStatus);
-
-  router.post('/:prospectId/convert', validate({ params: ProspectIdParam, body: ConvertProspectSchema }), c.convert);
-
-  router.post('/:prospectId/release', validate({ params: ProspectIdParam }), c.release);
-
-  router.post('/:prospectId/rate', validate({ params: ProspectIdParam, body: RateLeadSchema }), c.rate);
-
-  router.post('/claim', validate({ body: ClaimProspectSchema }), idempotency(), c.claim);
 
   router.post('/accept-page-lead', validate({ body: AcceptPageLeadSchema }), idempotency(), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
@@ -152,82 +111,9 @@ export const buildProspectRouter = (deps = {}) => {
     res.status(200).json({ message: 'Lead accepted — find it in My follow-ups.', data, success: true });
   }));
 
-  router.get('/pool', validate({ query: PoolQuery }), c.pool);
-
   router.post('/:prospectId/rate', validate({ params: ProspectIdParam, body: RateLeadSchema }), c.rate);
 
-  router.post('/admin/leads/import', requireRole('admin'), validate({ body: ImportLeadsSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    // Route-scope usecase (c.* are req/res handlers, not usecases) so the
-    // audit below can record the outcome.
-    const importer = deps.importLeads ?? new ImportLeadsUseCase({});
-    const data = await importer.execute({ rows: body.rows });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'lead.import',
-      targetType: 'leadpool', targetId: null,
-      detail: { inserted: data.inserted, failed: data.failed.length, total: data.total },
-    });
-    res.status(200).json({ message: `Imported ${data.inserted} of ${data.total} leads`, data, success: true });
-  }));
-
-  // Admin pool desk — full-platform view (members see only their state).
-  router.get('/admin/leads', requireRole('admin'), validate({ query: AdminLeadsQuery }), c.adminLeads);
-
-  router.delete('/admin/leads/:leadId', requireRole('admin'), validate({ params: LeadIdParam }), asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    // Route-scope usecase (c.* are req/res handlers, not usecases).
-    const remover = deps.adminLeadDelete ?? new DeleteAdminLeadUseCase({});
-    const data = await remover.execute({ id: params.leadId });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'lead.delete',
-      targetType: 'leadpool', targetId: data.id,
-      detail: { name: data.name },
-    });
-    res.status(200).json({ message: `Pool lead deleted${data.name ? ` (${data.name})` : ''}`, data, success: true });
-  }));
-
-  router.patch('/admin/leads/:leadId', requireRole('admin'), validate({ params: LeadIdParam }), asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    // Route-scope usecase (c.* are req/res handlers, not usecases).
-    const resetter = deps.adminLeadReset ?? new ResetAdminLeadUseCase({});
-    const data = await resetter.execute({ id: params.leadId });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'lead.status',
-      targetType: 'leadpool', targetId: data.id,
-      detail: { status: data.status },
-    });
-    res.status(200).json({ message: 'Pool lead reopened — it is claimable again', data, success: true });
-  }));
-
-  router.post('/admin/leads/:leadId/push', requireRole('admin'), validate({ params: LeadIdParam, body: PushPoolLeadSchema }), asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    const body = req.validated?.body ?? req.body;
-    // Route-scope usecase (c.* are req/res handlers, not usecases).
-    const pusher = deps.adminLeadPush ?? new PushPoolLeadToPartnerUseCase({});
-    const data = await pusher.execute({ leadId: params.leadId, username: body.username });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'poollead.push',
-      targetType: 'leadpool', targetId: params.leadId,
-      detail: { username: data.username, prospectId: data.prospectId },
-    });
-    res.status(200).json({ message: `Lead pushed to @${data.username} — free, in their pipeline now`, data, success: true });
-  }));
-
-  router.post('/admin/leads/:leadId/assign', requireRole('admin'), validate({ params: LeadIdParam, body: PushPoolLeadSchema }), asyncHandler(async (req, res) => {
-    const params = req.validated?.params ?? req.params;
-    const body = req.validated?.body ?? req.body;
-    // Route-scope usecase (c.* are req/res handlers, not usecases).
-    const assigner = deps.adminLeadAssign ?? new AssignPoolLeadToPartnerUseCase({});
-    const data = await assigner.execute({ leadId: params.leadId, username: body.username });
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'poollead.assign',
-      targetType: 'leadpool', targetId: params.leadId,
-      detail: { username: data.username },
-    });
-    res.status(200).json({ message: `Lead assigned to @${data.username} — in their My Page Leads inbox`, data, success: true });
-  }));
-
-  // Admin page-lead desk — private /:username submissions (never pool rows).
+  // Admin page-lead desk — private /:username submissions.
   router.get('/admin/page-leads', requireRole('admin'), validate({ query: AdminPageLeadsQuery }), asyncHandler(async (req, res) => {
     const q = req.validated?.query ?? req.query;
     const lister = deps.adminPageLeads ?? new ListAdminPageLeadsUseCase({});

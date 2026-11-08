@@ -1,13 +1,9 @@
 import { ProspectModel } from "../models/prospect.model.js";
 import { ProspectSurveyModel } from "../../survey/models/survey.model.js";
 import { PartnersModel } from '../../partner/models/partner.model.js';
-import { ClaimPoolLeadUseCase } from '../../../modules/crm/application/Prospect.claim.js';
 import { buildProspectAccess, isAdminDoc } from '../../../modules/crm/application/Prospect.access.js';
 import { maskProspectContact } from '../../../modules/crm/domain/Prospect.visibility.js';
 import { stageForStatusName } from '../../../modules/crm/domain/Prospect.entity.js';
-
-// Shared paid-claim core (fee debit + atomic pool claim) — also serves v1.
-const claimPoolLead = new ClaimPoolLeadUseCase({});
 
 // Ownership guard: owner/upline/admin reads + support writes, owner/admin
 // for PII, deletes and converts. Legacy routes never had auth — every
@@ -460,9 +456,6 @@ export const getSurveyProspectFor = async (req, res) => {
 };
 
 
-// REMOVED: getAllSurveyProspect (unbounded unmasked pool dump, no callers)
-// — admins use the paginated Admin → Lead pool desk instead.
-
 // Get all surver prospect gotton by the system (Username !== business) —
 // private page-lead inbox: the owning partner or admin only.
 export const getAllMySurveyProspect = async (req, res) => {
@@ -619,49 +612,6 @@ export const getAllMySurveyProspect = async (req, res) => {
     });
   }
 }; */
-
-/* Import single prospect from survey to contact — paid claim.
- * Delegates to the shared ClaimPoolLeadUseCase (fee debit, atomic claim),
- * so legacy pages and the Buy Prospect dialog run identical economics.
- * Session-owned: a mismatched param partnerId is rejected. */
-export const ImportSingleProspectFromSurveyToContact = async (req, res) => {
-  try {
-    const { partnerId, prospectId, source } = req.params;
-
-    // Validate required params
-    if (!partnerId || !prospectId) {
-      return res.status(400).json({
-        message: "Missing required parameters.",
-        success: false
-      });
-    }
-    const sessionId = req.auth?.partnerId ? String(req.auth.partnerId) : null;
-    if (sessionId && String(partnerId) !== sessionId) {
-      return res.status(403).json({
-        message: "You can only claim leads for yourself.",
-        success: false
-      });
-    }
-
-    const data = await claimPoolLead.execute({
-      partnerId: sessionId ?? String(partnerId),
-      surveyId: prospectId,
-      source,
-    });
-    return res.status(200).json({
-      message: "Prospect moved successfully to your contact list!",
-      data,
-      success: true
-    });
-  } catch (error) {
-    const status = error?.statusCode ?? 500;
-    return res.status(status).json({
-      message: status === 500 ? 'Prospect not moved, something went wrong' : error.message,
-      ...(status === 500 ? { error: error.message } : {}),
-      success: false
-    });
-  }
-};
 
 // get single prospect by id — owner, upline or admin (outsiders get 404).
 export const getProspectById = async (req, res) => {  
