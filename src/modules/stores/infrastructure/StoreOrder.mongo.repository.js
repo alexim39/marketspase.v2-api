@@ -1129,8 +1129,8 @@ export class StoreOrderRepository {
     const request = await StoreReturnRequestModel.findById(returnId).lean();
     if (!request) throw new NotFoundException('Return request not found');
     if (request.status === 'refunded') return publicReturnRequest(request);
-    if (!['approved', 'received'].includes(request.status)) {
-      throw new ConflictException('Approve or receive this return before refunding it');
+    if (request.status !== 'received') {
+      throw new ConflictException('The partner must confirm the returned item before a refund');
     }
     const cleanReason = text(reason || request.reason, 500);
     const order = await this.refundOrder(request.orderId, {
