@@ -7,6 +7,8 @@
 export const PROGRESSION_EVENTS = {
   /** A member's stored level just advanced (fires exactly once per rank). */
   PROMOTED: 'progression.promoted',
+  /** A scheduled review moved a stored level down one step. */
+  DEMOTED: 'progression.demoted',
   /** A member marked training done → upline confirmation requested. */
   TRAINING_CONFIRM_REQUESTED: 'progression.training.requested',
   /** An upline decided a training confirmation (approved or declined). */
@@ -24,6 +26,18 @@ export const promotedPayload = ({ partnerId, from, to, toLabel = null, memberNam
   partnerId: String(partnerId),
   from: String(from),
   to: String(to),
+  toLabel: toLabel ? String(toLabel) : String(to),
+  memberName: memberName ? String(memberName) : null,
+  uplineId: uplineId ? String(uplineId) : null,
+});
+
+/** A monthly review moved the member down one rank. */
+export const demotedPayload = ({ partnerId, from, to, fromLabel = null, toLabel = null, memberName = null, uplineId = null }) => ({
+  type: PROGRESSION_EVENTS.DEMOTED,
+  partnerId: String(partnerId),
+  from: String(from),
+  to: String(to),
+  fromLabel: fromLabel ? String(fromLabel) : String(from),
   toLabel: toLabel ? String(toLabel) : String(to),
   memberName: memberName ? String(memberName) : null,
   uplineId: uplineId ? String(uplineId) : null,

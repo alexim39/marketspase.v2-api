@@ -1,4 +1,5 @@
 import express from 'express';
+import { z } from 'zod';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, userKey } from '../../../shared/http/rateLimit.js';
@@ -12,6 +13,7 @@ import { recordAudit } from '../../audit/index.js';
 import { buildImageStore } from '../../settings/infrastructure/CloudinaryClient.js';
 import { StoreRepository } from '../infrastructure/Store.mongo.repository.js';
 import { StoreOrderRepository } from '../infrastructure/StoreOrder.mongo.repository.js';
+import { StoreCustomerLeadRepository } from '../infrastructure/StoreCustomerLead.mongo.repository.js';
 import { storeImageUpload } from './StoreImage.upload.js';
 import {
   StoreListQuerySchema,
@@ -20,9 +22,16 @@ import {
   StoreOrderParamsSchema,
   StoreOrderReferenceSchema,
   StoreOrderUpdateSchema,
+  StoreCustomerLeadQuerySchema,
+  StoreCustomerLeadParamsSchema,
+  StoreCustomerLeadUpdateSchema,
   StoreProductParamsSchema,
   StoreProductUpdateSchema,
   StorePublicProductParamsSchema,
+  StoreReturnCreateSchema,
+  StoreReturnListQuerySchema,
+  StoreReturnParamsSchema,
+  StoreReturnUpdateSchema,
   StoreSlugParamsSchema,
   StoreUpdateSchema,
 } from './Store.validator.js';
@@ -30,6 +39,7 @@ import {
 export const buildStoreRouter = (deps = {}) => {
   const repo = deps.repo ?? new StoreRepository();
   const orderRepo = deps.orderRepo ?? new StoreOrderRepository();
+  const customerLeads = deps.customerLeads ?? new StoreCustomerLeadRepository();
   const images = deps.images ?? buildImageStore({
     ...(env.cloudinary ?? {}),
     folder: 'marketspase-stores',
@@ -37,6 +47,7 @@ export const buildStoreRouter = (deps = {}) => {
   });
   const auth = deps.auth ?? requireAuth;
   const audit = deps.audit ?? recordAudit;
+  const orderIdempotency = deps.idempotency ?? idempotency({ required: true });
   const router = express.Router();
   const listingLimit = rateLimit({
     name: 'store-listing',
@@ -49,6 +60,19 @@ export const buildStoreRouter = (deps = {}) => {
     windowMs: 3600000,
     max: 10,
     key: userKey,
+  });
+  /** Checkout creation is public money movement: cap it per IP. */
+  const checkoutLimit = rateLimit({
+    name: 'store-checkout',
+    windowMs: 3600000,
+    max: 20,
+    key: (req) => `${req.ip}:${String(req.params?.slug ?? '')}`,
+  });
+  /** Order lookups are public; keep enumeration attempts cheap. */
+  const orderLookupLimit = rateLimit({
+    name: 'store-order-lookup',
+    windowMs: 600000,
+    max: 60,
   });
 
   // ── Partner-owned store management (must precede /:slug) ──────────────
@@ -108,6 +132,78 @@ export const buildStoreRouter = (deps = {}) => {
     const data = await orderRepo.getPartnerEarnings(req.auth.partnerId);
     return sendSuccess(res, { data });
   }));
+
+  router.get(
+    '/me/returns',
+    auth,
+    validate({ query: StoreReturnListQuerySchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.listPartnerReturns(req.auth.partnerId, req.validated.query);
+      return sendSuccess(res, { data });
+    }),
+  );
+
+  router.patch(
+    '/me/returns/:returnId',
+    auth,
+    validate({ params: StoreReturnParamsSchema, body: StoreReturnUpdateSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.updatePartnerReturn(
+        req.auth.partnerId,
+        req.validated.params.returnId,
+        req.validated.body,
+      );
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'store.return.update',
+        targetType: 'store-return',
+        targetId: req.validated.params.returnId,
+        detail: { status: data.status },
+      });
+      return sendSuccess(res, { message: `Return ${data.status}`, data });
+    }),
+  );
+
+  router.get(
+    '/me/customer-leads',
+    auth,
+    validate({ query: StoreCustomerLeadQuerySchema }),
+    asyncHandler(async (req, res) => {
+      const data = await customerLeads.list(req.auth.partnerId, req.validated.query);
+      return sendSuccess(res, {
+        message: 'Customer leads retrieved',
+        data: data.items,
+        meta: {
+          total: data.total,
+          limit: req.validated.query.limit,
+          skip: req.validated.query.skip,
+          summary: data.summary,
+          statusCounts: data.statusCounts,
+        },
+      });
+    }),
+  );
+
+  router.patch(
+    '/me/customer-leads/:leadId',
+    auth,
+    validate({ params: StoreCustomerLeadParamsSchema, body: StoreCustomerLeadUpdateSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await customerLeads.update(
+        req.auth.partnerId,
+        req.validated.params.leadId,
+        req.validated.body,
+      );
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'store.customer-lead.update',
+        targetType: 'store-customer-lead',
+        targetId: req.validated.params.leadId,
+        detail: { status: data.status },
+      });
+      return sendSuccess(res, { message: 'Customer updated', data });
+    }),
+  );
 
   router.patch(
     '/me/orders/:orderId',
@@ -215,8 +311,9 @@ export const buildStoreRouter = (deps = {}) => {
 
   router.post(
     '/:slug/orders',
+    checkoutLimit,
     validate({ params: StoreSlugParamsSchema, body: StoreOrderCreateSchema }),
-    idempotency(),
+    orderIdempotency,
     asyncHandler(async (req, res) => {
       const data = await orderRepo.createOrder(req.validated.params.slug, req.validated.body);
       return sendSuccess(res, {
@@ -236,21 +333,80 @@ export const buildStoreRouter = (deps = {}) => {
     }),
   );
 
+  const orderToken = (req) => (
+    String(req.query?.token ?? req.get('x-order-token') ?? '').trim()
+  );
+
   router.get(
     '/orders/:reference',
+    orderLookupLimit,
     validate({ params: StoreOrderReferenceSchema }),
     asyncHandler(async (req, res) => {
-      const data = await orderRepo.getOrder(req.validated.params.reference);
+      const data = await orderRepo.getOrder(req.validated.params.reference, {
+        token: orderToken(req),
+      });
       return sendSuccess(res, { data });
     }),
   );
 
   router.post(
     '/orders/:reference/verify',
+    orderLookupLimit,
     validate({ params: StoreOrderReferenceSchema }),
     asyncHandler(async (req, res) => {
-      const data = await orderRepo.verifyOrder(req.validated.params.reference);
+      const data = await orderRepo.verifyOrder(req.validated.params.reference, {
+        token: orderToken(req),
+      });
       return sendSuccess(res, { message: 'Payment status checked', data });
+    }),
+  );
+
+  router.post(
+    '/orders/:reference/received',
+    orderLookupLimit,
+    validate({ params: StoreOrderReferenceSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.markCustomerReceived(
+        req.validated.params.reference,
+        orderToken(req),
+      );
+      return sendSuccess(res, { message: 'Delivery confirmed — thank you', data });
+    }),
+  );
+
+  router.get(
+    '/orders/:reference/return',
+    orderLookupLimit,
+    validate({ params: StoreOrderReferenceSchema }),
+    asyncHandler(async (req, res) => {
+      const order = await orderRepo.getOrder(req.validated.params.reference, {
+        token: orderToken(req),
+      });
+      return sendSuccess(res, { data: order.returnRequest ?? null });
+    }),
+  );
+
+  router.post(
+    '/orders/:reference/returns',
+    orderLookupLimit,
+    validate({ params: StoreOrderReferenceSchema, body: StoreReturnCreateSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await orderRepo.requestReturn(
+        req.validated.params.reference,
+        orderToken(req),
+        req.validated.body,
+      );
+      return sendSuccess(res, { message: 'Return requested', data });
+    }),
+  );
+
+  router.get(
+    '/resolve/:handle',
+    validate({ params: z.object({ handle: z.string().trim().min(1).max(80) }) }),
+    asyncHandler(async (req, res) => {
+      const data = await repo.resolvePublicSlug(req.validated.params.handle);
+      res.set('Cache-Control', 'public, max-age=60');
+      return sendSuccess(res, { data });
     }),
   );
 

@@ -20,19 +20,29 @@ import {
   StoreOrderModel,
   StoreProductModel,
   StoreStockLedgerModel,
+  StoreCustomerLeadModel,
+  StoreReturnRequestModel,
 } from './Store.models.js';
+import { refreshStoreInStock } from './StoreInventoryFlags.js';
 import {
   fromKobo,
   newStoreOrderNumber,
   newStoreOrderReference,
   storeCheckoutReturnUrl,
+  storeAutoDeliverDays,
   storeEscrowHoldDays,
+  storeReturnWindowDays,
   storeOrderTtlMinutes,
   storePricing,
   storeServiceFeePercent,
   toKobo,
 } from '../domain/StorePricing.js';
 import { STORE_EVENTS } from '../domain/StoreEvents.js';
+import {
+  storeOrderAccessToken,
+  storeOrderTrackingUrl,
+  verifyStoreOrderAccessToken,
+} from '../domain/StoreOrderAccess.js';
 
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value ?? ''));
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -123,15 +133,99 @@ export const publicOrder = (order) => ({
   updatedAt: order.updatedAt,
 });
 
+const maskName = (value) => {
+  const parts = String(value ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'Customer';
+  if (parts.length === 1) return parts[0].slice(0, 1) + '***';
+  return `${parts[0]} ${parts[parts.length - 1].slice(0, 1)}.`;
+};
+
+const maskEmail = (value) => {
+  const raw = String(value ?? '').trim();
+  const [local, domain] = raw.split('@');
+  if (!local || !domain) return '';
+  return `${local.slice(0, 1)}***@${domain}`;
+};
+
+const maskPhone = (value) => {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  return `${'*'.repeat(Math.max(digits.length - 4, 0))}${digits.slice(-4)}`;
+};
+
+const maskStreet = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const first = raw.split(/\s+/)[0] ?? '';
+  return `${first}***`;
+};
+
+const publicReturnRequest = (request) => {
+  if (!request) return null;
+  return {
+    id: String(request._id),
+    status: request.status,
+    reason: request.reason ?? '',
+    note: request.note ?? '',
+    adminNote: request.adminNote ?? '',
+    requestedAt: request.createdAt ?? null,
+    decidedAt: request.decidedAt ?? null,
+    receivedAt: request.receivedAt ?? null,
+    refundedAt: request.refundedAt ?? null,
+    refundReference: request.refundReference ?? '',
+  };
+};
+
+const findReturnRequest = async (orderId) => (
+  StoreReturnRequestModel.findOne({ orderId }).lean().catch(() => null)
+);
+
+/**
+ * Customer-safe order view. The full `publicOrder` includes PII for the
+ * partner/admin; this shape is the only one returned to an unauthenticated
+ * customer holding a signed order token.
+ */
+export const customerOrder = (order, returnRequest = null) => {
+  const full = publicOrder(order);
+  return {
+    ...full,
+    returnRequest,
+    customer: {
+      name: maskName(full.customer.name),
+      email: maskEmail(full.customer.email),
+      phone: maskPhone(full.customer.phone),
+      street: maskStreet(full.customer.street),
+      city: full.customer.city,
+      state: full.customer.state,
+      country: full.customer.country,
+      note: '',
+    },
+    amounts: {
+      merchandise: full.amounts.merchandise,
+      delivery: full.amounts.delivery,
+      total: full.amounts.total,
+      currency: full.amounts.currency,
+    },
+    payment: {
+      provider: full.payment.provider,
+      status: full.payment.status,
+      paidAt: full.payment.paidAt,
+      currency: full.payment.currency,
+    },
+  };
+};
+
 const cleanCustomer = (customer = {}) => ({
   name: text(customer.name, 120),
   email: lower(customer.email, 254),
   phone: text(customer.phone, 30),
+  phoneKey: text(customer.phone, 30).replace(/\D/g, '').replace(/^234/, '0'),
   street: text(customer.street, 300),
   city: text(customer.city, 120),
   state: text(customer.state, 120),
   country: text(customer.country || 'Nigeria', 80) || 'Nigeria',
   note: text(customer.note, 1000),
+  consentToContact: customer.consentToContact === true,
 });
 
 const assertCustomer = (customer) => {
@@ -141,6 +235,35 @@ const assertCustomer = (customer) => {
   if (!customer.street || !customer.city || !customer.state) {
     throw new ValidationException('Add a complete delivery address');
   }
+};
+
+/** Capture/update the partner's CRM row for a store checkout. */
+const upsertCheckoutCustomerLead = async ({ store, customer, at, session }) => {
+  if (!customer?.phoneKey) return null;
+  return StoreCustomerLeadModel.findOneAndUpdate(
+    { partnerId: store.partnerId, phoneKey: customer.phoneKey },
+    {
+      $set: {
+        storeId: store._id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        street: customer.street,
+        city: customer.city,
+        state: customer.state,
+        country: customer.country,
+        note: customer.note,
+        consentToContact: customer.consentToContact === true,
+        lastCheckoutAt: at,
+      },
+      $setOnInsert: {
+        firstSeenAt: at,
+        status: 'New',
+      },
+      $inc: { checkoutCount: 1 },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true, ...(session ? { session } : {}) },
+  ).lean();
 };
 
 const normaliseItems = (items = []) => {
@@ -178,11 +301,13 @@ export class StoreOrderRepository {
     return {
       serviceFeePercent: Number(doc?.storeServiceFeePercent ?? storeServiceFeePercent()),
       escrowHoldDays: Number(doc?.storeEscrowHoldDays ?? storeEscrowHoldDays()),
+      autoDeliverDays: Number(doc?.storeAutoDeliverDays ?? storeAutoDeliverDays()),
+      returnWindowDays: Number(doc?.storeReturnWindowDays ?? storeReturnWindowDays()),
       currency: 'NGN',
     };
   }
 
-  async updateStoreSettings({ serviceFeePercent, escrowHoldDays }) {
+  async updateStoreSettings({ serviceFeePercent, escrowHoldDays, autoDeliverDays = null, returnWindowDays = null }) {
     const fee = Number(serviceFeePercent);
     const days = Number(escrowHoldDays);
     if (!Number.isFinite(fee) || fee < 0 || fee > 20) {
@@ -191,12 +316,22 @@ export class StoreOrderRepository {
     if (!Number.isFinite(days) || days < 0 || days > 60) {
       throw new ValidationException('Escrow hold days must be between 0 and 60');
     }
+    const autoDays = autoDeliverDays === null ? storeAutoDeliverDays() : Number(autoDeliverDays);
+    if (!Number.isFinite(autoDays) || autoDays < 0 || autoDays > 60) {
+      throw new ValidationException('Auto-deliver days must be between 0 and 60');
+    }
+    const returnDays = returnWindowDays === null ? storeReturnWindowDays() : Number(returnWindowDays);
+    if (!Number.isFinite(returnDays) || returnDays < 0 || returnDays > 60) {
+      throw new ValidationException('Return window days must be between 0 and 60');
+    }
     const doc = await PlatformSettingModel.findOneAndUpdate(
       { key: 'store' },
       {
         $set: {
           storeServiceFeePercent: Math.round(fee * 100) / 100,
           storeEscrowHoldDays: Math.round(days),
+          storeAutoDeliverDays: Math.round(autoDays),
+          storeReturnWindowDays: Math.round(returnDays),
         },
         $setOnInsert: { key: 'store' },
       },
@@ -205,6 +340,8 @@ export class StoreOrderRepository {
     return {
       serviceFeePercent: Number(doc.storeServiceFeePercent) || 0,
       escrowHoldDays: Number(doc.storeEscrowHoldDays) || 0,
+      autoDeliverDays: Number(doc.storeAutoDeliverDays) || 0,
+      returnWindowDays: Number(doc.storeReturnWindowDays) || 0,
       currency: 'NGN',
     };
   }
@@ -322,6 +459,16 @@ export class StoreOrderRepository {
             events: [{ type: 'order_created', note: 'Awaiting payment' }],
           },
         ], opts);
+
+        await upsertCheckoutCustomerLead({
+          store,
+          customer,
+          at: order.createdAt ?? new Date(),
+          session,
+        });
+
+        await refreshStoreInStock(store._id, { session }).catch(() => null);
+
         return order;
       });
     } catch (error) {
@@ -376,26 +523,37 @@ export class StoreOrderRepository {
 
     return {
       order: publicOrder(updated),
+      orderToken: storeOrderAccessToken(updated),
+      trackingUrl: storeOrderTrackingUrl(updated),
       checkoutUrl: opened.authorizationUrl,
     };
   }
 
-  async getOrder(reference) {
+  async customerOrderFor(reference, token) {
     const clean = text(reference, 80);
     if (!clean) throw new NotFoundException('Order not found');
     const order = await StoreOrderModel.findOne({ reference: clean }).lean();
-    if (!order) throw new NotFoundException('Order not found');
-    return publicOrder(order);
+    if (!order || !verifyStoreOrderAccessToken(order, token)) {
+      throw new NotFoundException('Order not found');
+    }
+    return order;
   }
 
-  async verifyOrder(reference) {
-    const clean = text(reference, 80);
-    if (!clean) throw new NotFoundException('Order not found');
-    const order = await StoreOrderModel.findOne({ reference: clean }).lean();
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.payment?.status === 'paid') return { order: publicOrder(order), status: 'paid' };
+  async getOrder(reference, { token } = {}) {
+    const order = await this.customerOrderFor(reference, token);
+    return customerOrder(order, publicReturnRequest(await findReturnRequest(order._id)));
+  }
+
+  async verifyOrder(reference, { token } = {}) {
+    const order = await this.customerOrderFor(reference, token);
+    const clean = String(order.reference);
+    const withReturn = async (row) => customerOrder(
+      row,
+      publicReturnRequest(await findReturnRequest(row._id)),
+    );
+    if (order.payment?.status === 'paid') return { order: await withReturn(order), status: 'paid' };
     if (order.status === 'cancelled') {
-      return { order: publicOrder(order), status: 'cancelled' };
+      return { order: await withReturn(order), status: 'cancelled' };
     }
     if (!this.paystack?.enabled) {
       throw new ValidationException('Card payments are not available right now');
@@ -418,16 +576,16 @@ export class StoreOrderRepository {
       }
       const settled = await this.settleOrder(order, live);
       const fresh = await StoreOrderModel.findById(order._id).lean();
-      return { order: publicOrder(fresh), status: settled.deduped ? 'paid' : 'paid', deduped: settled.deduped === true };
+      return { order: await withReturn(fresh), status: 'paid', deduped: settled.deduped === true };
     }
 
     if (terminalPaymentFailure.has(paymentStatus)) {
       await this.cancelPendingOrder(order._id, 'Payment was not completed');
       const fresh = await StoreOrderModel.findById(order._id).lean();
-      return { order: publicOrder(fresh), status: 'cancelled' };
+      return { order: await withReturn(fresh), status: 'cancelled' };
     }
 
-    return { order: publicOrder(order), status: order.payment?.status ?? 'pending' };
+    return { order: await withReturn(order), status: order.payment?.status ?? 'pending' };
   }
 
   async settleOrder(order, live) {
@@ -537,6 +695,17 @@ export class StoreOrderRepository {
         opts,
       );
 
+      if (claimed.customer?.phoneKey) {
+        await StoreCustomerLeadModel.updateOne(
+          { partnerId: claimed.partnerId, phoneKey: claimed.customer.phoneKey },
+          {
+            $inc: { paidOrders: 1, totalSpentKobo: totalKobo },
+            $set: { lastPaidAt: paidAt },
+          },
+          opts,
+        );
+      }
+
       return { deduped: false, paymentFeeKobo, partnerPendingKobo };
     });
 
@@ -547,8 +716,12 @@ export class StoreOrderRepository {
         reference: order.reference,
         orderNumber: order.orderNumber,
         customerName: order.customer?.name ?? 'A customer',
+        customerEmail: order.customer?.email ?? '',
+        customerPhone: order.customer?.phone ?? '',
+        storeName: order.storeName ?? '',
         total: fromKobo(order.amounts?.totalKobo),
         currency: 'NGN',
+        trackingUrl: storeOrderTrackingUrl(order),
       });
     }
 
@@ -676,7 +849,321 @@ export class StoreOrderRepository {
       { new: true },
     ).lean();
     if (!updated) throw new ConflictException('Order status changed. Refresh and try again');
+    if (nextStatus === 'shipped' || nextStatus === 'delivered') {
+      void this.events?.emit?.(
+        nextStatus === 'shipped' ? STORE_EVENTS.ORDER_SHIPPED : STORE_EVENTS.ORDER_DELIVERED,
+        {
+          orderId: String(updated._id),
+          partnerId: String(updated.partnerId),
+          reference: updated.reference,
+          orderNumber: updated.orderNumber,
+          customerName: updated.customer?.name ?? 'Customer',
+          customerEmail: updated.customer?.email ?? '',
+          storeName: updated.storeName ?? '',
+          trackingUrl: storeOrderTrackingUrl(updated),
+          courier: updated.fulfilment?.courier ?? '',
+          trackingNumber: updated.fulfilment?.trackingNumber ?? '',
+          trackingLink: updated.fulfilment?.trackingUrl ?? '',
+        },
+      );
+    }
     return publicOrder(updated);
+  }
+
+  async markCustomerReceived(reference, token) {
+    const order = await this.customerOrderFor(reference, token);
+    if (order.status === 'delivered') {
+      return customerOrder(order, publicReturnRequest(await findReturnRequest(order._id)));
+    }
+    if (!['shipped', 'processing', 'paid'].includes(order.status)) {
+      throw new ConflictException('This order cannot be confirmed as received yet');
+    }
+    const at = now();
+    const settings = await this.getStoreSettings();
+    const updated = await StoreOrderModel.findOneAndUpdate(
+      { _id: order._id, status: { $in: ['shipped', 'processing', 'paid'] } },
+      {
+        $set: {
+          status: 'delivered',
+          deliveredAt: at,
+          'escrow.releaseAt': new Date(at.getTime() + settings.escrowHoldDays * 24 * 60 * 60 * 1000),
+        },
+        $push: { events: { type: 'customer_received', at, note: 'Customer confirmed delivery' } },
+      },
+      { new: true },
+    ).lean();
+    if (!updated) throw new ConflictException('Order status changed. Refresh and try again');
+    void this.events?.emit?.(STORE_EVENTS.ORDER_DELIVERED, {
+      orderId: String(updated._id),
+      partnerId: String(updated.partnerId),
+      reference: updated.reference,
+      orderNumber: updated.orderNumber,
+      customerName: updated.customer?.name ?? 'Customer',
+      customerEmail: updated.customer?.email ?? '',
+      storeName: updated.storeName ?? '',
+      trackingUrl: storeOrderTrackingUrl(updated),
+      courier: updated.fulfilment?.courier ?? '',
+      trackingNumber: updated.fulfilment?.trackingNumber ?? '',
+      trackingLink: updated.fulfilment?.trackingUrl ?? '',
+      auto: false,
+    });
+    return customerOrder(updated, publicReturnRequest(await findReturnRequest(updated._id)));
+  }
+
+  /**
+   * Safety net for sellers who forget to mark delivery. Once the configured
+   * delivery window has passed since shipping, the order is treated as
+   * delivered so escrow can mature. An open return request pauses release.
+   */
+  async autoDeliverShippedOrders() {
+    const settings = await this.getStoreSettings();
+    const cutoff = new Date(Date.now() - settings.autoDeliverDays * 24 * 60 * 60 * 1000);
+    const due = await StoreOrderModel.find({
+      status: 'shipped',
+      shippedAt: { $lte: cutoff },
+    }).sort({ shippedAt: 1 }).limit(50).lean();
+    let delivered = 0;
+    for (const order of due) {
+      const at = now();
+      const releaseAt = new Date(at.getTime() + settings.escrowHoldDays * 24 * 60 * 60 * 1000);
+      const updated = await StoreOrderModel.findOneAndUpdate(
+        { _id: order._id, status: 'shipped' },
+        {
+          $set: {
+            status: 'delivered',
+            deliveredAt: at,
+            'escrow.releaseAt': releaseAt,
+          },
+          $push: {
+            events: {
+              type: 'order_auto_delivered',
+              at,
+              note: `Automatically marked delivered after ${settings.autoDeliverDays} days in transit`,
+            },
+          },
+        },
+        { new: true },
+      ).lean();
+      if (!updated) continue;
+      delivered += 1;
+      void this.events?.emit?.(STORE_EVENTS.ORDER_AUTO_DELIVERED, {
+        orderId: String(updated._id),
+        partnerId: String(updated.partnerId),
+        reference: updated.reference,
+        orderNumber: updated.orderNumber,
+        customerName: updated.customer?.name ?? 'Customer',
+        customerEmail: updated.customer?.email ?? '',
+        storeName: updated.storeName ?? '',
+        trackingUrl: storeOrderTrackingUrl(updated),
+        courier: updated.fulfilment?.courier ?? '',
+        trackingNumber: updated.fulfilment?.trackingNumber ?? '',
+        trackingLink: updated.fulfilment?.trackingUrl ?? '',
+        auto: true,
+      });
+    }
+    return { checked: due.length, delivered };
+  }
+
+  async requestReturn(reference, token, { reason = '', note = '' } = {}) {
+    const order = await this.customerOrderFor(reference, token);
+    const cleanReason = text(reason, 160);
+    if (cleanReason.length < 3) throw new ValidationException('Add a reason for the return');
+    if (order.status !== 'delivered' || !order.deliveredAt) {
+      throw new ConflictException('Returns open after the order is delivered');
+    }
+    const settings = await this.getStoreSettings();
+    if (settings.returnWindowDays <= 0) {
+      throw new ConflictException('Returns are not available for this store');
+    }
+    const closesAt = new Date(
+      new Date(order.deliveredAt).getTime() + settings.returnWindowDays * 24 * 60 * 60 * 1000,
+    );
+    if (Date.now() > closesAt.getTime()) {
+      throw new ConflictException('The return window for this order has closed');
+    }
+    const existing = await findReturnRequest(order._id);
+    if (existing) return publicReturnRequest(existing);
+
+    let request;
+    try {
+      request = await StoreReturnRequestModel.create({
+        storeId: order.storeId,
+        partnerId: order.partnerId,
+        orderId: order._id,
+        reference: order.reference,
+        orderNumber: order.orderNumber,
+        customerEmail: order.customer?.email ?? '',
+        items: (order.items ?? []).map((item) => ({
+          storeProductId: item.storeProductId,
+          name: item.name,
+          quantity: item.quantity,
+        })),
+        reason: cleanReason,
+        note: text(note, 1000),
+        status: 'requested',
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        return publicReturnRequest(await findReturnRequest(order._id));
+      }
+      throw error;
+    }
+
+    await StoreOrderModel.updateOne(
+      { _id: order._id },
+      { $push: { events: { type: 'return_requested', at: now(), note: cleanReason } } },
+    ).catch(() => null);
+    void this.events?.emit?.(STORE_EVENTS.RETURN_REQUESTED, {
+      returnId: String(request._id),
+      orderId: String(order._id),
+      partnerId: String(order.partnerId),
+      reference: order.reference,
+      orderNumber: order.orderNumber,
+      customerName: order.customer?.name ?? 'Customer',
+      customerEmail: order.customer?.email ?? '',
+      reason: cleanReason,
+    });
+    return publicReturnRequest(request.toObject ? request.toObject() : request);
+  }
+
+  async listPartnerReturns(partnerId, { status, limit = 100 } = {}) {
+    if (!hasId(partnerId)) throw new ValidationException('Invalid partner');
+    const filter = { partnerId: new mongoose.Types.ObjectId(partnerId) };
+    if (status) filter.status = status;
+    const rows = await StoreReturnRequestModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(Number(limit) || 100, 1), 100))
+      .lean();
+    return rows.map((row) => ({
+      ...publicReturnRequest(row),
+      orderId: String(row.orderId),
+      reference: row.reference,
+      orderNumber: row.orderNumber,
+      customerEmail: row.customerEmail,
+      items: row.items ?? [],
+    }));
+  }
+
+  async updatePartnerReturn(partnerId, returnId, { action = '', note = '' } = {}) {
+    if (!hasId(partnerId) || !hasId(returnId)) throw new ValidationException('Invalid return');
+    const request = await StoreReturnRequestModel.findOne({ _id: returnId, partnerId }).lean();
+    if (!request) throw new NotFoundException('Return request not found');
+    const cleanNote = text(note, 1000);
+    const at = now();
+    let next;
+    if (action === 'approve' && request.status === 'requested') {
+      next = await StoreReturnRequestModel.findOneAndUpdate(
+        { _id: returnId, status: 'requested' },
+        { $set: { status: 'approved', decidedAt: at, decidedBy: partnerId, adminNote: cleanNote } },
+        { new: true },
+      ).lean();
+    } else if (action === 'reject' && request.status === 'requested') {
+      next = await StoreReturnRequestModel.findOneAndUpdate(
+        { _id: returnId, status: 'requested' },
+        { $set: { status: 'rejected', decidedAt: at, decidedBy: partnerId, adminNote: cleanNote } },
+        { new: true },
+      ).lean();
+    } else if (action === 'receive' && request.status === 'approved') {
+      next = await StoreReturnRequestModel.findOneAndUpdate(
+        { _id: returnId, status: 'approved' },
+        { $set: { status: 'received', receivedAt: at } },
+        { new: true },
+      ).lean();
+      if (next) {
+        await StoreOrderModel.updateOne(
+          { _id: next.orderId },
+          { $push: { events: { type: 'return_received', at, note: 'Partner received the returned item' } } },
+        ).catch(() => null);
+        void this.events?.emit?.(STORE_EVENTS.RETURN_RECEIVED, {
+          returnId: String(next._id),
+          orderId: String(next.orderId),
+          partnerId: String(next.partnerId),
+          reference: next.reference,
+          orderNumber: next.orderNumber,
+          customerEmail: next.customerEmail,
+        });
+      }
+    } else {
+      throw new ConflictException('This return action is not available');
+    }
+    if (!next) throw new ConflictException('Return status changed. Refresh and try again');
+    if (action === 'approve' || action === 'reject') {
+      await StoreOrderModel.updateOne(
+        { _id: next.orderId },
+        { $push: { events: { type: `return_${next.status}`, at, note: cleanNote || `Return ${next.status}` } } },
+      ).catch(() => null);
+      void this.events?.emit?.(STORE_EVENTS.RETURN_DECIDED, {
+        returnId: String(next._id),
+        orderId: String(next.orderId),
+        partnerId: String(next.partnerId),
+        reference: next.reference,
+        orderNumber: next.orderNumber,
+        customerEmail: next.customerEmail,
+        status: next.status,
+        note: cleanNote,
+      });
+    }
+    return publicReturnRequest(next);
+  }
+
+  async listAllReturns({ status, limit = 100 } = {}) {
+    const filter = {};
+    if (status) filter.status = status;
+    const rows = await StoreReturnRequestModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(Number(limit) || 100, 1), 200))
+      .lean();
+    return rows.map((row) => ({
+      ...publicReturnRequest(row),
+      orderId: String(row.orderId),
+      reference: row.reference,
+      orderNumber: row.orderNumber,
+      partnerId: String(row.partnerId),
+      customerEmail: row.customerEmail,
+      items: row.items ?? [],
+    }));
+  }
+
+  async refundReturn(returnId, { reason = '', adminNote = '' } = {}) {
+    if (!hasId(returnId)) throw new ValidationException('Invalid return');
+    const request = await StoreReturnRequestModel.findById(returnId).lean();
+    if (!request) throw new NotFoundException('Return request not found');
+    if (request.status === 'refunded') return publicReturnRequest(request);
+    if (!['approved', 'received'].includes(request.status)) {
+      throw new ConflictException('Approve or receive this return before refunding it');
+    }
+    const cleanReason = text(reason || request.reason, 500);
+    const order = await this.refundOrder(request.orderId, {
+      reason: cleanReason,
+      restock: true,
+      returnId,
+    });
+    const at = now();
+    const updated = await StoreReturnRequestModel.findByIdAndUpdate(
+      returnId,
+      {
+        $set: {
+          status: 'refunded',
+          refundedAt: at,
+          refundReference: order.refundReference ?? '',
+          adminNote: text(adminNote, 1000),
+        },
+      },
+      { new: true },
+    ).lean();
+    void this.events?.emit?.(STORE_EVENTS.RETURN_REFUNDED, {
+      returnId: String(updated?._id ?? returnId),
+      orderId: String(request.orderId),
+      partnerId: String(request.partnerId),
+      reference: request.reference,
+      orderNumber: request.orderNumber,
+      customerEmail: request.customerEmail,
+      total: order.amounts?.total ?? 0,
+      currency: 'NGN',
+      reason: cleanReason,
+      refundReference: order.refundReference ?? '',
+    });
+    return publicReturnRequest(updated);
   }
 
   async cancelPendingOrder(orderId, note = 'Order cancelled') {
@@ -718,6 +1205,7 @@ export class StoreOrderRepository {
           opts,
         );
       }
+      await refreshStoreInStock(cancelled.storeId, { session: session ?? undefined }).catch(() => null);
       return true;
     });
   }
@@ -784,6 +1272,13 @@ export class StoreOrderRepository {
 
   async releaseOrder(orderId, { force = false } = {}) {
     if (!hasId(orderId)) throw new ValidationException('Invalid order');
+    if (!force) {
+      const openReturn = await StoreReturnRequestModel.exists({
+        orderId,
+        status: { $in: ['requested', 'approved', 'received'] },
+      }).catch(() => null);
+      if (openReturn) return null;
+    }
     return runInTransaction(async (session) => {
       const opts = session ? { session } : {};
       const at = now();
@@ -856,7 +1351,7 @@ export class StoreOrderRepository {
    * effects. Restocking is automatic only while the order is still being
    * prepared; shipped/delivered refunds leave stock for the admin to adjust.
    */
-  async refundOrder(orderId, { reason = '' } = {}) {
+  async refundOrder(orderId, { reason = '', restock = false, returnId = null } = {}) {
     if (!hasId(orderId)) throw new ValidationException('Invalid order');
     const cleanReason = text(reason, 500);
     if (cleanReason.length < 3) throw new ValidationException('Add a reason for the refund');
@@ -918,9 +1413,19 @@ export class StoreOrderRepository {
       ).lean();
       if (!claimed) return { deduped: true };
 
-      // Put stock back only while the order is still being prepared. A shipped
-      // or delivered refund may be a partial return; the admin adjusts stock.
-      if (['paid', 'processing'].includes(order.status) && !order.stockReleased) {
+      if (claimed.customer?.phoneKey) {
+        await StoreCustomerLeadModel.updateOne(
+          { partnerId: claimed.partnerId, phoneKey: claimed.customer.phoneKey },
+          { $inc: { refundedOrders: 1, totalSpentKobo: -Number(claimed.amounts?.totalKobo ?? 0) } },
+          opts,
+        );
+      }
+
+      // Put stock back while the order is still being prepared, or when an
+      // approved return has physically reached the partner (restock=true).
+      const shouldRestock = restock
+        || (['paid', 'processing'].includes(order.status) && !order.stockReleased);
+      if (shouldRestock) {
         for (const item of claimed.items ?? []) {
           const quantity = Number(item.quantity) || 0;
           if (quantity <= 0) continue;
@@ -951,6 +1456,7 @@ export class StoreOrderRepository {
           { $set: { stockReleased: true } },
           opts,
         );
+        await refreshStoreInStock(claimed.storeId, { session: session ?? undefined }).catch(() => null);
       }
 
       await StoreEscrowLedgerModel.updateOne(
@@ -1009,6 +1515,7 @@ export class StoreOrderRepository {
       currency: 'NGN',
       reason: cleanReason,
       refundReference,
+      returnId: returnId ? String(returnId) : null,
     });
 
     return publicOrder(result.order);

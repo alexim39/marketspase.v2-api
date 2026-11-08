@@ -12,6 +12,16 @@ export const storeEscrowHoldDays = () => {
   return clamp(Number.isFinite(value) ? Math.round(value) : 7, 0, 60);
 };
 
+export const storeAutoDeliverDays = () => {
+  const value = Number(process.env.STORE_AUTO_DELIVER_DAYS ?? 10);
+  return clamp(Number.isFinite(value) ? Math.round(value) : 10, 0, 60);
+};
+
+export const storeReturnWindowDays = () => {
+  const value = Number(process.env.STORE_RETURN_WINDOW_DAYS ?? 7);
+  return clamp(Number.isFinite(value) ? Math.round(value) : 7, 0, 60);
+};
+
 export const storeOrderTtlMinutes = () => {
   const value = Number(process.env.STORE_ORDER_TTL_MINUTES ?? 30);
   return clamp(Number.isFinite(value) ? Math.round(value) : 30, 5, 120);

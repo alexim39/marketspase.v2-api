@@ -35,16 +35,15 @@ export const campaignInFlight = (campaign, now = new Date()) => {
   return Number.isFinite(start) && start <= at && (!end || at < end);
 };
 
-export const isActivatedPartner = (partner) => {
-  if (!partner) return false;
-  if (partner.accountState === 'member') return false;
-  return partner.accountState == null || partner.accountState === 'partner';
-};
+import { partnerCapabilities } from '../../identity-access/domain/PartnerCapabilities.js';
 
-export const isKycVerified = (partner) => {
-  if (!partner) return false;
-  return partner.kycStatus == null || partner.kycStatus === 'verified';
-};
+export const isActivatedPartner = (partner) => (
+  Boolean(partner) && partnerCapabilities(partner).activated
+);
+
+export const isKycVerified = (partner) => (
+  Boolean(partner) && partnerCapabilities(partner).kycVerified
+);
 
 export const ownerEligibleForCampaign = (owner) => {
   if (!isActivatedPartner(owner)) return false;

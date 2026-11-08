@@ -58,6 +58,7 @@ export const AUDIT_ACTIONS = Object.freeze([
   'product.update',
   'store.update',
   'store.order.update',
+  'store.customer-lead.update',
   'store.product.update',
   'store.receipt.confirm',
   'admin.store.status',

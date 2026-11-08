@@ -36,7 +36,9 @@ describe('StoreOrderFanoutUseCase', () => {
       currency: 'NGN',
     });
 
-    assert.deepEqual(result, { status: 'notified', deduped: false });
+    assert.equal(result.status, 'notified');
+    assert.equal(result.emailed, false);
+    assert.equal(result.report.inApp, 'created');
     assert.equal(delivery.calls.length, 1);
     const call = delivery.calls[0];
     assert.equal(call.recipientId, 'p1');
@@ -62,7 +64,8 @@ describe('StoreOrderFanoutUseCase', () => {
       customerName: 'Ada',
       total: 100,
     });
-    assert.deepEqual(result, { status: 'notified', deduped: true });
+    assert.equal(result.status, 'notified');
+    assert.equal(result.report.inApp, 'deduped');
   });
 
   it('subscribes to store.order.paid and store.order.refunded', async () => {

@@ -182,7 +182,7 @@ export class GetMyProgressionUseCase {
     const currentLevel = normalizeLevel(doc.level ?? 'partner');
     if (!readOnly && RANK(resolved.level) > RANK(currentLevel)) {
       const from = currentLevel;
-      await this.progress.setLevel(partnerId, resolved.level);
+      await this.progress.setLevel(partnerId, resolved.level, { promotion: true });
       promoted = { from, to: resolved.level };
       // Community recognition — best-effort, never fails the read.
       if (this.recognition) {

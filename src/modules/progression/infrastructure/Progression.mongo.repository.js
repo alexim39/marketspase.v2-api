@@ -19,6 +19,10 @@ const progressionSchema = new mongoose.Schema(
     /** Last derived level (refreshed on read; distribution reads this). */
     level: { type: String, default: 'partner', index: true },
     levelAt: { type: Date, default: null },
+    lastPromotionAt: { type: Date, default: null },
+    lastDemotionAt: { type: Date, default: null },
+    demotionMisses: { type: Number, min: 0, default: 0 },
+    lastReviewAt: { type: Date, default: null },
     ipo: { type: stampSchema, default: () => ({}) },
     qsg: { type: stampSchema, default: () => ({}) },
     smo: { type: stampSchema, default: () => ({}) },
@@ -198,11 +202,71 @@ export class MongoProgressionStore {
     }
     return out;
   }
-  async setLevel(partnerId, level) {
+  async setLevel(partnerId, level, { promotion = false } = {}) {
+    const now = new Date();
     const row = await ProgressionModel.findOneAndUpdate(
       { partnerId },
-      { $set: { level, levelAt: new Date() } },
+      {
+        $set: {
+          level,
+          levelAt: now,
+          ...(promotion ? {
+            lastPromotionAt: now,
+            demotionMisses: 0,
+          } : {}),
+        },
+      },
       { new: true, upsert: true },
+    ).lean();
+    return shaped(row);
+  }
+
+  /** Levels that can be reviewed for demotion (Partner is the floor). */
+  async listDemotionCandidates(limit = 5000) {
+    const rows = await ProgressionModel.find({ level: { $ne: 'partner' } })
+      .select('partnerId level levelAt lastPromotionAt demotionMisses lastReviewAt updatedAt')
+      .sort({ updatedAt: 1 })
+      .limit(Math.min(Math.max(Number(limit) || 5000, 1), 10000))
+      .lean();
+    return rows.map(shaped);
+  }
+
+  async resetDemotionMisses(partnerId) {
+    await ProgressionModel.updateOne(
+      { partnerId },
+      { $set: { demotionMisses: 0, lastReviewAt: new Date() } },
+    ).catch(() => null);
+  }
+
+  async incrementDemotionMisses(partnerId) {
+    const row = await ProgressionModel.findOneAndUpdate(
+      { partnerId },
+      { $inc: { demotionMisses: 1 }, $set: { lastReviewAt: new Date() } },
+      { new: true },
+    ).lean().catch(() => null);
+    return shaped(row);
+  }
+
+  async demoteLevel(partnerId, level) {
+    const now = new Date();
+    const row = await ProgressionModel.findOneAndUpdate(
+      { partnerId },
+      {
+        $set: {
+          level,
+          levelAt: now,
+          lastDemotionAt: now,
+          demotionMisses: 0,
+          lastReviewAt: now,
+        },
+        $push: {
+          events: {
+            $each: [{ at: now, key: `level:demoted:${level}` }],
+            $slice: -100,
+          },
+        },
+      },
+      { new: true },
     ).lean();
     return shaped(row);
   }

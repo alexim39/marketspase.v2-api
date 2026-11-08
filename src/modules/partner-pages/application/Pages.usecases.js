@@ -1,5 +1,8 @@
 import { NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
+import { StoreModel } from '../../stores/infrastructure/Store.models.js';
+import { CreateProspectUseCase } from '../../crm/application/Prospect.commands.js';
+import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 
 const LANDING_FIELDS = [
   'headline', 'subHeadline', 'heroBadge', 'businessTagline',
@@ -129,5 +132,86 @@ export class ResetPublicPageUseCase {
       .select('username').lean().catch(() => null);
     if (!doc) throw new NotFoundException('Partner not found');
     return { id: String(id), section, cleared: keys.length };
+  }
+}
+
+/**
+ * Public personal lead page — safe partner landing content plus the store
+ * link. No email, phone or private account fields are exposed.
+ */
+export class GetPublicLandingUseCase {
+  constructor({ partners, stores } = {}) {
+    this.partners = partners ?? PartnersModel;
+    this.stores = stores ?? StoreModel;
+  }
+
+  async execute({ username }) {
+    const handle = String(username ?? '').trim();
+    if (!/^[A-Za-z0-9._-]{2,80}$/.test(handle)) throw new ValidationException('Invalid page');
+    const escaped = handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const doc = await this.partners.findOne({
+      username: new RegExp(`^${escaped}$`, 'i'),
+      accountState: { $in: [null, 'member', 'partner'] },
+    }).select([
+      'username', 'name', 'surname', 'profileImage',
+      ...LANDING_FIELDS,
+    ].join(' ')).lean();
+    if (!doc) throw new NotFoundException('Page not found');
+
+    const store = await this.stores.findOne({
+      partnerId: doc._id,
+      status: 'published',
+    }).select('slug name tagline logo').lean().catch(() => null);
+
+    return {
+      username: doc.username,
+      name: [doc.name, doc.surname].filter(Boolean).join(' ') || doc.username,
+      profileImage: doc.profileImage ?? '',
+      landing: Object.fromEntries(LANDING_FIELDS.map((key) => [
+        key,
+        key === 'opportunityPoints'
+          ? (Array.isArray(doc[key]) ? doc[key].filter((v) => String(v ?? '').trim()).slice(0, 8) : [])
+          : (doc[key] ?? ''),
+      ])),
+      store: store
+        ? { slug: store.slug, name: store.name || doc.username, tagline: store.tagline ?? '', logo: store.logo ?? '' }
+        : null,
+    };
+  }
+}
+
+/**
+ * POST a lead from the public personal page. This is an opt-in submission,
+ * so it creates a normal pipeline prospect with consentToContact=true.
+ */
+export class SubmitPublicLeadUseCase {
+  constructor({ partners, prospects } = {}) {
+    this.partners = partners ?? PartnersModel;
+    this.create = new CreateProspectUseCase({
+      prospects: prospects ?? new MongoProspectRepository(),
+    });
+  }
+
+  async execute({ username, lead = {} }) {
+    const handle = String(username ?? '').trim();
+    if (!/^[A-Za-z0-9._-]{2,80}$/.test(handle)) throw new ValidationException('Invalid page');
+    const escaped = handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const partner = await this.partners.findOne({
+      username: new RegExp(`^${escaped}$`, 'i'),
+      accountState: { $in: [null, 'member', 'partner'] },
+    }).select('_id username').lean();
+    if (!partner) throw new NotFoundException('Page not found');
+
+    return this.create.execute({
+      partnerId: String(partner._id),
+      prospectName: lead.name,
+      prospectSurname: lead.surname ?? '',
+      prospectPhone: lead.phone,
+      prospectEmail: lead.email ?? '',
+      prospectSource: 'Personal Page',
+      consentToContact: true,
+      notes: lead.message ?? '',
+      relationship: 'Referral',
+    });
   }
 }

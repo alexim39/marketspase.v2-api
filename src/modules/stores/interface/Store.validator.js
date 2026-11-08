@@ -51,6 +51,7 @@ export const StoreOrderCreateSchema = z.object({
     state: z.string().trim().min(2).max(120),
     country: z.string().trim().max(80).optional().default('Nigeria'),
     note: z.string().trim().max(1000).optional().default(''),
+    consentToContact: z.boolean().optional().default(false),
   }),
 });
 
@@ -75,6 +76,25 @@ export const StoreOrderParamsSchema = z.object({
   orderId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid order'),
 });
 
+export const StoreReturnCreateSchema = z.object({
+  reason: z.string().trim().min(3).max(160),
+  note: z.string().trim().max(1000).optional().default(''),
+});
+
+export const StoreReturnUpdateSchema = z.object({
+  action: z.enum(['approve', 'reject', 'receive']),
+  note: z.string().trim().max(1000).optional().default(''),
+});
+
+export const StoreReturnParamsSchema = z.object({
+  returnId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid return'),
+});
+
+export const StoreReturnListQuerySchema = z.object({
+  status: z.enum(['requested', 'approved', 'rejected', 'received', 'refunded', 'cancelled']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(100),
+});
+
 export const StoreProductParamsSchema = z.object({
   id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid store product'),
 });
@@ -87,3 +107,20 @@ export const StorePublicProductParamsSchema = z.object({
   slug: z.string().trim().min(1).max(80),
   productId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid product'),
 });
+
+export const StoreCustomerLeadQuerySchema = z.object({
+  q: z.string().trim().max(80).optional().default(''),
+  status: z.enum(['New', 'Contacted', 'Qualified', 'Converted', 'Closed']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  skip: z.coerce.number().int().min(0).optional().default(0),
+});
+
+export const StoreCustomerLeadParamsSchema = z.object({
+  leadId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid customer'),
+});
+
+export const StoreCustomerLeadUpdateSchema = z.object({
+  status: z.enum(['New', 'Contacted', 'Qualified', 'Converted', 'Closed']).optional(),
+  partnerNotes: z.string().trim().max(2000).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' });

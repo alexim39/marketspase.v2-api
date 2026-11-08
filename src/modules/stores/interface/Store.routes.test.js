@@ -23,6 +23,11 @@ app.use(express.json());
 app.use('/v1/stores', buildStoreRouter({
   auth,
   audit: async () => null,
+  idempotency: (req, res, next) => (
+    req.get('Idempotency-Key')
+      ? next()
+      : res.status(400).json({ success: false, message: 'Idempotency-Key required', code: 'IDEMPOTENCY_KEY_REQUIRED' })
+  ),
   images: {
     upload: async (buffer, meta) => {
       seenImageUpload = { bytes: buffer.length, meta };
@@ -38,10 +43,26 @@ app.use('/v1/stores', buildStoreRouter({
         amounts: { total: 19500, currency: 'NGN' },
       },
       checkoutUrl: 'https://checkout.paystack.com/abc',
+      orderToken: 'test-order-token',
+      trackingUrl: 'https://marketspase.com/order/MS-TEST-ORDER-1?token=test-order-token',
       body,
     }),
-    getOrder: async (reference) => ({ reference, status: 'pending_payment' }),
-    verifyOrder: async (reference) => ({ order: { reference, status: 'paid' }, status: 'paid' }),
+    getOrder: async (reference, { token } = {}) => {
+      if (token !== 'test-order-token') {
+        const error = new Error('Order not found');
+        error.statusCode = 404;
+        throw error;
+      }
+      return { reference, status: 'pending_payment' };
+    },
+    verifyOrder: async (reference, { token } = {}) => {
+      if (token !== 'test-order-token') {
+        const error = new Error('Order not found');
+        error.statusCode = 404;
+        throw error;
+      }
+      return { order: { reference, status: 'paid' }, status: 'paid' };
+    },
     listPartnerOrders: async () => ([
       { id: orderId, orderNumber: 'MS-TEST-1', status: 'paid', customer: { name: 'Ada' } },
     ]),
@@ -100,10 +121,10 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-const request = async (path, method = 'GET', body) => {
+const request = async (path, method = 'GET', body, headers = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   return { status: response.status, body: await response.json() };
@@ -136,16 +157,34 @@ describe('store public routes', () => {
         city: 'Port Harcourt',
         state: 'Rivers',
       },
-    });
-    const order = await request('/v1/stores/orders/MS-TEST-ORDER-1');
-    const verified = await request('/v1/stores/orders/MS-TEST-ORDER-1/verify', 'POST', {});
+    }, { 'Idempotency-Key': 'test-checkout-key-1' });
+    const order = await request('/v1/stores/orders/MS-TEST-ORDER-1?token=test-order-token');
+    const verified = await request('/v1/stores/orders/MS-TEST-ORDER-1/verify?token=test-order-token', 'POST', {});
+    const denied = await request('/v1/stores/orders/MS-TEST-ORDER-1');
 
     assert.equal(created.status, 200);
     assert.equal(created.body.data.checkoutUrl, 'https://checkout.paystack.com/abc');
+    assert.equal(created.body.data.orderToken, 'test-order-token');
     assert.equal(order.status, 200);
     assert.equal(order.body.data.reference, 'MS-TEST-ORDER-1');
     assert.equal(verified.status, 200);
     assert.equal(verified.body.data.status, 'paid');
+    assert.equal(denied.status, 404);
+  });
+
+  it('requires an idempotency key for checkout creation', async () => {
+    const response = await fetch(`${baseUrl}/v1/stores/ada/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ storeProductId: productId, quantity: 1 }],
+        customer: {
+          name: 'Ada Obi', email: 'ada@example.com', phone: '08030000000',
+          street: '1 Market Road', city: 'Port Harcourt', state: 'Rivers',
+        },
+      }),
+    });
+    assert.equal(response.status, 400);
   });
 
   it('accepts a signed webhook payload from the store route', async () => {

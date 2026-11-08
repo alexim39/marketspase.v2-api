@@ -72,6 +72,7 @@ import { subscribeContactListFanout } from './src/modules/notifications/applicat
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
 import { subscribeStoreOrderFanout } from './src/modules/notifications/application/StoreOrderFanout.js';
 import { subscribeRankGroupFanout } from './src/modules/notifications/application/RankGroupFanout.js';
+import { subscribeDemotionFanout } from './src/modules/notifications/application/DemotionFanout.js';
 import { domainEvents } from './src/shared/events/DomainEvents.js';
 import { env } from './src/shared/config/env.js';
 import { sendEmail } from './src/services/emailService.js';
@@ -84,6 +85,7 @@ import { buildSmsSender } from './src/modules/notifications/infrastructure/SmsSe
 import { buildPushSender } from './src/modules/notifications/infrastructure/PushSender.js';
 import ProspectV1Router from './src/modules/crm/index.js';
 import PagesRouter from './src/modules/partner-pages/interface/Pages.routes.js';
+import PublicPagesRouter from './src/modules/partner-pages/interface/PublicPages.routes.js';
 import PartnerSurveysRouter from './src/modules/partner-surveys/interface/Surveys.routes.js';
 import { errorMiddleware } from './src/shared/http/errorMiddleware.js';
 import { ensureIndexes } from './src/shared/mongo/indexes.js';
@@ -183,6 +185,7 @@ app.use('/emailSubscription', LegacyEmailSubscriptionRouter);
 app.use('/v1/auth', AuthV1Router);
 app.use('/v1/prospects', ProspectV1Router);
 app.use('/v1/admin/pages', PagesRouter);
+app.use('/v1/public/pages', PublicPagesRouter);
 app.use('/v1/admin/partner-surveys', PartnerSurveysRouter);
 app.use('/v1/onboarding', OnboardingRouter);
 app.use('/v1/admin/onboarding', buildAdminOnboardingRouter());
@@ -308,6 +311,11 @@ app.use(errorMiddleware);
     events: domainEvents,
     notify: new NotifyUseCase({ stored: lifecycleStore }),
   });
+  subscribeDemotionFanout({
+    events: domainEvents,
+    delivery: lifecycleDelivery,
+    partners: lifecyclePartners,
+  });
   domainEvents.on(RANK_GROUP_EVENTS.CHANGED, (payload) => {
     broadcastRankGroupChanged(messagingGateway, payload);
   });
@@ -317,6 +325,15 @@ app.use(errorMiddleware);
     void rankGroupService.syncPartner(payload?.partnerId).catch((error) => {
       logger.warn('rank_group_sync_failed', {
         partnerId: payload?.partnerId ?? null,
+        error: error?.message ?? String(error),
+      });
+    });
+  });
+  domainEvents.on(PROGRESSION_EVENTS.DEMOTED, (payload) => {
+    void rankGroupService.syncPartner(payload?.partnerId).catch((error) => {
+      logger.warn('rank_group_sync_failed', {
+        partnerId: payload?.partnerId ?? null,
+        event: 'progression.demoted',
         error: error?.message ?? String(error),
       });
     });

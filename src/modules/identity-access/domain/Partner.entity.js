@@ -1,5 +1,6 @@
 import { ValidationException } from '../../../shared/domain/AppError.js';
 import { lenientRole } from './PartnerRole.js';
+import { partnerCapabilities } from './PartnerCapabilities.js';
 
 const text = (value, field, { min = 2, max = 80 } = {}) => {
   const v = String(value ?? '').trim();
@@ -85,5 +86,6 @@ export const toSafePartner = (doc) => {
   o.role = lenientRole(o.role);
   // Suspension flag for admin tooling (timestamps stay for audit detail).
   o.suspended = !!o.suspendedAt;
+  o.capabilities = partnerCapabilities(o);
   return o;
 };

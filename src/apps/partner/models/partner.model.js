@@ -46,6 +46,17 @@ const partnersSchema = mongoose.Schema(
       unique: true,
       required: [true, "Please enter response for username"]
     },
+    /**
+     * Canonical public store slug. Set when the store is first created and
+     * kept in sync if an admin changes it; links use this, never the username.
+     */
+    storeSlug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: null,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, "Please enter name"]

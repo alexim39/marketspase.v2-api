@@ -369,6 +369,15 @@ execution writes an `ora.action.execute` audit event.
   ledger runs. Historical `campaigns` records and `/campaign` read/refund
   routes remain only for reconciliation. The separate Buy Prospect pool and its
   ₦250 claim/refund workflow are removed end to end (routes, job and ledger).
+- **Customer leads vs pipeline:** store checkout captures the shopper's
+  name/email/phone/address in `store_customer_leads` for the partner's
+  **Customer leads** page. These are buyers, not cold prospects. The partner
+  pipeline remains for prospects, personal-page submissions and referral
+  signups; referral signups who have not activated appear in a dedicated
+  "Referral signups" section on the pipeline page.
+- **Personal lead page:** every partner shares `/lead/<username>` (store app).
+  Submissions create a `Prospect` with source `Personal Page` in that partner's
+  pipeline. The public store remains `/<username>` and is a separate share link.
 - Mentor bonus timing: the ₦1,000 activation mentor bonus is paid immediately
   when activation is recorded, to the member's `partnerOf` mentor. If the
   mentor is not yet known (system-owned member) or not KYC-qualified yet, the

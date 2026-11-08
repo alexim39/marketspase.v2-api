@@ -39,9 +39,23 @@ const RefundBody = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+const ReturnListQuery = z.object({
+  status: z.enum(['requested', 'approved', 'rejected', 'received', 'refunded', 'cancelled']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(100),
+});
+
+const ReturnParams = z.object({ returnId: objectId });
+
+const ReturnRefundBody = z.object({
+  reason: z.string().trim().min(3).max(500).optional(),
+  adminNote: z.string().trim().max(1000).optional().default(''),
+});
+
 const StoreSettingsBody = z.object({
   serviceFeePercent: z.coerce.number().min(0).max(20),
   escrowHoldDays: z.coerce.number().int().min(0).max(60),
+  autoDeliverDays: z.coerce.number().int().min(0).max(60).optional(),
+  returnWindowDays: z.coerce.number().int().min(0).max(60).optional(),
 });
 
 export const buildAdminStoreRouter = (deps = {}) => {
@@ -148,6 +162,31 @@ export const buildAdminStoreRouter = (deps = {}) => {
     '/store-settlements',
     asyncHandler(async (_req, res) => {      const data = await repo.settlements();
       return sendSuccess(res, { data });
+    }),
+  );
+
+  router.get(
+    '/store-returns',
+    validate({ query: ReturnListQuery }),
+    asyncHandler(async (req, res) => {
+      const data = await repo.listReturns(req.validated.query);
+      return sendSuccess(res, { data });
+    }),
+  );
+
+  router.post(
+    '/store-returns/:returnId/refund',
+    validate({ params: ReturnParams, body: ReturnRefundBody }),
+    asyncHandler(async (req, res) => {
+      const data = await repo.refundReturn(req.validated.params.returnId, req.validated.body);
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'admin.store-return.refund',
+        targetType: 'store-return',
+        targetId: req.validated.params.returnId,
+        detail: { status: data.status, refundReference: data.refundReference ?? null },
+      });
+      return sendSuccess(res, { message: 'Return refunded', data });
     }),
   );
 

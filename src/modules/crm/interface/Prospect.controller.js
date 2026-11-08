@@ -115,6 +115,42 @@ export const makeProspectController = (uc, opts = {}) => {
     });
   }),
 
+  referralMembers: asyncHandler(async (req, res) => {
+    const partnerId = req.validated?.params?.partnerId ?? req.params.partnerId;
+    if (guard) await guard.requireListAccess(me(req), partnerId);
+    const q = req.validated?.query ?? req.query;
+    const needle = String(q?.q ?? '').trim().slice(0, 80);
+    const filter = {
+      partnerOf: partnerId,
+      accountState: { $ne: 'partner' },
+      suspendedAt: null,
+    };
+    if (needle) {
+      const rx = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: rx }, { surname: rx }, { username: rx }, { phone: rx }, { email: rx }];
+    }
+    const rows = await PartnersModel.find(filter)
+      .select('name surname username phone email accountState kycStatus createdAt')
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(Number(q?.limit) || 100, 1), 200))
+      .lean();
+    res.status(200).json({
+      message: 'Referral signups retrieved successfully',
+      data: rows.map((row) => ({
+        id: String(row._id),
+        name: row.name ?? '',
+        surname: row.surname ?? '',
+        username: row.username ?? '',
+        phone: row.phone ?? '',
+        email: row.email ?? '',
+        accountState: row.accountState ?? 'member',
+        kycStatus: row.kycStatus ?? 'not_started',
+        joinedAt: row.createdAt ?? null,
+      })),
+      success: true,
+    });
+  }),
+
   logCommunication: asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const prospectId = pid(req) ?? body.prospectId;

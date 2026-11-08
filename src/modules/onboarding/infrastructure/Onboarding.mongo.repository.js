@@ -11,6 +11,7 @@ import {
   PartnersModel,
   runInTransaction,
 } from '../../identity-access/infrastructure/Auth.models.js';
+import { partnerCapabilities } from '../../identity-access/domain/PartnerCapabilities.js';
 import {
   ActivationOrderModel,
   ActivationQueueEntryModel,
@@ -249,11 +250,16 @@ export class MongoOnboardingRepository {
           throw new ConflictException('Your account is already an activated partner');
         }
         const kycStatus = partner.kycStatus ?? 'not_started';
-        if (kycStatus === 'not_started') {
-          throw new ValidationException('Submit identity verification before activating');
-        }
+        const capabilities = partnerCapabilities(partner);
         if (kycStatus === 'rejected') {
           throw new ConflictException('Identity verification was rejected. Please resubmit before activating.');
+        }
+        if (!capabilities.kycVerified) {
+          throw new ValidationException(
+            kycStatus === 'pending'
+              ? 'Your identity verification is still under review. Activation opens once it is verified.'
+              : 'Verify your identity before activating',
+          );
         }
 
         const product = await this.findProduct(productId, { session });

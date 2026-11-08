@@ -1,9 +1,7 @@
+import { partnerCapabilities } from '../../../modules/identity-access/domain/PartnerCapabilities.js';
+
 /** A partner can buy at partner price only while active and verified. */
-export const canBuyResale = (partner) => (
-  partner?.accountState === 'partner'
-  && !partner?.suspendedAt
-  && (partner?.kycStatus ?? 'verified') === 'verified'
-);
+export const canBuyResale = (partner) => partnerCapabilities(partner).canBuyResale;
 
 /**
  * Resolve the prices used for a resale line. `retailPrice` is the suggested

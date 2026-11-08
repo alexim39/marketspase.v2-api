@@ -184,6 +184,14 @@ export class StoreAdminRepository {
     return this.orders.getAdminSettlements();
   }
 
+  listReturns(query) {
+    return this.orders.listAllReturns(query);
+  }
+
+  refundReturn(returnId, body) {
+    return this.orders.refundReturn(returnId, body);
+  }
+
   settings() {
     return this.orders.getStoreSettings();
   }

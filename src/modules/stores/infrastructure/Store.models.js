@@ -43,6 +43,11 @@ const storeSchema = new mongoose.Schema(
       default: 'draft',
       index: true,
     },
+    /**
+     * Denormalised count of published listings with stock > 0. Kept current
+     * by the store repositories so the directory can filter cheaply.
+     */
+    inStockCount: { type: Number, min: 0, default: 0, index: true },
     suspendedAt: { type: Date, default: null },
     suspensionReason: { type: String, default: '', trim: true },
   },
@@ -161,11 +166,13 @@ const storeCustomerSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, lowercase: true, trim: true },
     phone: { type: String, required: true, trim: true },
+    phoneKey: { type: String, default: '', trim: true, index: true },
     street: { type: String, required: true, trim: true },
     city: { type: String, required: true, trim: true },
     state: { type: String, required: true, trim: true },
     country: { type: String, default: 'Nigeria', trim: true },
     note: { type: String, default: '', trim: true },
+    consentToContact: { type: Boolean, default: false },
   },
   { _id: false },
 );
@@ -263,6 +270,54 @@ const storeOrderSchema = new mongoose.Schema(
   { timestamps: true, collection: 'store_orders' },
 );
 
+/**
+ * Store customer lead — one row per partner + normalized phone.
+ * Created when a shopper reaches checkout, then enriched when payment is
+ * confirmed. This is the partner's CRM view of store buyers, separate from
+ * the prospect pipeline (which is for non-buying leads).
+ */
+const storeCustomerLeadSchema = new mongoose.Schema(
+  {
+    partnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'partner',
+      required: true,
+      index: true,
+    },
+    storeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Store', default: null },
+    phoneKey: { type: String, required: true, trim: true, index: true },
+    name: { type: String, default: '', trim: true },
+    email: { type: String, default: '', lowercase: true, trim: true },
+    phone: { type: String, default: '', trim: true },
+    street: { type: String, default: '', trim: true },
+    city: { type: String, default: '', trim: true },
+    state: { type: String, default: '', trim: true },
+    country: { type: String, default: 'Nigeria', trim: true },
+    note: { type: String, default: '', trim: true },
+    consentToContact: { type: Boolean, default: false },
+    status: {
+      type: String,
+      enum: ['New', 'Contacted', 'Qualified', 'Converted', 'Closed'],
+      default: 'New',
+      index: true,
+    },
+    partnerNotes: { type: String, default: '', trim: true, maxlength: 2000 },
+    tags: { type: [String], default: [] },
+    checkoutCount: { type: Number, default: 0, min: 0 },
+    paidOrders: { type: Number, default: 0, min: 0 },
+    refundedOrders: { type: Number, default: 0, min: 0 },
+    totalSpentKobo: { type: Number, default: 0, min: 0 },
+    firstSeenAt: { type: Date, default: Date.now },
+    lastCheckoutAt: { type: Date, default: Date.now },
+    lastPaidAt: { type: Date, default: null },
+  },
+  { timestamps: true, collection: 'store_customer_leads' },
+);
+
+storeCustomerLeadSchema.index({ partnerId: 1, phoneKey: 1 }, { unique: true });
+storeCustomerLeadSchema.index({ partnerId: 1, lastCheckoutAt: -1 });
+storeCustomerLeadSchema.index({ partnerId: 1, status: 1, lastCheckoutAt: -1 });
+
 const storeEscrowLedgerSchema = new mongoose.Schema(
   {
     orderId: {
@@ -294,11 +349,47 @@ const storeEscrowLedgerSchema = new mongoose.Schema(
   { timestamps: true, collection: 'store_escrow_ledger' },
 );
 
+const storeReturnRequestSchema = new mongoose.Schema(
+  {
+    storeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Store', required: true, index: true },
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'StoreOrder', required: true, unique: true, index: true },
+    reference: { type: String, required: true, trim: true, index: true },
+    orderNumber: { type: String, required: true, trim: true },
+    customerEmail: { type: String, default: '', lowercase: true, trim: true },
+    items: {
+      type: [{
+        storeProductId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        name: { type: String, default: '', trim: true },
+        quantity: { type: Number, min: 1, required: true },
+      }],
+      _id: false,
+    },
+    reason: { type: String, required: true, trim: true, maxlength: 160 },
+    note: { type: String, default: '', trim: true, maxlength: 1000 },
+    status: {
+      type: String,
+      enum: ['requested', 'approved', 'rejected', 'received', 'refunded', 'cancelled'],
+      default: 'requested',
+      index: true,
+    },
+    decidedAt: { type: Date, default: null },
+    decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
+    receivedAt: { type: Date, default: null },
+    refundedAt: { type: Date, default: null },
+    refundReference: { type: String, default: '', trim: true },
+    adminNote: { type: String, default: '', trim: true, maxlength: 1000 },
+  },
+  { timestamps: true, collection: 'store_return_requests' },
+);
+
 const platformSettingSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true, trim: true, default: 'store' },
     storeServiceFeePercent: { type: Number, min: 0, max: 20, default: 2 },
     storeEscrowHoldDays: { type: Number, min: 0, max: 60, default: 7 },
+    storeAutoDeliverDays: { type: Number, min: 0, max: 60, default: 10 },
+    storeReturnWindowDays: { type: Number, min: 0, max: 60, default: 7 },
   },
   { timestamps: true, collection: 'platform_settings' },
 );
@@ -324,6 +415,10 @@ export const StoreStockLedgerModel =
   mongoose.models.StoreStockLedger || mongoose.model('StoreStockLedger', storeStockLedgerSchema);
 export const StoreOrderModel =
   mongoose.models.StoreOrder || mongoose.model('StoreOrder', storeOrderSchema);
+export const StoreReturnRequestModel =
+  mongoose.models.StoreReturnRequest || mongoose.model('StoreReturnRequest', storeReturnRequestSchema);
+export const StoreCustomerLeadModel =
+  mongoose.models.StoreCustomerLead || mongoose.model('StoreCustomerLead', storeCustomerLeadSchema);
 export const StoreEscrowLedgerModel =
   mongoose.models.StoreEscrowLedger || mongoose.model('StoreEscrowLedger', storeEscrowLedgerSchema);
 export const PlatformSettingModel =

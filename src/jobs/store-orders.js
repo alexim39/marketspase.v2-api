@@ -35,3 +35,19 @@ export const runStoreEscrowReleaseJob = async (deps = {}) => {
     return { checked: 0, released: 0 };
   }
 };
+
+/** Auto-deliver orders that have been in transit past the configured window. */
+export const runStoreAutoDeliverJob = async (deps = {}) => {
+  const repo = deps.repo ?? new StoreOrderRepository();
+  const started = Date.now();
+  try {
+    const result = await repo.autoDeliverShippedOrders();
+    console.log(
+      `[jobs] store-auto-deliver: ${result.delivered}/${result.checked} orders delivered in ${Date.now() - started}ms`,
+    );
+    return result;
+  } catch (error) {
+    console.error('[jobs] store-auto-deliver crashed:', error?.message ?? error);
+    return { checked: 0, delivered: 0 };
+  }
+};

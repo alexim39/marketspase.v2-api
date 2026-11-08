@@ -23,9 +23,10 @@ import { runEventRsvpDueJob } from './event-rsvp-due.js';
 import { runMentorBonusDueJob } from './mentor-bonus-due.js';
 import { runCompensationReconcileJob } from './compensation-reconcile.js';
 import { runPayoutReconcileJob } from './payout-reconcile.js';
-import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
+import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob, runStoreAutoDeliverJob } from './store-orders.js';
 import { runOutboxDueJob } from './outbox-delivery.js';
 import { runRankGroupSyncJob } from './rank-group-sync.js';
+import { runProgressionDemotionJob } from './progression-demotion.js';
 import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
 
 /**
@@ -108,8 +109,10 @@ export function scheduleJobs() {
   cron.schedule('*/10 * * * *', run('payout-reconcile', () => withJobHealth(JobRunModel, 'payout-reconcile', () => runPayoutReconcileJob())));
   cron.schedule('*/5 * * * *', run('store-order-expiry', () => withJobHealth(JobRunModel, 'store-order-expiry', () => runStoreOrderExpiryJob())));
   cron.schedule('*/15 * * * *', run('store-escrow-release', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob())));
+  cron.schedule('*/30 * * * *', run('store-auto-deliver', () => withJobHealth(JobRunModel, 'store-auto-deliver', () => runStoreAutoDeliverJob())));
   cron.schedule('*/20 * * * * *', run('outbox-delivery', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()), 2 * 60 * 1000));
   cron.schedule('45 2 * * *', run('rank-group-sync', () => withJobHealth(JobRunModel, 'rank-group-sync', () => runRankGroupSyncJob()), 30 * 60 * 1000));
+  cron.schedule('15 4 1 * *', run('progression-demotion', () => withJobHealth(JobRunModel, 'progression-demotion', () => runProgressionDemotionJob()), 30 * 60 * 1000));
   console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
@@ -128,5 +131,6 @@ export { runErasureDueJob } from './erasure-due.js';
 export { runMentorBonusDueJob } from './mentor-bonus-due.js';
 export { runCompensationReconcileJob } from './compensation-reconcile.js';
 export { runPayoutReconcileJob } from './payout-reconcile.js';
-export { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
+export { runStoreOrderExpiryJob, runStoreEscrowReleaseJob, runStoreAutoDeliverJob } from './store-orders.js';
 export { runOutboxDueJob } from './outbox-delivery.js';
+export { runProgressionDemotionJob } from './progression-demotion.js';

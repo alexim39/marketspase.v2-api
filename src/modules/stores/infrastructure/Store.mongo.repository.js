@@ -6,12 +6,14 @@ import {
 } from '../../../shared/domain/AppError.js';
 import { CartModel, ProductModel } from '../../../apps/product/models/product.model.js';
 import { PartnersModel, runInTransaction } from '../../identity-access/infrastructure/Auth.models.js';
+import { partnerCapabilities } from '../../identity-access/domain/PartnerCapabilities.js';
 import {
   StoreInventoryModel,
   StoreModel,
   StoreProductModel,
   StoreStockLedgerModel,
 } from './Store.models.js';
+import { refreshStoreInStock } from './StoreInventoryFlags.js';
 
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value ?? ''));
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -74,6 +76,7 @@ const publicStore = (store, productCount = 0, categories = []) => ({
   status: store.status,
   productCount,
   categories,
+  inStockCount: Number(store.inStockCount) || 0,
 });
 
 const privateStore = (store) => ({
@@ -87,14 +90,17 @@ export class StoreRepository {
   async ensureStore(partnerId) {
     if (!hasId(partnerId)) throw new ValidationException('Invalid partner');
     const partner = await PartnersModel.findById(partnerId)
-      .select('name surname username phone profileImage accountState kycStatus suspendedAt')
+      .select('name surname username storeSlug phone profileImage accountState kycStatus suspendedAt')
       .lean();
     if (!partner) throw new NotFoundException('Partner not found');
-    if (partner.accountState !== 'partner' || partner.suspendedAt) {
+    if (!partnerCapabilities(partner).canOpenStore) {
+      if (partner.accountState === 'member') {
+        throw new ValidationException('Store is available to active partners');
+      }
+      if ((partner.kycStatus ?? 'not_started') !== 'verified') {
+        throw new ValidationException('Complete identity verification before opening a store');
+      }
       throw new ValidationException('Store is available to active partners');
-    }
-    if ((partner.kycStatus ?? 'verified') !== 'verified') {
-      throw new ValidationException('Complete identity verification before opening a store');
     }
     const slug = String(partner.username ?? '').trim().toLowerCase();
     if (!slug) throw new ValidationException('Set a username before opening a store');
@@ -114,6 +120,12 @@ export class StoreRepository {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     ).lean();
+    if (store?.slug && partner.storeSlug !== store.slug) {
+      await PartnersModel.updateOne(
+        { _id: partnerId },
+        { $set: { storeSlug: store.slug } },
+      ).catch(() => null);
+    }
     return store;
   }
 
@@ -223,6 +235,7 @@ export class StoreRepository {
       { $set: fields },
       { new: true },
     ).lean();
+    await refreshStoreInStock(product.storeId).catch(() => null);
     return publicProduct(updated);
   }
 
@@ -349,6 +362,8 @@ export class StoreRepository {
         credited += quantity;
       }
 
+      await refreshStoreInStock(store._id, { session: session ?? undefined }).catch(() => null);
+
       return {
         orderNumber: cart.orderNumber ?? String(cart._id),
         credited,
@@ -386,6 +401,7 @@ export class StoreRepository {
               $match: {
                 $expr: { $eq: ['$storeId', '$$storeId'] },
                 status: 'published',
+                stock: { $gt: 0 },
               },
             },
             {
@@ -427,20 +443,81 @@ export class StoreRepository {
   async getPublicStore(slug) {
     const clean = text(slug, 80).toLowerCase();
     if (!clean) throw new NotFoundException('Store not found');
-    const store = await StoreModel.findOne({ slug: clean, status: 'published' }).lean();
+    let store = await StoreModel.findOne({ slug: clean, status: 'published' }).lean();
+    if (!store) {
+      // Username alias: older shared links used the partner username. Resolve
+      // it to the immutable store slug without breaking the link.
+      const partner = await PartnersModel.findOne({ username: clean }).select('_id').lean().catch(() => null);
+      if (partner) {
+        store = await StoreModel.findOne({ partnerId: partner._id, status: 'published' }).lean();
+      }
+    }
     if (!store) throw new NotFoundException('Store not found');
-    const products = await StoreProductModel.find({
-      storeId: store._id,
-      status: 'published',
-    }).sort({ createdAt: -1 }).limit(200).lean();
+    const [products, partner] = await Promise.all([
+      StoreProductModel.find({
+        storeId: store._id,
+        status: 'published',
+      }).sort({ createdAt: -1 }).limit(200).lean(),
+      PartnersModel.findById(store.partnerId)
+        .select([
+          'username', 'headline', 'subHeadline', 'heroBadge', 'businessTagline',
+          'aboutStory', 'achievements', 'inviteNote', 'opportunityPoints',
+          'videoTestimonialUrl', 'displayPhone', 'displayEmail', 'locationDisplay',
+          'whatsappCtaText', 'testimonial', 'jobTitle', 'bio',
+          'whatsappGroupLink', 'whatsappChatLink',
+        ].join(' '))
+        .lean()
+        .catch(() => null),
+    ]);
+    const publicProps = publicStore(
+      store,
+      products.length,
+      [...new Set(products.map((product) => product.category).filter(Boolean))],
+    );
     return {
-      store: publicStore(
-        store,
-        products.length,
-        [...new Set(products.map((product) => product.category).filter(Boolean))],
-      ),
+      store: {
+        ...publicProps,
+        marketing: partner ? {
+          username: partner.username ?? '',
+          name: publicProps.name,
+          heroBadge: partner.heroBadge ?? '',
+          headline: partner.headline ?? '',
+          subHeadline: partner.subHeadline ?? '',
+          businessTagline: partner.businessTagline ?? '',
+          jobTitle: partner.jobTitle ?? '',
+          bio: partner.bio ?? '',
+          aboutStory: partner.aboutStory ?? '',
+          achievements: partner.achievements ?? '',
+          locationDisplay: partner.locationDisplay ?? '',
+          opportunityPoints: Array.isArray(partner.opportunityPoints)
+            ? partner.opportunityPoints.filter((value) => String(value ?? '').trim()).slice(0, 8)
+            : [],
+          inviteNote: partner.inviteNote ?? '',
+          testimonial: partner.testimonial ?? '',
+          videoTestimonialUrl: partner.videoTestimonialUrl ?? '',
+          whatsappCtaText: partner.whatsappCtaText ?? '',
+          whatsappChatLink: partner.whatsappChatLink ?? '',
+          displayPhone: partner.displayPhone ?? '',
+          displayEmail: partner.displayEmail ?? '',
+        } : null,
+      },
       products: products.map(publicProduct),
     };
+  }
+
+  async resolvePublicSlug(handle) {
+    const clean = text(handle, 80).toLowerCase();
+    if (!clean) throw new NotFoundException('Store not found');
+    const bySlug = await StoreModel.findOne({ slug: clean, status: 'published' }).select('slug').lean();
+    if (bySlug) return { slug: bySlug.slug, canonical: true };
+    const partner = await PartnersModel.findOne({ username: clean }).select('_id').lean().catch(() => null);
+    if (partner) {
+      const store = await StoreModel.findOne({ partnerId: partner._id, status: 'published' })
+        .select('slug')
+        .lean();
+      if (store) return { slug: store.slug, canonical: false };
+    }
+    throw new NotFoundException('Store not found');
   }
 
   async getPublicProduct(slug, productId) {
