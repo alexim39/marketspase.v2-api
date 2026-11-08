@@ -54,6 +54,10 @@ export const createSignupEntity = (input) => {
   if (campaign) {
     entity.campaignCode = text(campaign, 'campaign', { min: 3, max: 64 });
   }
+  const ref = String(input.ref ?? '').trim();
+  if (ref) entity.referralCode = text(ref, 'ref', { min: 1, max: 80 });
+  const lead = String(input.lead ?? '').trim();
+  if (/^[a-fA-F0-9]{24}$/.test(lead)) entity.leadId = lead;
   return entity;
 };
 

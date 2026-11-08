@@ -11,6 +11,12 @@ export class MongoPartnerRepository {
   async findByEmail(email) {
     return PartnersModel.findOne({ email }).lean();
   }
+  async findByUsername(username, { session } = {}) {
+    const query = PartnersModel.findOne({ username: String(username ?? '').trim().toLowerCase() })
+      .select('_id username accountState kycStatus suspendedAt');
+    if (session) query.session(session);
+    return query.lean();
+  }
   async findById(id, { session } = {}) {
     return PartnersModel.findById(id, null, byId(session)).lean();
   }

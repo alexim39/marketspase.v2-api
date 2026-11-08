@@ -20,7 +20,7 @@ import {
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address';
+const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address partnerOf placementParentId systemOwned';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;
@@ -141,10 +141,13 @@ export class MongoOnboardingRepository {
     const partner = await this.findById(partnerId);
     if (!partner) throw new NotFoundException('Partner account not found');
 
-    const [order, kyc, queue] = await Promise.all([
+    const [order, kyc, queue, sponsor] = await Promise.all([
       ActivationOrderModel.findOne({ partnerId }).sort({ createdAt: -1 }).lean(),
       KycSubmissionModel.findOne({ partnerId }).lean(),
       ActivationQueueEntryModel.findOne({ partnerId }).lean(),
+      partner.partnerOf
+        ? PartnersModel.findById(partner.partnerOf).select('name surname username').lean().catch(() => null)
+        : null,
     ]);
 
     return {
@@ -152,6 +155,11 @@ export class MongoOnboardingRepository {
       activationOrder: publicOrder(order),
       kyc: publicKyc(kyc),
       queue: publicQueue(queue, await queuePosition(queue)),
+      sponsor: sponsor ? {
+        id: String(sponsor._id),
+        name: [sponsor.name, sponsor.surname].filter(Boolean).join(' ') || sponsor.username || 'Your sponsor',
+        username: sponsor.username ?? '',
+      } : null,
     };
   }
 
@@ -297,6 +305,7 @@ export class MongoOnboardingRepository {
               accountState: 'partner',
               activatedAt: now,
               activationOrderId: order._id,
+              ...(partner.partnerOf ? { placementParentId: partner.partnerOf, systemOwned: false } : {}),
               address: {
                 street: shipping.street,
                 city: shipping.city,
@@ -327,21 +336,23 @@ export class MongoOnboardingRepository {
           opts(session),
         );
 
-        const queue = await ActivationQueueEntryModel.findOneAndUpdate(
-          { partnerId },
-          {
-            $set: {
-              status: 'queued',
-              enteredAt: now,
-              allocatedAt: null,
-              campaignId: null,
-              placementParentId: null,
-              cancelledAt: null,
+        const queue = activated.partnerOf
+          ? null
+          : await ActivationQueueEntryModel.findOneAndUpdate(
+            { partnerId },
+            {
+              $set: {
+                status: 'queued',
+                enteredAt: now,
+                allocatedAt: null,
+                campaignId: null,
+                placementParentId: null,
+                cancelledAt: null,
+              },
+              $setOnInsert: { partnerId },
             },
-            $setOnInsert: { partnerId },
-          },
-          opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
-        ).lean();
+            opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
+          ).lean();
 
         return {
           order: publicOrder(order.toObject()),

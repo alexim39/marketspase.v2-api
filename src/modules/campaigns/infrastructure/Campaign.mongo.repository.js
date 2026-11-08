@@ -62,7 +62,7 @@ const weekStart = (now = new Date()) => {
 };
 
 const ownerProjection = 'name surname username email phone';
-const partnerProjection = 'name surname username email phone address accountState kycStatus suspendedAt placementParentId placedAt';
+const partnerProjection = 'name surname username email phone address accountState kycStatus suspendedAt partnerOf placementParentId systemOwned placedAt';
 
 const ownerLabel = (partner) => (
   [partner?.name, partner?.surname].filter(Boolean).join(' ') || partner?.username || partner?.email || 'Partner'
@@ -817,13 +817,18 @@ export class MongoCampaignRepository {
         {
           _id: partnerId,
           suspendedAt: null,
+          partnerOf: null,
           placementParentId: null,
           ...activationEligibilityFilter,
         },
         {
           $set: {
+            // Organic signup: the campaign mentor becomes the single upline
+            // for referral, activation and product commissions.
+            partnerOf: ownerId,
             placementParentId: ownerId,
             placementCampaignId: campaignId,
+            systemOwned: false,
             placedAt: now,
           },
         },

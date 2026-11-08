@@ -329,6 +329,13 @@ execution writes an `ora.action.execute` audit event.
   marked **Fulfilled**. The hourly `compensation-reconcile` also catches up
   pending activation commissions for orders that were already fulfilled before
   their allocation accrued. Manual **Release** is for exceptions only.
+- Sponsor placement: `/join?ref=<partner-username>` sets `partnerOf` and
+  `placementParentId` when the referrer is active, KYC-verified and not
+  suspended. Unknown or inactive referrers still create the account, marked
+  `systemOwned: true`. Campaign allocation only touches system-owned members
+  and sets both parent fields to the campaign owner. Converted pipeline leads
+  bind through `lead=<prospectId>` or a matching signup email. Never reparent a
+  referred member into a campaign.
 - Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
   (default 7; `0` means payable at the next hourly mentor-bonus run). It only
   affects **newly recorded activations**; existing `mentor_bonuses` rows keep

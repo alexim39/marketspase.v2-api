@@ -17,6 +17,7 @@ export class SignupUseCase {
     tokens = null,
     verificationMailer = null,
     frontendUrl = 'https://marketspase.com',
+    referralResolver = null,
   }) {
     this.partners = partners;
     this.hasher = hasher;
@@ -25,11 +26,21 @@ export class SignupUseCase {
     this.tokens = tokens;
     this.verificationMailer = verificationMailer;
     this.frontendUrl = String(frontendUrl ?? 'https://marketspase.com').replace(/\/+$/, '');
+    this.referralResolver = referralResolver;
   }
 
   async execute(input) {
     const entity = createSignupEntity(input);
     const issued = this.tokens?.issue?.() ?? null;
+    const referral = this.referralResolver?.resolve
+      ? await this.referralResolver.resolve({
+        ref: entity.referralCode,
+        leadId: entity.leadId,
+        email: entity.email,
+        phone: entity.phone,
+      }).catch(() => null)
+      : null;
+    const ownerId = referral?.ownerId ? String(referral.ownerId) : null;
 
     let saved;
     let usernameRetries = 0;
@@ -53,6 +64,17 @@ export class SignupUseCase {
           username,
           accountState: 'member',
           kycStatus: 'not_started',
+          ...(ownerId
+            ? {
+              partnerOf: ownerId,
+              // Sponsorship is also the activation/mentor placement. This
+              // guarantees a referred member is never reallocated to another
+              // campaign owner.
+              placementParentId: ownerId,
+              systemOwned: false,
+            }
+            : { systemOwned: true }),
+          ...(entity.referralCode ? { referralCode: entity.referralCode } : {}),
           ...(entity.campaignCode ? { campaignCode: entity.campaignCode } : {}),
           ...(issued ? {
             emailVerified: false,
@@ -101,6 +123,9 @@ export class SignupUseCase {
     }
 
     if (saved?.id || saved?._id) {
+      if (referral?.prospectId && this.referralResolver?.bindProspect) {
+        await this.referralResolver.bindProspect(referral.prospectId, saved.id ?? saved._id).catch(() => null);
+      }
       await this.events.emit(
         ACTIVATION_EVENTS.MEMBER_SIGNED_UP,
         signedUpPayload({

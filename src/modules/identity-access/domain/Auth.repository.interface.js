@@ -10,6 +10,8 @@
 export class PartnerRepository {
   /** @param {string} email @param {TxOpts} [_opts] */
   async findByEmail(email, _opts) { throw new Error('Not implemented'); }
+  /** @param {string} username @param {TxOpts} [_opts] */
+  async findByUsername(username, _opts) { throw new Error('Not implemented'); }
   /** @param {string} id @param {TxOpts} [_opts] */
   async findById(id, _opts) { throw new Error('Not implemented'); }
   /** @param {string} username @param {TxOpts} [_opts] @returns {Promise<boolean>} */

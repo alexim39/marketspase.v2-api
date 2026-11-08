@@ -131,6 +131,14 @@ const partnersSchema = mongoose.Schema(
       default: null,
     },
     placedAt: { type: Date, default: null },
+    /**
+     * True when no valid sponsor owns this account yet. System-owned members
+     * are the only ones campaign allocation may place under a campaign owner.
+     * A referred member has partnerOf set and is never reallocated.
+     */
+    systemOwned: { type: Boolean, default: false, index: true },
+    /** Raw referral username captured at signup, kept for audit/reporting. */
+    referralCode: { type: String, default: null, trim: true, maxlength: 80 },
     password: {
       type: String,
       required: [true, "Please enter password"]

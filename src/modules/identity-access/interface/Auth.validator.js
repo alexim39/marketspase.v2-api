@@ -10,6 +10,11 @@ export const SignupSchema = z.object({
   phone: z.string().trim().min(7).max(20),
   // Acquisition attribution: campaign tracking code from /join?campaign=...
   campaign: z.string().trim().min(3).max(64).optional(),
+  // Partner referral link: /join?ref=<username> (invalid/inactive falls back
+  // to a system-owned account instead of rejecting the signup).
+  ref: z.string().trim().min(1).max(80).optional(),
+  // Converted pipeline lead: /join?ref=<username>&lead=<prospectId>.
+  lead: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid lead').optional(),
   tnc: z.boolean().refine((v) => v === true, {
     message: 'You must accept the Terms of Service and Privacy Policy',
   }),

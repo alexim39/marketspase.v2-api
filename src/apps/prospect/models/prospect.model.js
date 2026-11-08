@@ -82,6 +82,17 @@ const prospectSchema = mongoose.Schema(
             ref: 'partner',
             required: true,
         },
+        /** Set when a converted prospect completes signup under this partner. */
+        convertedPartnerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'partner',
+            default: null,
+            index: true,
+        },
+        convertedAt: {
+            type: Date,
+            default: null,
+        },
         surverId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Survey',

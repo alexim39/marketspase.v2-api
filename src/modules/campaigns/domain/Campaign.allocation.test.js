@@ -59,6 +59,7 @@ describe('campaign allocation gates', () => {
     assert.equal(partnerEligibleForAllocation(partner({ accountState: 'member' })), false);
     assert.equal(partnerEligibleForAllocation(partner({ kycStatus: 'pending' })), false);
     assert.equal(partnerEligibleForAllocation(partner({ suspendedAt: new Date() })), false);
+    assert.equal(partnerEligibleForAllocation(partner({ partnerOf: 'sponsor-1' })), false);
     assert.equal(partnerEligibleForAllocation(partner({ placementParentId: 'owner-9' })), false);
   });
 

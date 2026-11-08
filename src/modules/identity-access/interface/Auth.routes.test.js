@@ -85,6 +85,10 @@ app.use('/v1/auth', buildAuthRouter({
   requestErasure: { execute: async () => ({}) },
   cancelErasure: { execute: async () => ({ cancelled: false }) },
   frontendUrl: 'http://localhost:4200',
+  referralResolver: {
+    resolve: async () => ({ ownerId: null, systemOwned: true, prospectId: null, source: 'organic' }),
+    bindProspect: async () => ({ bound: false }),
+  },
 }));
 app.use(errorMiddleware);
 

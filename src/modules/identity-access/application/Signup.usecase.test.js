@@ -155,4 +155,52 @@ describe('SignupUseCase', () => {
     assert.equal(result.verificationSent, false);
     assert.ok(partners.rows.get('ada@example.com'));
   });
+
+  it('places a referred signup under the active sponsor for every commission path', async () => {
+    const partners = fakePartners();
+    const bound = [];
+    const uc = new SignupUseCase({
+      partners,
+      hasher: fakeHasher,
+      tx: fakeTx,
+      tokens: tokenService,
+      verificationMailer: fakeMailer(),
+      referralResolver: {
+        resolve: async () => ({ ownerId: 'aisha', source: 'referral', prospectId: 'lead-1', systemOwned: false }),
+        bindProspect: async (prospectId, partnerId) => { bound.push([prospectId, partnerId]); return { bound: true }; },
+      },
+    });
+
+    await uc.execute({ ...baseInput, ref: 'aisha', lead: '507f1f77bcf86cd799439011' });
+
+    const row = partners.rows.get('ada@example.com');
+    assert.equal(row.partnerOf, 'aisha');
+    assert.equal(row.placementParentId, 'aisha');
+    assert.equal(row.systemOwned, false);
+    assert.deepEqual(bound, [['lead-1', row._id]]);
+  });
+
+  it('allows signup when the referrer is inactive and marks the account system-owned', async () => {
+    const partners = fakePartners();
+    const uc = new SignupUseCase({
+      partners,
+      hasher: fakeHasher,
+      tx: fakeTx,
+      tokens: tokenService,
+      verificationMailer: fakeMailer(),
+      referralResolver: {
+        resolve: async () => ({ ownerId: null, source: 'inactive-referrer', prospectId: null, systemOwned: true }),
+        bindProspect: async () => ({ bound: false }),
+      },
+    });
+
+    const result = await uc.execute({ ...baseInput, ref: 'inactive-partner' });
+
+    assert.equal(result.user.email, 'ada@example.com');
+    const row = partners.rows.get('ada@example.com');
+    assert.equal(row.partnerOf, undefined);
+    assert.equal(row.placementParentId, undefined);
+    assert.equal(row.systemOwned, true);
+    assert.equal(row.referralCode, 'inactive-partner');
+  });
 });

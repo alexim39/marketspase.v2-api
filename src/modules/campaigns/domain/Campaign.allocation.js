@@ -55,6 +55,9 @@ export const ownerEligibleForCampaign = (owner) => {
 export const partnerEligibleForAllocation = (partner) => {
   if (!partner) return false;
   if (!ownerEligibleForCampaign(partner)) return false;
+  // A referred member already has a sponsor/mentor. Campaign allocation must
+  // never take them away from that partner.
+  if (partner.partnerOf) return false;
   if (partner.placementParentId) return false;
   return true;
 };

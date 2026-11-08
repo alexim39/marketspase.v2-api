@@ -13,6 +13,7 @@ import { RequestSelfErasureUseCase, CancelSelfErasureUseCase } from '../applicat
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/PasswordReset.usecase.js';
 import { VerifyEmailUseCase, ResendVerificationUseCase } from '../application/EmailVerification.usecases.js';
 import { MongoPartnerRepository } from '../infrastructure/Auth.mongo.repository.js';
+import { SignupReferralResolver } from '../infrastructure/SignupReferralResolver.js';
 import { BcryptPasswordHasher, JwtSessionIssuer, EmailVerificationTokens } from '../infrastructure/Auth.crypto.js';
 import { RefreshSessions } from '../infrastructure/RefreshSessions.js';
 import { PasswordResetMailer } from '../infrastructure/clients/PasswordResetMailer.js';
@@ -85,6 +86,9 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   const tokens = deps.tokens ?? new EmailVerificationTokens();
   const verificationMailer = deps.verificationMailer ?? new EmailVerificationMailer();
   const refreshSessions = deps.refreshSessions ?? new RefreshSessions();
+  const referralResolver = deps.referralResolver === undefined
+    ? new SignupReferralResolver()
+    : deps.referralResolver;
   const frontendUrl = String(
     deps.frontendUrl ?? process.env.FRONTEND_URL ?? process.env.APP_BASE_URL ?? 'https://marketspase.com',
   ).replace(/\/+$/, '');
@@ -97,6 +101,7 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
       tokens,
       verificationMailer,
       frontendUrl,
+      referralResolver,
     }),
     signin: new SigninUseCase({
       partners, hasher, sessions,
