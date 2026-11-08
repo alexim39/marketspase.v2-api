@@ -27,6 +27,7 @@ import { runCompensationReconcileJob } from './compensation-reconcile.js';
 import { runPayoutReconcileJob } from './payout-reconcile.js';
 import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob } from './store-orders.js';
 import { runOutboxDueJob } from './outbox-delivery.js';
+import { runRankGroupSyncJob } from './rank-group-sync.js';
 import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
 
 /**
@@ -115,7 +116,8 @@ export function scheduleJobs() {
   cron.schedule('*/5 * * * *', run('store-order-expiry', () => withJobHealth(JobRunModel, 'store-order-expiry', () => runStoreOrderExpiryJob())));
   cron.schedule('*/15 * * * *', run('store-escrow-release', () => withJobHealth(JobRunModel, 'store-escrow-release', () => runStoreEscrowReleaseJob())));
   cron.schedule('*/20 * * * * *', run('outbox-delivery', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()), 2 * 60 * 1000));
-  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
+  cron.schedule('45 2 * * *', run('rank-group-sync', () => withJobHealth(JobRunModel, 'rank-group-sync', () => runRankGroupSyncJob()), 30 * 60 * 1000));
+  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, lead-pool sweep + session/event reminders every 15 minutes, campaign allocation sweep every 30 minutes, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';

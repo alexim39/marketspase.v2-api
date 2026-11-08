@@ -46,10 +46,11 @@ export class MongoGroupStore {
     return GroupMemberModel.countDocuments({ groupId }).catch(() => 0);
   }
 
-  async createGroup({ name, description = '', photo = null, joinPolicy = 'approval', createdBy, teamId = null }) {
+  async createGroup({ name, description = '', photo = null, joinPolicy = 'approval', createdBy, teamId = null, rankGroup = null }) {
     const group = await ChatGroupModel.create({
       name, description, photo, joinPolicy, createdBy,
       ...(teamId ? { teamId } : {}),
+      ...(rankGroup ? { rankGroup } : {}),
     });
     await GroupMemberModel.create({
       groupId: group._id, partnerId: createdBy, role: 'admin', lastReadAt: new Date(),
@@ -66,6 +67,22 @@ export class MongoGroupStore {
   async findByTeamId(teamId) {
     const doc = await ChatGroupModel.findOne({ teamId }).lean().catch(() => null);
     return doc ? shaped(doc) : null;
+  }
+
+  /** Official rank-group lookup (one group per journey rank). */
+  async findByRankGroup(rank) {
+    const doc = await ChatGroupModel.findOne({ rankGroup: rank }).lean().catch(() => null);
+    return doc ? shaped(doc) : null;
+  }
+
+  async listRankGroups() {
+    const docs = await ChatGroupModel.find({ rankGroup: { $ne: null } }).lean().catch(() => []);
+    return (docs ?? []).map(shaped);
+  }
+
+  async listMemberIds(groupId) {
+    const rows = await GroupMemberModel.find({ groupId }).select('partnerId').lean().catch(() => []);
+    return (rows ?? []).map((r) => String(r.partnerId));
   }
 
   async updateGroup(id, patch) {
@@ -178,7 +195,7 @@ export class MongoGroupStore {
     if (q.length < 2) return [];
     const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = new RegExp(escaped, 'i');
-    const docs = await ChatGroupModel.find({ $or: [{ name: rx }, { description: rx }] })
+    const docs = await ChatGroupModel.find({ rankGroup: null, $or: [{ name: rx }, { description: rx }] })
       .sort({ createdAt: -1 }).limit(Math.min(Math.max(Number(limit) || 20, 1), 25)).lean().catch(() => []);
     const out = [];
     for (const d of docs ?? []) {
@@ -331,7 +348,7 @@ export class MongoGroupStore {
         muted: !!mem.muted,
         lastMessage: last ? { ...last, senderName: labels[String(last.senderId)] ?? null } : null,
       };
-    });
+    }).sort((a, b) => (a.rankGroup ? 0 : 1) - (b.rankGroup ? 0 : 1));
   }
 
   /** Public directory search — safe fields only, no rosters (anti-harvest). */
@@ -340,7 +357,7 @@ export class MongoGroupStore {
     if (query.length < 2) return [];
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = new RegExp(escaped, 'i');
-    const docs = await ChatGroupModel.find({ $or: [{ name: rx }, { description: rx }] })
+    const docs = await ChatGroupModel.find({ rankGroup: null, $or: [{ name: rx }, { description: rx }] })
       .sort({ createdAt: -1 }).limit(Math.min(Math.max(Number(limit) || 20, 1), 25)).lean().catch(() => []);
     const memberCounts = await Promise.all(
       (docs ?? []).map(async (d) => [String(d._id), await GroupMemberModel.countDocuments({ groupId: d._id }).catch(() => 0)]),

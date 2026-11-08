@@ -16,11 +16,18 @@ const groupSchema = mongoose.Schema(
     pinnedMessageId: { type: mongoose.Schema.Types.ObjectId, default: null },
     /** Purpose-team bridge — one group chat per mentorship team (sparse: plain groups carry no team). */
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+    /** System-managed journey-level group (sparse: ordinary groups carry no rank). */
+    rankGroup: {
+      type: String,
+      enum: ['Partner', 'Builder', 'Leader', 'Ambassador'],
+      default: undefined,
+    },
   },
   { timestamps: { createdAt: true, updatedAt: true } },
 );
 groupSchema.index({ name: 'text', description: 'text' });
 groupSchema.index({ teamId: 1 }, { unique: true, sparse: true });
+groupSchema.index({ rankGroup: 1 }, { unique: true, sparse: true });
 
 const groupMemberSchema = mongoose.Schema(
   {

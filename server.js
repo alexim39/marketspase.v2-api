@@ -88,6 +88,9 @@ import { scheduleJobs } from './src/jobs/schedule.js';
 import { runGrowthAllocationDueJob } from './src/jobs/growth-allocation-due.js';
 import { attachMessagingGateway } from './src/modules/messaging/interface/Messaging.gateway.js';
 import { MongoGroupStore } from './src/modules/messaging/infrastructure/Group.mongo.repository.js';
+import { RankGroupService } from './src/modules/messaging/application/RankGroups.service.js';
+import { MongoProgressionStore } from './src/modules/progression/infrastructure/Progression.mongo.repository.js';
+import { PROGRESSION_EVENTS } from './src/modules/progression/domain/ProgressionEvents.js';
 import { MongoOutbox } from './src/shared/outbox/Outbox.mongo.model.js';
 import { requestContext } from './src/shared/http/requestContext.js';
 import { safeErrorResponses } from './src/shared/http/safeErrorResponses.js';
@@ -95,6 +98,11 @@ import { csrfGuard } from './src/shared/http/csrfGuard.js';
 import { allowedOrigins } from './src/shared/http/origins.js';
 import { buildHealthRouter } from './src/shared/http/health.routes.js';
 import { logger } from './src/shared/observability/logger.js';
+
+const rankGroupService = new RankGroupService({
+  groups: new MongoGroupStore(),
+  progress: new MongoProgressionStore(),
+});
 
 const requestedPort = process.env.PORT ?? '8080';
 const port = Number(requestedPort);
@@ -284,6 +292,16 @@ app.use(errorMiddleware);
     mail: sendEmail,
   });
   subscribeCompensation({ events: domainEvents });
+  // Level group membership follows the persisted journey rank. Promotion
+  // events move immediately; the daily sweep repairs demotions and drift.
+  domainEvents.on(PROGRESSION_EVENTS.PROMOTED, (payload) => {
+    void rankGroupService.syncPartner(payload?.partnerId).catch((error) => {
+      logger.warn('rank_group_sync_failed', {
+        partnerId: payload?.partnerId ?? null,
+        error: error?.message ?? String(error),
+      });
+    });
+  });
   // Allocation is automatic: a newly activated partner or newly activated
   // campaign immediately kicks the growth-campaign placement sweep. The
   // 15-minute cron remains the safety net.
@@ -390,6 +408,15 @@ const startBackgroundTasks = async () => {
   } catch (error) {
     if (!shuttingDown) logger.warn('index_ensure_skipped', { error: error?.message ?? String(error) });
   }
+
+  if (shuttingDown) return;
+
+  rankGroupService.ensureGroups().then(
+    (result) => logger.info('rank_groups_seeded', { created: result?.created ?? 0, ready: !!result?.ready }),
+    (error) => {
+      if (!shuttingDown) logger.warn('rank_group_seed_skipped', { error: error?.message ?? String(error) });
+    },
+  );
 
   if (shuttingDown) return;
 

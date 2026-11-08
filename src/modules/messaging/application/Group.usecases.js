@@ -58,6 +58,11 @@ async function groupOr404(groups, groupId) {
   return group;
 }
 
+/** Official level groups are system-managed: membership follows progression. */
+function assertNotRankGroup(group, message = 'Level groups are managed automatically by MarketSpase') {
+  if (group?.rankGroup) throw new ForbiddenException(message);
+}
+
 /** Partner lookups that tolerate both Mongoose queries and plain fakes. */
 async function partnerById(partners, id) {
   try {
@@ -206,12 +211,15 @@ export class FindOrCreateTeamGroupUseCase {
 
 /** My groups: enriched rows for the sidebar (member count, unread, last message). */
 export class ListMyGroupsUseCase {
-  constructor({ groups }) {
-    this.groups = groups;
+  constructor({ groups, rankGroups = null }) {
+    Object.assign(this, { groups, rankGroups });
   }
 
   async execute({ partnerId }) {
     if (!partnerId) throw new ValidationException('Sign in to view groups');
+    // Keep the official level group aligned whenever the member opens Messages.
+    // Best-effort: a group-sync failure must never hide their other groups.
+    if (this.rankGroups) await this.rankGroups.syncPartner(partnerId).catch(() => null);
     return this.groups.listMine(partnerId);
   }
 }
@@ -226,6 +234,7 @@ export class GetGroupInviteUseCase {
   async execute({ groupId }) {
     const id = cleanId(groupId, 'group');
     const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'This level group is managed automatically and is not joinable by link.');
     const memberCount = await this.groups.memberCount(id).catch(() => 0);
     return {
       id: String(group.id ?? group._id),
@@ -295,6 +304,8 @@ export class UpdateGroupUseCase {
 
   async execute({ partnerId, groupId, patch = {} }) {
     const id = cleanId(groupId, 'group');
+    const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Level groups are managed by MarketSpase and cannot be edited.');
     await requireAdmin(this.groups, id, partnerId);
     const next = {};
     if (patch.name !== undefined) next.name = cleanName(patch.name);
@@ -320,6 +331,7 @@ export class SetGroupPhotoUseCase {
       throw new ValidationException('No photo uploaded');
     }
     const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Level groups are managed by MarketSpase and cannot be edited.');
     await requireAdmin(this.groups, id, partnerId);
     if (!this.images?.upload) throw new ValidationException('Photo uploads are not configured yet');
     const stored = await this.images.upload(buffer, { publicId: `group-${id}-${Date.now()}` });
@@ -346,6 +358,7 @@ export class DeleteGroupUseCase {
   async execute({ partnerId, groupId }) {
     const id = cleanId(groupId, 'group');
     const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Level groups are managed by MarketSpase and cannot be deleted.');
     const role = await this.groups.memberRole(id, partnerId).catch(() => null);
     const isCreator = String(group.createdBy) === String(partnerId);
     const creatorLeft = !(await this.groups.isMember(id, String(group.createdBy)).catch(() => false));
@@ -367,6 +380,7 @@ export class JoinGroupUseCase {
     const id = cleanId(groupId, 'group');
     if (!partnerId) throw new ValidationException('Sign in to join a group');
     const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'This level group is managed automatically — membership follows your progress.');
     if (await this.groups.isMember(id, partnerId).catch(() => false)) {
       return { joined: true, already: true };
     }
@@ -494,7 +508,8 @@ export class AddGroupMemberUseCase {
   async execute({ partnerId, groupId, userId }) {
     const id = cleanId(groupId, 'group');
     const uid = cleanId(userId, 'user');
-    await groupOr404(this.groups, id);
+    const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Level group membership is managed automatically by progress.');
     await requireAdmin(this.groups, id, partnerId);
     if (await this.groups.isBanned(id, uid).catch(() => false)) {
       throw new ForbiddenException('That partner is banned from this group');
@@ -522,6 +537,7 @@ export class RemoveGroupMemberUseCase {
     const id = cleanId(groupId, 'group');
     const uid = cleanId(userId, 'user');
     const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Level group membership is managed automatically. Use ban to keep someone out.');
     await requireAdmin(this.groups, id, partnerId);
     if (String(group.createdBy) === uid) {
       throw new ForbiddenException('The group creator cannot be removed — delete the group instead');
@@ -543,7 +559,8 @@ export class LeaveGroupUseCase {
 
   async execute({ partnerId, groupId }) {
     const id = cleanId(groupId, 'group');
-    await groupOr404(this.groups, id);
+    const group = await groupOr404(this.groups, id);
+    assertNotRankGroup(group, 'Your level group is managed automatically — you can mute it, but not leave it.');
     const role = await this.groups.memberRole(id, partnerId).catch(() => null);
     if (!role) throw new NotFoundException('You are not in this group');
     await this.groups.removeMember(id, partnerId);

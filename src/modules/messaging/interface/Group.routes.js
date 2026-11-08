@@ -4,6 +4,8 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { validate } from '../../../shared/http/validate.js';
 import { MongoGroupStore } from '../infrastructure/Group.mongo.repository.js';
+import { RankGroupService } from '../application/RankGroups.service.js';
+import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { NotifyUseCase } from '../../notifications/application/NotificationsCenter.usecases.js';
 import { recordAudit } from '../../audit/index.js';
@@ -78,6 +80,10 @@ const ThreadQuery = z.object({
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildGroupRouter = (deps = {}) => {
   const groups = deps.groups ?? new MongoGroupStore();
+  const progress = deps.progress ?? new MongoProgressionStore();
+  // Custom stores own their wiring (HTTP tests inject fakes). Production
+  // uses the Mongo store and gets managed level groups automatically.
+  const rankGroups = deps.rankGroups ?? (deps.groups ? null : new RankGroupService({ groups, progress }));
   const stored = deps.stored ?? new MongoStoredNotificationStore();
   const notify = deps.notify ?? new NotifyUseCase({ stored });
   /** Partner directory (injected in tests so HTTP tests never touch Mongoose). */
@@ -124,7 +130,7 @@ export const buildGroupRouter = (deps = {}) => {
   }));
 
   g.get('/mine', asyncHandler(async (req, res) => {
-    const data = await new ListMyGroupsUseCase({ groups }).execute({ partnerId: req.auth?.partnerId });
+    const data = await new ListMyGroupsUseCase({ groups, rankGroups }).execute({ partnerId: req.auth?.partnerId });
     res.status(200).json({ message: 'Groups retrieved', data, success: true });
   }));
 

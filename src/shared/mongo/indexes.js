@@ -157,6 +157,7 @@ export const INDEXES = [
   { collection: 'store_escrow_ledger', keys: { orderId: 1, type: 1 }, options: { unique: true } },
   { collection: 'store_escrow_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
   { collection: 'platform_settings', keys: { key: 1 }, options: { unique: true } },
+  { collection: 'chatgroups', keys: { rankGroup: 1 }, options: { unique: true, sparse: true } },
 ];
 
 /**
