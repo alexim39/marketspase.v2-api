@@ -60,6 +60,8 @@ test('tree follows the requested chain and reports it in meta', async () => {
   });
   assert.equal(referral.meta.chain, 'referral');
   assert.equal(referral.tree.children[0].relationType, 'referral');
+  assert.equal(growth.systemRoot?.name, 'MarketSpase');
+  assert.equal(growth.systemRoot?.earning, false);
 });
 
 test('upline walks the requested chain parent links', async () => {
@@ -91,4 +93,6 @@ test('upline walks the requested chain parent links', async () => {
   const result = await new GetUplineChainUseCase({ network }).execute({ partnerId: 'root', chain: 'growth' });
   assert.equal(result.chainMode, 'growth');
   assert.deepEqual(result.chain.map((n) => n.id), ['owner', 'grand-owner']);
+  assert.equal(result.systemRoot?.id, 'system-root');
+  assert.equal(result.systemRoot?.earning, false);
 });

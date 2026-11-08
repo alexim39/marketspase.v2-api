@@ -336,6 +336,10 @@ execution writes an `ora.action.execute` audit event.
   and sets both parent fields to the campaign owner. Converted pipeline leads
   bind through `lead=<prospectId>` or a matching signup email. Never reparent a
   referred member into a campaign.
+- The **MarketSpase root** is virtual (`system-root`), not a partner row. It has
+  no login, wallet, KYC, rank or commission entitlement, and must never appear
+  in member counts, commission walks, mentor bonuses or payout runs. Network
+  tree/org responses expose it as read-only metadata for display only.
 - Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
   (default 7; `0` means payable at the next hourly mentor-bonus run). It only
   affects **newly recorded activations**; existing `mentor_bonuses` rows keep

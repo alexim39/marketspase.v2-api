@@ -1,5 +1,6 @@
 import { NotFoundException } from '../../../shared/domain/AppError.js';
 import { MAX_CHILDREN_PER_NODE, clampChain, clampDepth } from '../domain/Network.entity.js';
+import { SYSTEM_ROOT } from '../domain/Network.root.js';
 
 /**
  * Downline tree — iterative BFS, one query per level. Cycle-safe via a
@@ -62,6 +63,7 @@ export class GetDownlineTreeUseCase {
     return {
       tree: rootNode,
       meta: { depth: maxDepth, chain: mode, total, perLevel, truncated: truncatedAny },
+      systemRoot: SYSTEM_ROOT,
     };
   }
 }
@@ -88,7 +90,7 @@ export class GetUplineChainUseCase {
       chain.push(projected);
       currentParentId = node.parentId;
     }
-    return { chain, depth: chain.length, chainMode };
+    return { chain, depth: chain.length, chainMode, systemRoot: SYSTEM_ROOT };
   }
 }
 
