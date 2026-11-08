@@ -357,6 +357,19 @@ execution writes an `ora.action.execute` audit event.
   pass through until the migration seals them.
 - Rotate by adding a new key to `PII_ENCRYPTION_KEYS`, setting
   `PII_ACTIVE_KEY_ID`, deploying, then running the dry/apply/verify sequence.
+  Generate the new pair with:
+  ```bash
+  npm run pii:key -- rot1
+  ```
+  Keep the old `default` key readable. If `PII_ENCRYPTION_KEYS` does not
+  contain a `default` entry, the code derives it from
+  `PII_ENCRYPTION_KEY` / `KYC_HASH_SECRET` / `JWTTOKENSECRET`. Do **not**
+  rotate those secrets until the old PII material is preserved under a
+  `default` keyring entry.
+- Safe sequence: snapshot the database, add the new key while keeping
+  `default`, set the new active id, deploy/restart, run `npm run migrate:pii`
+  (dry), then `APPLY=1 npm run migrate:pii`, verify a known address/DOB reads
+  correctly, and only then remove the old key.
 - An unknown key ID fails closed. Restore the missing key in the keyring; do
   not rewrite ciphertext by hand.
 - Legal erasure is a hard delete for the covered records; normal business
