@@ -115,13 +115,16 @@ const createPaidOrder = async (customerSuffix = 'one') => {
   });
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const reference = created.body.data.order.reference;
+  const orderToken = created.body.data.orderToken;
   const checkoutUrl = created.body.data.checkoutUrl;
   assert.ok(reference, 'order reference');
+  assert.ok(orderToken, 'order access token');
   assert.ok(checkoutUrl, 'checkout URL');
   ok(`order ${reference} created`);
   ok(`hosted checkout: ${checkoutUrl}`);
 
-  const pending = await request(`/v1/stores/orders/${reference}`);
+  const tokenQuery = `?token=${encodeURIComponent(orderToken)}`;
+  const pending = await request(`/v1/stores/orders/${reference}${tokenQuery}`);
   assert.equal(pending.status, 200);
   assert.equal(pending.body.data.status, 'pending_payment');
   ok('starts pending_payment');
@@ -129,13 +132,13 @@ const createPaidOrder = async (customerSuffix = 'one') => {
   await markPaidOnMockGateway(checkoutUrl);
   ok('mock gateway marked paid and sent a signed webhook');
 
-  const verified = await request(`/v1/stores/orders/${reference}/verify`, { method: 'POST', body: {} });
+  const verified = await request(`/v1/stores/orders/${reference}/verify${tokenQuery}`, { method: 'POST', body: {} });
   assert.equal(verified.status, 200, JSON.stringify(verified.body));
   assert.equal(verified.body.data.status, 'paid');
   assert.equal(verified.body.data.order.escrow.status, 'held');
   ok(`verified paid; escrow held (${ngn(verified.body.data.order.amounts.partnerPending)})`);
 
-  return verified.body.data.order;
+  return { ...verified.body.data.order, orderToken };
 };
 
 const main = async () => {
@@ -186,7 +189,7 @@ const main = async () => {
     ok(`moved to ${update.status}`);
   }
 
-  const delivered = await request(`/v1/stores/orders/${first.reference}`);
+  const delivered = await request(`/v1/stores/orders/${first.reference}?token=${encodeURIComponent(first.orderToken)}`);
   assert.equal(delivered.body.data.escrow.status, 'held');
   assert.ok(delivered.body.data.escrow.releaseAt, 'releaseAt must be scheduled');
   ok(`escrow release scheduled for ${delivered.body.data.escrow.releaseAt}`);
