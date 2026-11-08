@@ -70,6 +70,7 @@ import { subscribeGoalFanout } from './src/modules/notifications/application/Goa
 import { subscribeContactListFanout } from './src/modules/notifications/application/ContactListFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
 import { subscribeStoreOrderFanout } from './src/modules/notifications/application/StoreOrderFanout.js';
+import { subscribeRankGroupFanout } from './src/modules/notifications/application/RankGroupFanout.js';
 import { domainEvents } from './src/shared/events/DomainEvents.js';
 import { env } from './src/shared/config/env.js';
 import { sendEmail } from './src/services/emailService.js';
@@ -87,9 +88,10 @@ import { errorMiddleware } from './src/shared/http/errorMiddleware.js';
 import { ensureIndexes } from './src/shared/mongo/indexes.js';
 import { scheduleJobs } from './src/jobs/schedule.js';
 import { runGrowthAllocationDueJob } from './src/jobs/growth-allocation-due.js';
-import { attachMessagingGateway } from './src/modules/messaging/interface/Messaging.gateway.js';
+import { attachMessagingGateway, broadcastRankGroupChanged } from './src/modules/messaging/interface/Messaging.gateway.js';
 import { MongoGroupStore } from './src/modules/messaging/infrastructure/Group.mongo.repository.js';
 import { RankGroupService } from './src/modules/messaging/application/RankGroups.service.js';
+import { RANK_GROUP_EVENTS } from './src/modules/messaging/domain/RankGroups.js';
 import { MongoProgressionStore } from './src/modules/progression/infrastructure/Progression.mongo.repository.js';
 import { PROGRESSION_EVENTS } from './src/modules/progression/domain/ProgressionEvents.js';
 import { MongoOutbox } from './src/shared/outbox/Outbox.mongo.model.js';
@@ -100,9 +102,12 @@ import { allowedOrigins } from './src/shared/http/origins.js';
 import { buildHealthRouter } from './src/shared/http/health.routes.js';
 import { logger } from './src/shared/observability/logger.js';
 
+let messagingGateway = null;
+
 const rankGroupService = new RankGroupService({
   groups: new MongoGroupStore(),
   progress: new MongoProgressionStore(),
+  onChanged: (payload) => domainEvents.emit(RANK_GROUP_EVENTS.CHANGED, payload),
 });
 
 const requestedPort = process.env.PORT ?? '8080';
@@ -184,7 +189,7 @@ app.use('/v1/campaigns', CampaignsRouter);
 app.use('/v1/admin/campaigns', buildAdminCampaignRouter());
 app.use('/v1/compensation', CompensationRouter);
 app.use('/v1/admin/compensation', buildAdminCompensationRouter());
-app.use('/v1/admin/rank-groups', buildAdminRankGroupsRouter());
+app.use('/v1/admin/rank-groups', buildAdminRankGroupsRouter({ rankGroups: rankGroupService }));
 app.use('/v1/admin', AdminRouter);
 app.use('/v1/admin', AdminStoreRouter);
 app.use('/v1/network', NetworkRouter);
@@ -198,7 +203,7 @@ app.use('/v1/dashboard', DashboardRouter);
 app.use('/v1/reports', ReportsRouter);
 app.use('/v1/exports', ExportsRouter);
 app.use('/v1/messages', MessagingRouter);
-app.use('/v1/messages', buildGroupRouter());
+app.use('/v1/messages', buildGroupRouter({ rankGroups: rankGroupService }));
 app.use('/v1/progression', ProgressionRouter);
 app.use('/v1/training', TrainingRouter);
 app.use('/v1/admin/training', AdminTrainingRouter);
@@ -294,6 +299,16 @@ app.use(errorMiddleware);
     mail: sendEmail,
   });
   subscribeCompensation({ events: domainEvents });
+  // Official level-group moves: store an in-app notification and, when the
+  // partner is online, move their sockets into the new group room and tell
+  // the Messages UI to refresh without a page reload.
+  subscribeRankGroupFanout({
+    events: domainEvents,
+    notify: new NotifyUseCase({ stored: lifecycleStore }),
+  });
+  domainEvents.on(RANK_GROUP_EVENTS.CHANGED, (payload) => {
+    broadcastRankGroupChanged(messagingGateway, payload);
+  });
   // Level group membership follows the persisted journey rank. Promotion
   // events move immediately; the daily sweep repairs demotions and drift.
   domainEvents.on(PROGRESSION_EVENTS.PROMOTED, (payload) => {
@@ -478,7 +493,7 @@ const bootServer = () => {
     );
     httpServer.requestTimeout = envMs('REQUEST_TIMEOUT_MS', 120000);
     httpServer.on('error', onServerError);
-    attachMessagingGateway(httpServer, { groups: new MongoGroupStore() });
+    messagingGateway = attachMessagingGateway(httpServer, { groups: new MongoGroupStore() });
 
     httpServer.listen(port, () => {
       logger.info('server_started', { port });

@@ -23,9 +23,10 @@ export class RankGroupService {
     progress,
     partners = PartnersModel,
     listAdminIds = null,
+    onChanged = null,
     logger = console,
   } = {}) {
-    Object.assign(this, { groups, progress, partners, logger });
+    Object.assign(this, { groups, progress, partners, logger, onChanged });
     this.listAdminIds = listAdminIds ?? (() => this.defaultAdminIds());
     this.ensuredAt = 0;
     this.ensuring = null;
@@ -122,18 +123,30 @@ export class RankGroupService {
     const rank = rankForLevel(level);
     const rankGroups = await this.groups.listRankGroups();
     let groupId = null;
+    let groupName = null;
+    let fromGroupId = null;
+    let fromRank = null;
+    let joined = false;
+    let removed = false;
 
     for (const group of rankGroups) {
       const isTarget = group.rankGroup === rank;
-      if (isTarget) groupId = group.id;
+      if (isTarget) {
+        groupId = group.id;
+        groupName = group.name;
+      }
       const isMember = await this.groups.isMember(group.id, partnerId).catch(() => false);
 
       if (isTarget) {
         const banned = await this.groups.isBanned(group.id, partnerId).catch(() => false);
         if (banned) {
-          if (isMember) await this.groups.removeMember(group.id, partnerId).catch(() => null);
+          if (isMember) {
+            await this.groups.removeMember(group.id, partnerId).catch(() => null);
+            removed = true;
+          }
         } else if (!isMember) {
-          await this.groups.addMember(group.id, partnerId).catch(() => null);
+          const added = await this.groups.addMember(group.id, partnerId).catch(() => false);
+          if (added) joined = true;
         }
         continue;
       }
@@ -141,10 +154,30 @@ export class RankGroupService {
       if (!isMember) continue;
       const role = await this.groups.memberRole(group.id, partnerId).catch(() => null);
       // System admins moderate every rank group; never evict them.
-      if (role !== 'admin') await this.groups.removeMember(group.id, partnerId).catch(() => null);
+      if (role !== 'admin') {
+        fromGroupId = fromGroupId ?? group.id;
+        fromRank = fromRank ?? group.rankGroup;
+        await this.groups.removeMember(group.id, partnerId).catch(() => null);
+        removed = true;
+      }
     }
 
-    return { synced: true, level, rank, groupId };
+    if (joined && this.onChanged) {
+      try {
+        await this.onChanged({
+          partnerId: String(partnerId),
+          level,
+          rank,
+          groupId,
+          groupName,
+          fromGroupId,
+          fromRank,
+          at: new Date().toISOString(),
+        });
+      } catch { /* best-effort — membership already moved */ }
+    }
+
+    return { synced: true, level, rank, groupId, fromGroupId, joined, removed };
   }
 
   /** Daily repair sweep — catches demotions and any missed events. */

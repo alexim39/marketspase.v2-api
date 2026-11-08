@@ -156,4 +156,44 @@ describe('RankGroupService', () => {
       assert.equal(await groups.memberRole(group.id, 'admin1'), 'admin');
     }
   });
+
+  it('emits one change event per actual group move, with the previous rank', async () => {
+    const groups = fakeStore();
+    const progress = fakeProgress({ member1: 'partner' });
+    const changes = [];
+    const service = new RankGroupService({
+      groups,
+      progress,
+      listAdminIds: async () => ['admin1'],
+      onChanged: async (payload) => { changes.push(payload); },
+    });
+    await service.ensureGroups();
+
+    const first = await service.syncPartner('member1');
+    assert.equal(changes.length, 1);
+    assert.equal(changes[0].partnerId, 'member1');
+    assert.equal(changes[0].rank, 'Partner');
+    assert.equal(changes[0].groupId, first.groupId);
+    assert.equal(changes[0].groupName, 'Partner Circle');
+    assert.equal(changes[0].fromRank, null);
+    assert.equal(changes[0].fromGroupId, null);
+    assert.ok(changes[0].at);
+
+    // A repeat sync with the same level is a no-op, not a duplicate notice.
+    await service.syncPartner('member1');
+    assert.equal(changes.length, 1);
+
+    progress.levelByPartner = { member1: 'builder' };
+    progress.findByPartner = async (id) => ({ level: progress.levelByPartner[String(id)] });
+    const moved = await service.syncPartner('member1');
+    assert.equal(changes.length, 2);
+    assert.equal(changes[1].rank, 'Builder');
+    assert.equal(changes[1].groupName, 'Builder Circle');
+    assert.equal(changes[1].fromRank, 'Partner');
+    assert.equal(
+      changes[1].fromGroupId,
+      [...groups.state.groups.values()].find((g) => g.rankGroup === 'Partner').id,
+    );
+    assert.equal(changes[1].groupId, moved.groupId);
+  });
 });

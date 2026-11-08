@@ -8,6 +8,11 @@
 
 export const RANK_GROUP_RANKS = Object.freeze(['Partner', 'Builder', 'Leader', 'Ambassador']);
 
+/** Emitted after a partner successfully joins a new official rank group. */
+export const RANK_GROUP_EVENTS = Object.freeze({
+  CHANGED: 'rank.group.changed',
+});
+
 export const RANK_GROUP_CONFIG = Object.freeze({
   Partner: {
     rank: 'Partner',

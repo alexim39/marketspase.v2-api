@@ -347,6 +347,37 @@ export function buildMessagingGateway(deps = {}) {
   return { emitTo, touchPresence, onConnection };
 }
 
+/**
+ * Move every live socket for a partner out of their previous rank group
+ * room and into the new one, then tell them about the change. Safe to call
+ * for offline partners (no sockets are touched) and idempotent for sockets
+ * already in the target room.
+ *
+ * @returns {boolean} true when there was a live gateway to address
+ */
+export function broadcastRankGroupChanged(io, payload = {}) {
+  const partnerId = String(payload.partnerId ?? '');
+  if (!io || !partnerId) return false;
+  const userRoom = roomFor(partnerId);
+  const groupId = payload.groupId ? String(payload.groupId) : null;
+  const fromGroupId = payload.fromGroupId ? String(payload.fromGroupId) : null;
+
+  if (fromGroupId && fromGroupId !== groupId) {
+    io.in(userRoom).socketsLeave(groupRoom(fromGroupId));
+  }
+  if (groupId) io.in(userRoom).socketsJoin(groupRoom(groupId));
+  io.to(userRoom).emit('rank:group-changed', {
+    partnerId,
+    rank: payload.rank ?? null,
+    groupId,
+    groupName: payload.groupName ?? null,
+    fromGroupId,
+    fromRank: payload.fromRank ?? null,
+    at: payload.at ?? new Date().toISOString(),
+  });
+  return true;
+}
+
 export function attachMessagingGateway(httpServer, deps = {}) {
   const io = new Server(httpServer, {
     cors: { origin: true, credentials: true },

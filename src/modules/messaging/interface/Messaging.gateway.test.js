@@ -2,7 +2,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 import { setRevocationChecker } from '../../identity-access/infrastructure/SessionRevocation.js';
-import { roomFor, groupRoom, takeToken, verifySocketToken, cookieToken, buildMessagingGateway } from './Messaging.gateway.js';
+import { roomFor, groupRoom, takeToken, verifySocketToken, cookieToken, buildMessagingGateway, broadcastRankGroupChanged } from './Messaging.gateway.js';
 
 const OID = (n) => String(n).padStart(24, 'a');
 
@@ -41,6 +41,39 @@ describe('gateway helpers', () => {
     assert.equal(cookieToken('other=1'), null);
     const fromCookie = cookieToken('jwt=' + jwt.sign({ id: 'partner-1' }, process.env.JWTTOKENSECRET));
     assert.equal(await verifySocketToken(fromCookie), 'partner-1');
+  });
+
+  it('moves live sockets between rank group rooms and notifies the partner', () => {
+    const calls = [];
+    const io = {
+      in(room) {
+        return {
+          socketsLeave(target) { calls.push({ op: 'leave', room, target }); },
+          socketsJoin(target) { calls.push({ op: 'join', room, target }); },
+        };
+      },
+      to(room) {
+        return { emit(event, payload) { calls.push({ op: 'emit', room, event, payload }); } };
+      },
+    };
+
+    const sent = broadcastRankGroupChanged(io, {
+      partnerId: 'p1', rank: 'Builder', groupId: 'g-new', groupName: 'Builder Circle',
+      fromGroupId: 'g-old', fromRank: 'Partner', at: '2026-11-08T10:00:00.000Z',
+    });
+
+    assert.equal(sent, true);
+    assert.deepEqual(calls.slice(0, 2), [
+      { op: 'leave', room: 'user:p1', target: 'group:g-old' },
+      { op: 'join', room: 'user:p1', target: 'group:g-new' },
+    ]);
+    assert.equal(calls[2].op, 'emit');
+    assert.equal(calls[2].room, 'user:p1');
+    assert.equal(calls[2].event, 'rank:group-changed');
+    assert.equal(calls[2].payload.groupId, 'g-new');
+    assert.equal(calls[2].payload.fromRank, 'Partner');
+
+    assert.equal(broadcastRankGroupChanged(null, { partnerId: 'p1', groupId: 'g' }), false);
   });
 });
 

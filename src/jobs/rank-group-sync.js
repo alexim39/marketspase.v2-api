@@ -1,6 +1,8 @@
 import { RankGroupService } from '../modules/messaging/application/RankGroups.service.js';
+import { RANK_GROUP_EVENTS } from '../modules/messaging/domain/RankGroups.js';
 import { MongoGroupStore } from '../modules/messaging/infrastructure/Group.mongo.repository.js';
 import { MongoProgressionStore } from '../modules/progression/infrastructure/Progression.mongo.repository.js';
+import { domainEvents } from '../shared/events/DomainEvents.js';
 
 /**
  * Daily repair sweep for official level groups.
@@ -13,6 +15,7 @@ export async function runRankGroupSyncJob(deps = {}) {
   const service = deps.service ?? new RankGroupService({
     groups: deps.groups ?? new MongoGroupStore(),
     progress: deps.progress ?? new MongoProgressionStore(),
+    onChanged: (payload) => domainEvents.emit(RANK_GROUP_EVENTS.CHANGED, payload),
   });
   const result = await service.syncAll();
   console.log(`[jobs] rank groups: ${result.synced} synced, ${result.skipped} skipped`);
