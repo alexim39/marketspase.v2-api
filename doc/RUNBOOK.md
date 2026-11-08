@@ -46,18 +46,28 @@ circuit breaker is open.
 3. A database backup/snapshot exists for any release that changes PII storage.
 4. `npm test` passes locally if the change touches a money path, the outbox,
    Ora actions, or encryption.
+5. For the single-upline release, `npm run migrate:upline` against production
+   reports **0 placement-only** and **0 mismatched** accounts.
 
 ### Deploy order
 
-1. **API first.** Deploy `api/`, wait for `/health` to report `status: ok`.
-2. **PII migration** (only for releases that include encryption changes):
+1. **Upline migration first** (single-upline release only):
+   ```bash
+   npm run migrate:upline              # dry run: inspect placement-only + conflicts
+   APPLY=1 npm run migrate:upline      # backfill partnerOf, drop legacy field
+   npm run migrate:upline              # expect 0 placement-only, 0 conflicts
+   ```
+   The new API does not read `placementParentId`. Running the migration first
+   prevents placed members from losing their upline on deploy.
+2. **API.** Deploy `api/`, wait for `/health` to report `status: ok`.
+3. **PII migration** (only for releases that include encryption changes):
    ```bash
    npm run migrate:pii                 # dry run
    APPLY=1 npm run migrate:pii         # apply
    npm run migrate:pii                 # expect zero pending
    ```
-3. **Web/admin** deploy. Its CI guard must pass before the release.
-4. Keep the temporary `/emailSubscription/*` redirects for **7 days** after the
+4. **Web/admin** deploy. Its CI guard must pass before the release.
+5. Keep the temporary `/emailSubscription/*` redirects for **7 days** after the
    web release, then remove the shim. The current window started
    **2026-11-07**; the earliest safe removal date is **2026-11-14**.
    During that window, capture the API request logs and run:
