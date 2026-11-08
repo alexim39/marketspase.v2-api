@@ -10,17 +10,12 @@ import { PROSPECT_WORKED_EVENTS, prospectWorkedPayload } from '../domain/Prospec
 
 /** POST /v1/prospects — scoped dup-check (legacy: global). */
 export class CreateProspectUseCase {
-  /** @param {{prospects, campaigns?}} deps (campaigns verifies attribution ownership) */
-  constructor({ prospects, campaigns }) {
-    Object.assign(this, { prospects, campaigns: campaigns ?? null });
+  /** @param {{prospects}} deps */
+  constructor({ prospects }) {
+    Object.assign(this, { prospects });
   }
   async execute(input) {
     const entity = createProspectEntity(input);
-    if (entity.campaignId) {
-      // 404 for both missing and foreign campaigns — no existence oracle.
-      const owned = await this.campaigns?.findOwned(entity.campaignId, entity.partnerId);
-      if (!owned) throw new NotFoundException('Campaign not found');
-    }
     const dupePhone = entity.prospectPhone
       ? await this.prospects.findDuplicate(entity.partnerId, { phone: entity.prospectPhone, email: null })
       : null;

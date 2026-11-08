@@ -295,17 +295,23 @@ async function main() {
   const releasedTotal = Number(ownerComp.data?.summary?.released ?? 0);
   c.ok(`Commission ${ngn(ownerEntry.amount)} released (owner released total ${ngn(releasedTotal)})`);
 
-  // 7. Force the day-7 mentor bonus due, then run the sweep.
-  c.step('Mentor bonus sweep');
-  const dueAt = await MentorBonusModel.findOneAndUpdate(
-    { activationPartnerId: ids.member, status: 'scheduled', mentorId: { $ne: null } },
-    { $set: { dueAt: new Date(Date.now() - 60000) } },
-    { new: true },
-  ).lean();
-  if (!dueAt) throw new Error('No scheduled mentor bonus with a mentor was found');
-  const run = await api('v1/admin/compensation/mentor-bonuses/run', { method: 'POST', token: adminToken });
-  if (Number(run.data?.paid ?? 0) < 1) throw new Error(`Mentor bonus not paid (result ${JSON.stringify(run.data)})`);
-  const bonus = await MentorBonusModel.findById(dueAt._id).lean();
+  // 7. Mentor bonus is immediate; if a legacy scheduled row remains, force it due and run the sweep.
+  c.step('Mentor bonus');
+  let bonus = await MentorBonusModel.findOne({
+    activationPartnerId: ids.member,
+    status: 'paid',
+  }).lean();
+  if (!bonus) {
+    const dueAt = await MentorBonusModel.findOneAndUpdate(
+      { activationPartnerId: ids.member, status: 'scheduled', mentorId: { $ne: null } },
+      { $set: { dueAt: new Date(Date.now() - 60000) } },
+      { new: true },
+    ).lean();
+    if (!dueAt) throw new Error('No scheduled or paid mentor bonus was found');
+    const run = await api('v1/admin/compensation/mentor-bonuses/run', { method: 'POST', token: adminToken });
+    if (Number(run.data?.paid ?? 0) < 1) throw new Error(`Mentor bonus not paid (result ${JSON.stringify(run.data)})`);
+    bonus = await MentorBonusModel.findById(dueAt._id).lean();
+  }
   if (bonus?.status !== 'paid') throw new Error(`Mentor bonus status is ${bonus?.status}`);
   c.ok(`Mentor bonus ${ngn(bonus.amount)} paid to owner`);
 

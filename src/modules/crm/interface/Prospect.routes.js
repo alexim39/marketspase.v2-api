@@ -30,7 +30,6 @@ import {
   GetStuckProspectsUseCase,
 } from '../application/Prospect.queries.js';
 import { MongoProspectRepository, MongoPartnerLookup } from '../infrastructure/Prospect.mongo.repository.js';
-import { MongoCampaignLookup } from '../../marketing/infrastructure/Marketing.mongo.repository.js';
 import { ConvertProspectToPartnerUseCase } from '../application/Prospect.convert.js';
 import { ImportContactsUseCase } from '../application/Prospect.import.js';
 import { buildProspectAccess } from '../application/Prospect.access.js';
@@ -61,7 +60,6 @@ import { recordAudit } from '../../audit/index.js';import { domainEvents } from 
 export const buildProspectRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const partners = deps.partners ?? new MongoPartnerLookup();
-  const campaigns = deps.campaigns ?? new MongoCampaignLookup();
 
   const network = deps.network ?? new MongoNetworkRepository();
   const progress = deps.progress ?? new MongoProgressionStore();
@@ -72,7 +70,7 @@ export const buildProspectRouter = (deps = {}) => {
     findProspectById: (id) => prospects.findById(id),
     findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean(),
   });
-  const create = new CreateProspectUseCase({ prospects, campaigns });
+  const create = new CreateProspectUseCase({ prospects });
   const c = makeProspectController({
     create,
     importContacts: new ImportContactsUseCase({ create }),

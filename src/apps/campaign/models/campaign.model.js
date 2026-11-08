@@ -18,28 +18,9 @@ const campaignSchema = mongoose.Schema({
     successMeasurement: { type: String},
   },
   // Campaign theme — picked by the partner at creation (dropdown). Drives
-  // the ad angle for the admin team and the allocation matcher's affinity
-  // scoring. Free text capped server-side; the wizard offers the standard list.
+  // the ad angle for the admin team. Free text capped server-side; the
+  // wizard offers the standard list.
   category: { type: String, default: '' },
-  // Internal lead allocation (system-matched pool leads → personal-list).
-  // Debit-on-delivery: the partner pays perLeadPrice only when a lead
-  // actually lands, so there is never a held allocation fund to refund —
-  // ending a campaign simply stops further allocation debits.
-  allocation: {
-    enabled: { type: Boolean, default: true },
-    perLeadPrice: { type: Number, default: 300 },
-    dailyCap: { type: Number, default: 5 },
-    totalCap: { type: Number, default: 50 },
-    allowOutOfArea: { type: Boolean, default: false },
-    paused: { type: Boolean, default: false },
-    delivered: { type: Number, default: 0 },
-    spent: { type: Number, default: 0 },
-    lastRunAt: { type: Date, default: null },
-    lastFundsNoticeAt: { type: Date, default: null },
-    lastDigestAt: { type: Date, default: null },
-    // Consecutive fund-failed runs before the matcher auto-pauses.
-    fundsSkips: { type: Number, default: 0 },
-  },
   // Admin close-out on End: what the held budget actually bought. The
   // platform never auto-refunds ad spend (it ran off-platform), but the
   // attestation is permanent and partner-visible.

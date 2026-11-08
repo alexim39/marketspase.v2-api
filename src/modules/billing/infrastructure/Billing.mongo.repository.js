@@ -303,12 +303,20 @@ export class MongoOrderReader {
   }
 
   async recruitsSince(partnerId, since) {
-    return PartnersModel.countDocuments({ partnerOf: partnerId, createdAt: { $gte: since } });
+    return PartnersModel.countDocuments({
+      partnerOf: partnerId,
+      placementCampaignId: null,
+      createdAt: { $gte: since },
+    });
   }
 
-  /** Recruits within a closed window (goal progress). */
+  /** Personal recruits within a closed window (goal/progression progress). */
   async recruitsBetween(partnerId, start, end) {
-    return PartnersModel.countDocuments({ partnerOf: partnerId, createdAt: { $gte: start, $lte: end } });
+    return PartnersModel.countDocuments({
+      partnerOf: partnerId,
+      placementCampaignId: null,
+      createdAt: { $gte: start, $lte: end },
+    });
   }
 
   /** Team activation: distinct members with a non-voided order in-window. */

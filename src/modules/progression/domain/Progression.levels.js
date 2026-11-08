@@ -10,8 +10,8 @@
  * nearest current rank on read, so existing progression rows are never
  * demoted or made unreadable.
  *
- * Gates auto-derive from COMPUTED signals (recruits, active team, maintenance)
- * and ATTESTED milestones (training, office, nominations) stored on the
+ * Gates auto-derive from COMPUTED signals (personal recruits, active team,
+ * downline Leaders) and ATTESTED training milestones stored on the
  * progression record.
  */
 
@@ -44,9 +44,6 @@ export const normalizeLevel = (level) => {
 };
 
 
-/** Leader nominations approve at this many distinct Leader/admin approvals. */
-export const NOMINATION_APPROVALS_REQUIRED = 3;
-
 /**
  * Confirmation responsiveness (training approvals). A pending request
  * older than this counts as stale — the upline bottleneck signal.
@@ -70,19 +67,20 @@ export const formatLatency = (ms) => {
 };
 
 /** Training milestones under upline confirmation (abuse-proofed). */
-export const TRAINING_CONFIRM_KEYS = ['ipo', 'qsg', 'smo'];
-export const TRAINING_KEY_LABELS = { ipo: 'IPO', qsg: 'QSG', smo: 'SMO' };
+export const TRAINING_CONFIRM_KEYS = ['ipo', 'qsg', 'smo', 'leadership'];
+export const TRAINING_KEY_LABELS = { ipo: 'IPO', qsg: 'QSG', smo: 'SMO', leadership: 'Leadership' };
 
 /**
  * All upline-confirmed milestones — training plus the trust legs that were
  * self-attested before (office / full-time / onboarding). Gates use
  * `confirmed()` for every key here, never bare `done`.
  */
-export const CONFIRMABLE_KEYS = ['ipo', 'qsg', 'smo', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance'];
+export const CONFIRMABLE_KEYS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance'];
 export const CONFIRM_KEY_LABELS = {
   ipo: 'IPO',
   qsg: 'QSG',
   smo: 'SMO',
+  leadership: 'Leadership',
   fullTime: 'Full-time',
   office: 'Office',
   onboardingSession: 'Onboarding session',
@@ -140,8 +138,16 @@ export const leadershipSkills = (signals = {}) => {
 
 /**
  * Entry gates. Each requirement: {key, label, action, met}.
- * `signals`: {recruits, activeDownline, maintenanceOk, downlineLeaders}
- * `m`: milestones subdoc (all fields optional — absent means undone).
+ *
+ * The ladder is training-led:
+ *   Builder     IPO + QSG + 1 personal recruit
+ *   Leader      SMO + 3 personal recruits + 5 active team members
+ *   Ambassador  Leadership course + 5 personal recruits + 3 downline Leaders
+ *
+ * `signals.recruits` counts personally referred direct children only;
+ * system/campaign allocations do not qualify a sponsor. `activeDownline` is
+ * any-depth activity and `downlineLeaders` is the stored Leader/Ambassador
+ * count in the downline.
  */
 /**
  * Confirmed training — the member marked it AND the upline verified it.
@@ -151,33 +157,26 @@ export const leadershipSkills = (signals = {}) => {
 export const confirmed = (x) => x?.done === true && !!x?.confirmedAt;
 
 export const gate = (level, signals = {}, m = {}) => {
-  const req = (key, label, action, met) => ({ key, label, action, met: met === true });
+  const req = (key, label, action, met, target = 1) => ({ key, label, action, target, met: met === true });
   switch (normalizeLevel(level)) {
     case 'builder':
       return [
         req('ipo', 'Complete IPO', 'Take the IPO course in the Training Center', confirmed(m.ipo)),
         req('qsg', 'Complete QSG', 'Take the QSG course in the Training Center', confirmed(m.qsg)),
-        req('recruits', 'Connect one new partner', 'Recruit your first partner from the pipeline', (signals.recruits ?? 0) >= 1),
+        req('recruits', 'Connect one personal recruit', 'Invite one partner through your own referral link', (signals.recruits ?? 0) >= 1, 1),
       ];
     case 'leader':
       return [
-        req('g8Request', 'Submit request letter to your Leader', 'Send your qualification request letter', m.g8Request?.status === 'submitted'),
-        req('onboardingSession', 'Attend onboarding session', 'Schedule your onboarding session and get it confirmed', confirmed(m.onboardingSession)),
-        req('activeTeam', 'Grow 5 active partners', 'Activate 5 team members with recent orders', (signals.activeDownline ?? 0) >= 5),
-        req('accounts', 'Maintain 3 DTC accounts', 'Record your 3 DTC accounts with evidence for upline confirmation', (m.accounts?.count ?? 0) >= 3 && confirmed(m.accounts)),
-        req('maintenance', 'Monthly maintenance compliance', 'Keep personal volume flowing monthly (shop orders auto-count, or record DTC receipt for confirmation)', signals.maintenanceOk === true || confirmed(m.maintenance)),
         req('smo', 'Complete SMO', 'Take the SMO course in the Training Center', confirmed(m.smo)),
+        req('recruits', 'Connect 3 personal recruits', 'Invite three partners through your own referral link', (signals.recruits ?? 0) >= 3, 3),
+        req('activeTeam', 'Grow 5 active team members', 'Activate 5 team members with recent orders', (signals.activeDownline ?? 0) >= 5, 5),
       ];
-    case 'ambassador': {
-      const skills = leadershipSkills(signals);
+    case 'ambassador':
       return [
-        req('fullTime', 'Full-time participation', 'Commit to full-time and get it confirmed', confirmed(m.fullTime)),
-        req('office', 'Office ownership', 'Register your office and get it confirmed', confirmed(m.office)),
-        req('leadership', 'Demonstrated leadership', skills.missing.length > 0 ? `To demonstrate: ${skills.missing.join('; ')}` : 'Keep leading visibly', skills.met),
-        req('downlineLeaders', 'Raise 5 downline Leaders', 'Develop 5 downline members to Leader or Ambassador', (signals.downlineLeaders ?? 0) >= 5),
-        req('nomination', 'Nominated by your Leader', 'Request nomination from your Leader', (m.nomination?.approvals?.length ?? 0) >= 1),
+        req('leadership', 'Complete Leadership Development', 'Take the Leadership course in the Training Center', confirmed(m.leadership)),
+        req('recruits', 'Connect 5 personal recruits', 'Invite five partners through your own referral link', (signals.recruits ?? 0) >= 5, 5),
+        req('downlineLeaders', 'Raise 3 downline Leaders', 'Develop 3 downline members to Leader or Ambassador', (signals.downlineLeaders ?? 0) >= 3, 3),
       ];
-    }
     default:
       return [];
   }
@@ -217,7 +216,7 @@ const DAY_MS = 86400000;
 
 /**
  * Journey forecast — honest linear ETA for countable gates only.
- * Uses 30-day recruit pace; duplication legs (raise 5 downline Leaders)
+ * Uses 30-day recruit pace; duplication legs (raise 3 downline Leaders)
  * return null because linear projection would mislead.
  * @param {object} signals live signals (recruits, activeDownline)
  * @param {Array} missing unresolved requirements [{key}]
@@ -230,8 +229,8 @@ export const forecastJourney = (signals = {}, missing = [], recruits30d = null, 
   const pacePer30d = Number.isFinite(pace) && pace >= 0 ? pace : null;
   const targets = [];
   for (const r of missing ?? []) {
-    if (r.key === 'recruits') targets.push({ key: r.key, remaining: Math.max(0, 1 - (signals.recruits ?? 0)), kind: 'recruits' });
-    else if (r.key === 'activeTeam') targets.push({ key: r.key, remaining: Math.max(0, 5 - (signals.activeDownline ?? 0)), kind: 'actives' });
+    if (r.key === 'recruits') targets.push({ key: r.key, remaining: Math.max(0, (r.target ?? 1) - (signals.recruits ?? 0)), kind: 'recruits' });
+    else if (r.key === 'activeTeam') targets.push({ key: r.key, remaining: Math.max(0, (r.target ?? 5) - (signals.activeDownline ?? 0)), kind: 'actives' });
   }
   if (targets.length === 0) return null;
   const remaining = Math.max(...targets.map((t) => t.remaining));

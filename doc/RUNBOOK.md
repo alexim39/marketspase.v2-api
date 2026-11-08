@@ -357,11 +357,24 @@ execution writes an `ora.action.execute` audit event.
   `partnerOf` from legacy `placementParentId`, keeps `partnerOf` on conflicts,
   and unsets the legacy field from partners, commission sales and activation
   queue rows. The API no longer reads `placementParentId`.
-- Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
-  (default 7; `0` means payable at the next hourly mentor-bonus run). It only
-  affects **newly recorded activations**; existing `mentor_bonuses` rows keep
-  their stored `dueAt`. The job runs at :15 and there is no inline instant
-  payout.
+- **Rank ladder (training/coaching):** Builder = IPO + QSG + 1 personal
+  recruit; Leader = SMO + 3 personal recruits + 5 active team members;
+  Ambassador = Leadership Development + 5 personal recruits + 3 downline
+  Leaders. “Personal recruit” means a direct `partnerOf` child with no
+  `placementCampaignId`; system/campaign allocations never qualify a sponsor.
+  G8 request letters, office/full-time attestations, DTC-account counts,
+  maintenance and nomination approvals are retired.
+- **Legacy campaign lead allocation is removed.** Ad campaigns no longer buy
+  pool leads at ₦300 with daily/total caps, and no campaign-allocation job or
+  ledger runs. Historical `campaigns` records and `/campaign` read/refund
+  routes remain only for reconciliation. The separate Buy Prospect pool
+  backend still exists but its partner/admin UI is retired.
+- Mentor bonus timing: the ₦1,000 activation mentor bonus is paid immediately
+  when activation is recorded, to the member's `partnerOf` mentor. If the
+  mentor is not yet known (system-owned member) or not KYC-qualified yet, the
+  row stays `scheduled` and the hourly :15 sweep retries. `MENTOR_BONUS_DAYS`
+  is retired and ignored; existing rows with a future `dueAt` still wait for
+  that date.
 
 ### 4.9 PII encryption
 

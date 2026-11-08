@@ -144,10 +144,11 @@ describe('catalog completeness (IPO bar)', () => {
     }
   });
 
-  it('ladder milestones are wired (ipo/qsg/smo)', () => {
+  it('ladder milestones are wired (ipo/qsg/smo/leadership)', () => {
     const byMilestone = Object.fromEntries(COURSES.filter((c) => c.milestone).map((c) => [c.milestone, c.id]));
     assert.equal(byMilestone.ipo, 'ipo');
     assert.equal(byMilestone.qsg, 'qsg');
     assert.equal(byMilestone.smo, 'smo');
+    assert.equal(byMilestone.leadership, 'leadership');
   });
 });

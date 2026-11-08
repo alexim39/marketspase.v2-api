@@ -1,11 +1,7 @@
 /**
- * Contracts for the marketing slice. Campaigns live in the legacy
- * collection (strangler read-model, same pattern as the network slice);
- * only reads happen here — creation stays on the legacy routes.
+ * Contract for the marketing slice's campaign ownership lookup. Legacy
+ * campaigns still exist for historical records; lead allocation is retired.
  */
-export class CampaignStats {
-  async listCampaigns(partnerId) { throw new Error('Not implemented'); }
-  async countLinkWindow(partnerId, start, end) { throw new Error('Not implemented'); }
-  async countExactWindow(partnerId, campaignId, start, end) { throw new Error('Not implemented'); }
+export class CampaignLookup {
   async findOwned(campaignId, partnerId) { throw new Error('Not implemented'); }
 }

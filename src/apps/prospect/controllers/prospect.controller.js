@@ -483,19 +483,61 @@ export const getAllMySurveyProspect = async (req, res) => {
       return deny(res, err);
     }
 
-    /// Step 1: user found username to get user from survey collection
-    const prospectObject = await ProspectSurveyModel.find({ username: username });
+    /// Step 1: resolve the inbox owner (partner username) once.
+    const owner = await PartnersModel.findOne({ username: String(username) })
+      .select('_id username')
+      .lean();
 
-    if (!prospectObject) {
-      return res.status(400).json({ 
-        message: "Partner prospects not found",
-        success: false
-      });
-    }
+    /// Step 2: survey/page-lead submissions plus referral signups.
+    /// Referral signups are real partner rows with `partnerOf` set by the
+    /// single-upline rule; campaign placements are excluded so this inbox
+    /// stays a referral/page-lead view.
+    const [surveyRows, joinedPartners] = await Promise.all([
+      ProspectSurveyModel.find({ username }).lean(),
+      owner
+        ? PartnersModel.find({
+          partnerOf: owner._id,
+          placementCampaignId: null,
+        })
+          .select('name surname username email phone address referralCode createdAt')
+          .sort({ createdAt: -1 })
+          .limit(200)
+          .lean()
+        : [],
+    ]);
+
+    const joinedRows = joinedPartners.map((p) => ({
+      _id: String(p._id),
+      name: p.name ?? '',
+      surname: p.surname ?? '',
+      email: p.email ?? '',
+      phoneNumber: p.phone ?? '',
+      createdAt: p.createdAt ?? null,
+      referral: 'Referral link',
+      referralCode: p.referralCode ?? String(username),
+      prospectStatus: 'Joined',
+      joined: true,
+      partnerId: String(p._id),
+      state: p.address?.state ?? '',
+    }));
+
+    // A visitor who submitted the page form and then signed up should appear
+    // once, as the joined member.
+    const seenEmail = new Set(joinedRows.map((r) => String(r.email).trim().toLowerCase()).filter(Boolean));
+    const seenPhone = new Set(joinedRows.map((r) => String(r.phoneNumber).replace(/\D/g, '')).filter(Boolean));
+    const surveyOnly = surveyRows.filter((row) => {
+      const email = String(row.email ?? '').trim().toLowerCase();
+      const phone = String(row.phoneNumber ?? row.phone ?? '').replace(/\D/g, '');
+      return !(email && seenEmail.has(email)) && !(phone && seenPhone.has(phone));
+    });
+
+    const data = [...joinedRows, ...surveyOnly].sort(
+      (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+    );
 
     res.status(200).json({
       message: "Prospects retrieved successfully!",
-      data: prospectObject,
+      data,
       success: true
     });
   } catch (error) {

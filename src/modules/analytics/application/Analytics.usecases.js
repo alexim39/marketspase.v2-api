@@ -329,15 +329,12 @@ export class GetBenchUseCase {
   async execute({ partnerId }) {
     const { ids } = await collectDownlineIds(this.network, partnerId);
     const bounded = ids.slice(0, 2000);
-    const [nodes, pendingConfirmations, pendingNominations] = await Promise.all([
+    const [nodes, pendingConfirmations] = await Promise.all([
       this.network.findNodesByIds
         ? this.network.findNodesByIds(bounded, 2000).catch(() => [])
         : [],
       this.progress?.listPendingConfirmations
         ? this.progress.listPendingConfirmations(bounded, ['ipo', 'qsg', 'smo'], 200).catch(() => [])
-        : [],
-      this.progress?.listPendingNominations
-        ? this.progress.listPendingNominations(bounded, 100).catch(() => [])
         : [],
     ]);
     const dist = {};
@@ -350,7 +347,6 @@ export class GetBenchUseCase {
       capped: ids.length > bounded.length,
       distribution: dist,
       pendingConfirmations: (pendingConfirmations ?? []).length,
-      pendingNominations: (pendingNominations ?? []).length,
       leaders: (dist.Leader ?? 0) + (dist.Ambassador ?? 0),
     };
   }

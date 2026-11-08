@@ -22,12 +22,12 @@ import {
   MAX_LEVELS,
   RANKS,
   commissionAmount,
-  mentorBonusDays,
   depthAllows,
   planSummary,
   rankDepth,
   rateForLevel,
 } from '../domain/Compensation.plan.js';
+import { recordAudit } from '../../audit/index.js';
 import { summarizeProductMargins, productCommissionShares } from '../domain/ProductCommission.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -90,11 +90,15 @@ export class MongoCompensationRepository {
     if (!hasId(orderId) || !hasId(partnerId)) throw new ValidationException('Invalid activation identity');
     const at = dateOrNow(activatedAt);
     const margin = Math.max(Number(grossMargin) || 0, 0);
-    const delayDays = mentorBonusDays();
-    const dueAt = new Date(at.getTime() + (delayDays * DAY_MS));
+    // Mentor bonus is immediate: the referral upline (partnerOf) is the
+    // mentor when present. System-owned members stay unassigned until a
+    // campaign allocation sets the mentor, then release immediately.
+    const activationPartner = await PartnersModel.findById(partnerId).select('partnerOf').lean();
+    const mentorId = activationPartner?.partnerOf ?? null;
+    const dueAt = at;
     const expiresAt = new Date(dueAt.getTime() + (MENTOR_BONUS_EXPIRY_DAYS * DAY_MS));
 
-    return runInTransaction(async (session) => {
+    const result = await runInTransaction(async (session) => {
       const sale = await CommissionSaleModel.findOneAndUpdate(
         { orderId },
         {
@@ -117,6 +121,7 @@ export class MongoCompensationRepository {
           $setOnInsert: {
             orderId,
             activationPartnerId: partnerId,
+            mentorId,
             amount: MENTOR_BONUS_AMOUNT,
             dueAt,
             expiresAt,
@@ -128,6 +133,36 @@ export class MongoCompensationRepository {
 
       return { sale, bonus };
     });
+
+    // Pay the moment activation is recorded when the mentor is already known.
+    if (result.bonus?.mentorId) {
+      const outcome = await this.payMentorBonus(result.bonus._id).catch(() => null);
+      if (outcome?.status === 'paid') {
+        void recordAudit({
+          actorId: 'system',
+          action: 'mentor-bonus.auto_release',
+          targetType: 'order',
+          targetId: String(orderId),
+          detail: {
+            trigger: 'activation',
+            mentorId: String(result.bonus.mentorId),
+            amount: Number(result.bonus.amount),
+          },
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Release a scheduled mentor bonus for one activation order (idempotent). */
+  async releaseMentorBonus(orderId, now = new Date()) {
+    if (!hasId(orderId)) return { status: 'skipped' };
+    const bonus = await MentorBonusModel.findOne({
+      orderId,
+      status: 'scheduled',
+    }).select('_id').lean();
+    if (!bonus) return { status: 'skipped' };
+    return this.payMentorBonus(bonus._id, now);
   }
 
   /**
@@ -516,7 +551,20 @@ export class MongoCompensationRepository {
           entries,
         };
       });
-      if (result) results.push(result);
+      if (result) {
+        results.push(result);
+        // Allocation just attached the mentor. Pay the immediate bonus now.
+        const outcome = await this.releaseMentorBonus(result.orderId).catch(() => null);
+        if (outcome?.status === 'paid') {
+          void recordAudit({
+            actorId: 'system',
+            action: 'mentor-bonus.auto_release',
+            targetType: 'order',
+            targetId: String(result.orderId),
+            detail: { trigger: 'allocation', mentorId: String(ownerId) },
+          });
+        }
+      }
     }
 
     return results;
@@ -1136,6 +1184,7 @@ export class MongoCompensationRepository {
     const bonus = await MentorBonusModel.findById(bonusId).lean();
     if (!bonus || bonus.status !== 'scheduled') return { status: 'skipped' };
     if (!bonus.mentorId) return { status: 'held' };
+    if (bonus.dueAt && new Date(bonus.dueAt) > now) return { status: 'held' };
     if (new Date(bonus.expiresAt) < now) {
       await MentorBonusModel.updateOne(
         { _id: bonus._id, status: 'scheduled' },
@@ -1163,11 +1212,9 @@ export class MongoCompensationRepository {
       || mentor.accountState !== 'partner'
       || mentor.suspendedAt
       || (mentor.kycStatus ?? 'verified') !== 'verified') {
-      await MentorBonusModel.updateOne(
-        { _id: bonus._id, status: 'scheduled' },
-        { $set: { status: 'forfeited', note: 'Mentor is not active/qualified' } },
-      );
-      return { status: 'forfeited' };
+      // Immediate payout still waits for a qualified mentor. Keep the row
+      // scheduled so the hourly sweep retries once the mentor clears KYC.
+      return { status: 'held' };
     }
 
     return runInTransaction(async (session) => {
@@ -1190,6 +1237,9 @@ export class MongoCompensationRepository {
         { $inc: { balance: Number(bonus.amount) } },
         opts(session),
       );
+      const mentorAfter = await PartnersModel.findById(bonus.mentorId, 'balance', opts(session)).lean();
+      const balanceAfter = Number(mentorAfter?.balance) || 0;
+      const balanceBefore = Number((balanceAfter - Number(bonus.amount)).toFixed(2));
       await TransactionModel.create(
         [{
           partnerId: bonus.mentorId,
@@ -1199,9 +1249,9 @@ export class MongoCompensationRepository {
           paymentMethod: 'Activation Mentor Bonus',
           transactionType: 'Credit',
           date: now,
-          decisionNote: mentorBonusDays() === 0
-            ? 'Immediate activation mentor bonus'
-            : `Day-${mentorBonusDays()} activation mentor bonus`,
+          balanceBefore,
+          balanceAfter,
+          decisionNote: 'Immediate activation mentor bonus',
         }],
         opts(session),
       );

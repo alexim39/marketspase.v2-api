@@ -17,8 +17,7 @@ export const CreateProspectSchema = z.object({
   partnerId: objectId.optional(),
   surverId: z.string().trim().optional(),
   survey: z.unknown().optional(),
-  campaignId: objectId.optional(),
-  // Contact-list enrichment (all optional — quick-add stays fast).
+  // Contact-list enrichment (all optional - quick-add stays fast).
   relationship: z.enum(RELATIONSHIP_TAGS).optional().default('Other'),
   priority: z.enum(CONTACT_PRIORITIES).optional().default('normal'),
   bestTimeToCall: z.string().trim().max(120).optional().default(''),

@@ -128,15 +128,8 @@ const prospectSchema = mongoose.Schema(
             note: { type: String, maxlength: 500 },
             at: { type: Date },
         },
-        // Optional campaign attribution (R4): stamped when a prospect
-        // arrives via a tracked campaign link. Sparse — absent historically.
-        campaignId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Campaign',
-            default: null,
-            index: true,
-            sparse: true,
-        },
+        // Optional campaign attribution retired with the legacy lead
+        // allocation engine. New prospects carry no campaignId.
         status: StatusSchema,
         role: {
             type: String,

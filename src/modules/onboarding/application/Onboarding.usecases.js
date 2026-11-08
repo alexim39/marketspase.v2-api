@@ -119,7 +119,25 @@ export class FulfillActivationOrderUseCase {
         autoRelease = { error: true };
       }
     }
-    return { ...order, autoRelease };
+    let mentorBonus = null;
+    if (this.commissions?.releaseMentorBonus) {
+      try {
+        mentorBonus = await this.commissions.releaseMentorBonus(orderId, new Date());
+        if (mentorBonus?.status === 'paid') {
+          void this.audit({
+            actorId: adminId ?? 'system',
+            action: 'mentor-bonus.auto_release',
+            targetType: 'order',
+            targetId: String(orderId),
+            detail: { trigger: 'fulfillment', ...mentorBonus },
+          });
+        }
+      } catch (error) {
+        console.error('[onboarding] mentor bonus auto-release failed:', error?.message ?? error);
+        mentorBonus = { error: true };
+      }
+    }
+    return { ...order, autoRelease, mentorBonus };
   }
 }
 

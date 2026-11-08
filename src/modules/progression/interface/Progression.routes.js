@@ -42,6 +42,7 @@ const MilestonesSchema = z.object({
   ipo: stamp.optional(),
   qsg: stamp.optional(),
   smo: stamp.optional(),
+  leadership: stamp.optional(),
   accounts: accountsSchema.optional(),
   maintenance: maintenanceSchema.optional(),
   fullTime: stamp.optional(),

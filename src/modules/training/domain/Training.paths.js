@@ -25,7 +25,7 @@ export const PATHS = LEVELS.map((level) => {
   // Attach course links where a req matches a training milestone.
   const requirements = reqs.map((r) => {
     let courseId = null;
-    if (['ipo', 'qsg', 'smo'].includes(r.key)) courseId = courseForMilestone(r.key);
+    if (['ipo', 'qsg', 'smo', 'leadership'].includes(r.key)) courseId = courseForMilestone(r.key);
     return { ...r, courseId };
   });
   return {

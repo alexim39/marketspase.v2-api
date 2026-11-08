@@ -55,26 +55,22 @@ describe('compensation plan', () => {
     assert.equal(commissionAmount(-500, 1), 0);
   });
 
-  it('exposes the plan and mentor bonus to the UI', () => {
+  it('exposes the immediate mentor bonus to the UI', () => {
     const plan = planSummary();
     assert.equal(plan.rates.length, 5);
     assert.equal(plan.ranks.find((row) => row.rank === 'Ambassador').depth, 5);
     assert.equal(plan.mentorBonus.amount, 1000);
-    assert.equal(plan.mentorBonus.daysAfterActivation, 7);
+    assert.equal(plan.mentorBonus.daysAfterActivation, 0);
   });
 
-  it('allows the mentor bonus delay to be configured', () => {
+  it('ignores the retired MENTOR_BONUS_DAYS environment override', () => {
     const previous = process.env.MENTOR_BONUS_DAYS;
     try {
-      process.env.MENTOR_BONUS_DAYS = '0';
+      process.env.MENTOR_BONUS_DAYS = '7';
       assert.equal(mentorBonusDays(), 0);
       assert.equal(planSummary().mentorBonus.daysAfterActivation, 0);
-
       process.env.MENTOR_BONUS_DAYS = '3';
-      assert.equal(mentorBonusDays(), 3);
-
-      process.env.MENTOR_BONUS_DAYS = 'not-a-number';
-      assert.equal(mentorBonusDays(), 7);
+      assert.equal(mentorBonusDays(), 0);
     } finally {
       if (previous === undefined) delete process.env.MENTOR_BONUS_DAYS;
       else process.env.MENTOR_BONUS_DAYS = previous;

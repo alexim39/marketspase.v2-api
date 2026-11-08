@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childFilter, project } from './Network.mongo.repository.js';
+import { childFilter, personalRecruitFilter, project } from './Network.mongo.repository.js';
 
 test('every chain mode traverses the single partnerOf upline', () => {
   for (const chain of ['growth', 'referral', 'all']) {
     assert.deepEqual(childFilter(['p1'], chain), { partnerOf: { $in: ['p1'] } });
   }
+});
+
+test('personal recruit counts exclude campaign placements', () => {
+  assert.deepEqual(personalRecruitFilter('p1'), {
+    partnerOf: 'p1',
+    placementCampaignId: null,
+  });
 });
 
 test('projection uses partnerOf as the only parent', () => {

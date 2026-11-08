@@ -7,9 +7,8 @@ import { recordAudit } from '../modules/audit/index.js';
 
 /**
  * Campaign flight expiry (daily, server-local): fixed-flight campaigns
- * whose end date has passed move Active → Ended automatically — spend
- * (and per-lead allocation debits) must never continue past the flight
- * the partner paid for. Continuous campaigns (noEndDate) are untouched.
+ * whose end date has passed move Active → Ended automatically — further
+ * spend must never continue past the flight the partner paid for. Continuous campaigns (noEndDate) are untouched.
  * Transitions are atomic per row (only still-Active rows move), every end
  * notifies the partner and writes an audit row, and the job never throws
  * into the scheduler.

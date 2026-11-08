@@ -23,6 +23,12 @@ export const project = (doc, chain = 'all') => {
  */
 export const childFilter = (parentIds, _chain = 'all') => ({ partnerOf: { $in: parentIds } });
 
+/** Personally referred direct child only — campaign placements excluded. */
+export const personalRecruitFilter = (partnerId) => ({
+  partnerOf: String(partnerId),
+  placementCampaignId: null,
+});
+
 /** Mongo implementation of the network read contracts. All reads `.lean()`. */
 export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
     return project(await PartnersModel.findById(id).lean(), chain);
@@ -54,9 +60,18 @@ export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
       .slice(0, Math.min(Math.max(Number(limit) || 2000, 1), 5000));
   }
 
-  /** Direct-recruit count (referral or campaign placement) for progression signals. */
+  /** Direct-recruit count (referral or campaign placement) for team reads. */
   async countChildren(partnerId) {
     return PartnersModel.countDocuments(childFilter([String(partnerId)]));
+  }
+
+  /**
+   * Personally referred direct children only. Campaign placements are real
+   * downline for commission/tree reads, but they must not qualify a sponsor
+   * for the training ladder.
+   */
+  async countRecruitedChildren(partnerId) {
+    return PartnersModel.countDocuments(personalRecruitFilter(partnerId));
   }
 
   /** Newest direct children for the referral card (bounded). */

@@ -26,7 +26,7 @@ export async function assembleSignals(
   const safe = (promise, fallback) => Promise.resolve(promise).then((v) => v ?? fallback, () => fallback);
   const [{ ids: downline }] = await Promise.all([collectDownlineIds(network, partnerId)]);
   const [recruits, cur, prev, active, levels, touched, posts, rsvps, authored, decisions, pendingRows] = await Promise.all([
-    network.countChildren(partnerId),
+    (network.countRecruitedChildren ?? network.countChildren).call(network, partnerId),
     orders.volumeBetween(partnerId, start30, end),
     orders.volumeBetween(partnerId, start60, start30),
     orders.activeMemberCount(downline, start30, end),
@@ -84,7 +84,7 @@ export async function assembleSignals(
   };
 }
 
-const STAMPS = ['ipo', 'qsg', 'smo', 'fullTime', 'office', 'onboardingSession', 'qualifiedConfirmed', 'appointment', 'maintenance'];
+const STAMPS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'qualifiedConfirmed', 'appointment', 'maintenance'];
 
 const toMilestones = (doc = {}) => {
   const m = {};

@@ -8,18 +8,15 @@ export const RANK_DEPTH = Object.freeze({
 });
 export const RANKS = Object.freeze(['Partner', 'Builder', 'Leader', 'Ambassador']);
 export const MENTOR_BONUS_AMOUNT = Number(process.env.ACTIVATION_MENTOR_BONUS_NGN ?? 1000);
-export const MENTOR_BONUS_DAYS = 7;
+/** Paid immediately when activation is recorded (no day-7 hold). */
+export const MENTOR_BONUS_DAYS = 0;
 export const MENTOR_BONUS_EXPIRY_DAYS = 90;
 
 /**
- * Delay before the mentor bonus becomes payable.
- * 0 means "next hourly mentor-bonus run" rather than a separate instant payout.
- * Invalid values fall back to the approved 7-day default.
+ * Kept for API compatibility. The mentor bonus is always due immediately;
+ * a legacy `MENTOR_BONUS_DAYS` environment value is intentionally ignored.
  */
-export const mentorBonusDays = () => {
-  const raw = Number(process.env.MENTOR_BONUS_DAYS ?? MENTOR_BONUS_DAYS);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : MENTOR_BONUS_DAYS;
-};
+export const mentorBonusDays = () => 0;
 
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 

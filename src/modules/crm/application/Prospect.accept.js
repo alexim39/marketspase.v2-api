@@ -2,19 +2,6 @@ import { ConflictException, NotFoundException, ValidationException } from '../..
 import { ProspectModel } from '../infrastructure/Prospect.models.js';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
 import { ProspectSurveyModel } from '../../../apps/survey/models/survey.model.js';
-import { CampaignModel } from '../../../apps/campaign/models/campaign.model.js';
-
-/**
- * Campaign stamp for system-allocated rows (personal-list → follow-ups).
- * Returns `{ campaignId }` only when the row carries one AND it still
- * belongs to the accepting partner; otherwise `{}` (plain page lead).
- */
-async function allocatedCampaignId(survey, partnerId) {
-  const id = String(survey?.campaignId ?? '');
-  if (!/^[a-fA-F0-9]{24}$/.test(id)) return {};
-  const owned = await CampaignModel.findOne({ _id: id, createdBy: partnerId }).select('_id').lean().catch(() => null);
-  return owned ? { campaignId: id } : {};
-}
 
 /**
  * POST /v1/prospects/accept-page-lead — free accept of your own page lead.
@@ -59,11 +46,6 @@ export class AcceptPageLeadUseCase {
       prospectSource: 'Unique Link',
       partnerId,
       surverId: survey._id,
-      // Allocated rows carry their campaign: stamp it so Manage/ROI
-      // attribute this contact exactly. Ownership was verified at
-      // allocation time and the row is session-owned here, so a final
-      // owned-check is defense in depth, never a new failure mode.
-      ...(await allocatedCampaignId(survey, partnerId)),
       survey: {
         ageRange: survey.ageRange,
         socialMedia: survey.socialMedia,

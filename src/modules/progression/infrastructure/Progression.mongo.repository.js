@@ -22,6 +22,7 @@ const progressionSchema = new mongoose.Schema(
     ipo: { type: stampSchema, default: () => ({}) },
     qsg: { type: stampSchema, default: () => ({}) },
     smo: { type: stampSchema, default: () => ({}) },
+    leadership: { type: stampSchema, default: () => ({}) },
     accounts: {
       count: { type: Number, default: 0, min: 0 },
       refs: { type: [String], default: [] },
@@ -151,7 +152,7 @@ export class MongoProgressionStore {
     if (partnerIds.length === 0 || keys.length === 0) return [];
     const or = keys.map((k) => ({ [`${k}.done`]: true, [`${k}.confirmedAt`]: null }));
     const rows = await ProgressionModel.find({ partnerId: { $in: partnerIds }, $or: or })
-      .select('partnerId level ipo qsg smo fullTime office onboardingSession accounts maintenance updatedAt')
+      .select('partnerId level ipo qsg smo leadership fullTime office onboardingSession accounts maintenance updatedAt')
       .sort({ updatedAt: -1 })
       .limit(Math.min(Math.max(Number(limit) || 100, 1), 200))
       .lean();
@@ -176,14 +177,14 @@ export class MongoProgressionStore {
    * responsiveness leg. Bounded; sparse confirmedBy legs live in the manifest.
    */
   async decisionsByApprover(approverId, since) {
-    const keys = ['ipo', 'qsg', 'smo', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance'];
+    const keys = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance'];
     const rows = await ProgressionModel.find({
       $or: keys.map((k) => ({
         [`${k}.confirmedBy`]: approverId,
         [`${k}.confirmedAt`]: { $gte: since },
       })),
     })
-      .select('ipo qsg smo fullTime office onboardingSession accounts maintenance')
+      .select('ipo qsg smo leadership fullTime office onboardingSession accounts maintenance')
       .limit(500)
       .lean();
     const out = [];

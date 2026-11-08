@@ -227,7 +227,7 @@ export const COURSES = [
     id: 'leadership',
     title: 'Leadership Development',
     tagline: 'From Builder to Leader and Ambassador.',
-    milestone: null,
+    milestone: 'leadership',
     lessons: [
       lesson(
         'leadership-1',

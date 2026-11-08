@@ -25,7 +25,6 @@ test('bench distributes commission ranks and counts leaders', async () => {
     },
     progress: {
       listPendingConfirmations: async () => [{}, {}],
-      listPendingNominations: async () => [{}],
     },
   });
   const res = await uc.execute({ partnerId: 'p1' });
@@ -33,7 +32,6 @@ test('bench distributes commission ranks and counts leaders', async () => {
   assert.deepEqual(res.distribution, { Builder: 1, Leader: 1, Ambassador: 1 });
   assert.equal(res.leaders, 2);
   assert.equal(res.pendingConfirmations, 2);
-  assert.equal(res.pendingNominations, 1);
 });
 
 test('bench degrades when the network cannot project ranks', async () => {

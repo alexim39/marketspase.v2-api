@@ -62,12 +62,6 @@ export const createProspectEntity = (input) => {
       : {}),
     // Optional campaign attribution — shape-checked here as an ObjectId;
     // ownership is enforced in the create use case.
-    ...(() => {
-      if (input.campaignId === undefined || input.campaignId === null || input.campaignId === '') return {};
-      const v = String(input.campaignId).trim();
-      if (!OBJECT_ID_RE.test(v)) throw new ValidationException('Invalid campaignId');
-      return { campaignId: v };
-    })(),
     // Embedded survey snapshot (copied survey data) passes through untouched.
     ...(input.survey !== undefined ? { survey: input.survey } : {}),
   };

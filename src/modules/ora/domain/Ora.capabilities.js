@@ -41,7 +41,7 @@ export const ORA_CAPABILITIES = Object.freeze([
   cap('team.partners', 'Team', 'My partners', '/dashboard/mentorship/partners/my-partners', OPEN, 'Review direct partners and follow-ups.'),
   cap('team.tree', 'Team', 'Team tree', '/dashboard/network/tree', OPEN, 'Explore the network structure.'),
   cap('team.coaching', 'Team', 'Coaching notes', '/dashboard/training/coach', OPEN, 'Review coaching and mentor support.'),
-  cap('team.cell-meeting', 'Team', 'Cell meetings', '/dashboard/mentorship/cell-meeting', OPEN, 'Prepare for or review cell meetings.'),
+  cap('team.cell-meeting', 'Team', 'Cell meetings', '/dashboard/cell-meeting', OPEN, 'Prepare for or review cell meetings.'),
   cap('onboarding.activate', 'Activation', 'Activate your partner account', '/dashboard/activate', OPEN, 'Complete wallet activation and KYC steps.'),
   cap('campaigns.fund', 'Campaigns', 'Partner acquisition campaigns', '/dashboard/campaigns', OPEN, 'Plan or review funded acquisition campaigns.'),
   cap('promote.hub', 'Promote', 'Promote hub', '/dashboard/promote', OPEN, 'Share the page, content and outreach tools.'),
