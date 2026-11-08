@@ -15,7 +15,7 @@ const groupSchema = mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
     pinnedMessageId: { type: mongoose.Schema.Types.ObjectId, default: null },
     /** Purpose-team bridge — one group chat per mentorship team (sparse: plain groups carry no team). */
-    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: undefined },
     /** System-managed journey-level group (sparse: ordinary groups carry no rank). */
     rankGroup: {
       type: String,

@@ -61,8 +61,13 @@ export class RankGroupService {
             rankGroup: rank,
           });
           created += 1;
-        } catch {
-          // Lost a seed race (unique rankGroup) — the winner's group is the answer.
+        } catch (error) {
+          // A unique-rank race is expected; anything else is surfaced so the
+          // admin desk can show the group as not ready instead of hiding it.
+          this.logger?.warn?.('rank_group_seed_failed', {
+            rank,
+            error: error?.message ?? String(error),
+          });
           group = await this.groups.findByRankGroup(rank);
         }
       }
