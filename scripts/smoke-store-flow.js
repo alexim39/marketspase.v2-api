@@ -41,12 +41,13 @@ const step = (message) => console.log(`\n▶ ${message}`);
 const ok = (message) => console.log(`  ✓ ${message}`);
 const ngn = (value) => `\u20A6${Number(value ?? 0).toLocaleString('en-NG')}`;
 
-const request = async (path, { method = 'GET', body, token } = {}) => {
+const request = async (path, { method = 'GET', body, token, idempotencyKey } = {}) => {
   const response = await fetch(`${API}${path}`, {
     method,
     headers: {
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
@@ -99,6 +100,7 @@ const createPaidOrder = async (customerSuffix = 'one') => {
 
   const created = await request(`/v1/stores/${SLUG}/orders`, {
     method: 'POST',
+    idempotencyKey: `smoke-store-order-${customerSuffix}-${Date.now()}`,
     body: {
       items: [{ storeProductId: product.id, quantity: 1 }],
       customer: {
