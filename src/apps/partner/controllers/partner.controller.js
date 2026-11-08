@@ -14,7 +14,7 @@ import { maskPartnerContact } from '../domain/ContactMask.js';
 // sanitized to public fields instead.
 const guard = buildProspectAccess({
   findProspectById: async () => null,
-  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean().catch(() => null),
+  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean().catch(() => null),
 });
 const sessionId = (req) => (req.auth?.partnerId ? String(req.auth.partnerId) : null);
 const deny = (res, status, message) => res.status(status).json({ message, success: false });
@@ -632,14 +632,9 @@ export const getPartnersOf = async (req, res) => {
       return res.status(err.statusCode ?? 403).json({ message: err.message, success: false });
     }
 
-    // Direct team = referral downline plus campaign placements. A partner may
-    // appear here because they were referred, campaign-placed, or both.
-    const partners = await PartnersModel.find({
-      $or: [
-        { partnerOf: partnerId },
-        { placementParentId: partnerId },
-      ],
-    }).exec();
+    // Direct team = the partnerOf downline. Campaign placements now write the
+    // campaign owner into partnerOf as well, so one upline powers every view.
+    const partners = await PartnersModel.find({ partnerOf: partnerId }).exec();
     const mask = wantsMaskedContacts(req);
 
     res.status(200).json({

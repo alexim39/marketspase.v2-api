@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { buildProspectAccess, isUplineOf } from './Prospect.access.js';
 
 const partners = {
-  owner: { _id: 'owner', role: 'user', partnerOf: null, placementParentId: 'mentor' },
-  mentor: { _id: 'mentor', role: 'user', partnerOf: null, placementParentId: null },
-  referred: { _id: 'referred', role: 'user', partnerOf: 'refParent', placementParentId: 'mentor' },
-  refParent: { _id: 'refParent', role: 'user', partnerOf: null, placementParentId: null },
-  outsider: { _id: 'outsider', role: 'user', partnerOf: null, placementParentId: null },
-  admin: { _id: 'admin', role: 'admin', partnerOf: null, placementParentId: null },
+  owner: { _id: 'owner', role: 'user', partnerOf: 'mentor' },
+  mentor: { _id: 'mentor', role: 'user', partnerOf: null },
+  referred: { _id: 'referred', role: 'user', partnerOf: 'refParent' },
+  refParent: { _id: 'refParent', role: 'user', partnerOf: null },
+  outsider: { _id: 'outsider', role: 'user', partnerOf: null },
+  admin: { _id: 'admin', role: 'admin', partnerOf: null },
 };
 
 const findPartnerById = async (id) => partners[String(id)] ?? null;
@@ -23,13 +23,13 @@ test('a referral upline still has list access', async () => {
   assert.equal(access.relation, 'upline');
 });
 
-test('a campaign placement mentor is treated as the effective upline', async () => {
+test('a campaign placement mentor is the single upline', async () => {
   assert.equal(await isUplineOf(findPartnerById, 'mentor', 'owner'), true);
   const access = await guard.requireListAccess('mentor', 'owner');
   assert.equal(access.relation, 'upline');
 });
 
-test('a referral parent wins over a different campaign placement parent', async () => {
+test('a referral parent is the same relationship, not a second parent', async () => {
   assert.equal(await isUplineOf(findPartnerById, 'mentor', 'referred'), false);
   assert.equal(await isUplineOf(findPartnerById, 'refParent', 'referred'), true);
 });
@@ -42,8 +42,8 @@ test('admins and owners keep access; outsiders do not', async () => {
 
 test('a cycle in the parent chain does not hang or grant access', async () => {
   const cyclic = {
-    a: { _id: 'a', partnerOf: 'b', placementParentId: null },
-    b: { _id: 'b', partnerOf: 'a', placementParentId: null },
+    a: { _id: 'a', partnerOf: 'b' },
+    b: { _id: 'b', partnerOf: 'a' },
   };
   const find = async (id) => cyclic[String(id)] ?? null;
   assert.equal(await isUplineOf(find, 'x', 'a'), false);

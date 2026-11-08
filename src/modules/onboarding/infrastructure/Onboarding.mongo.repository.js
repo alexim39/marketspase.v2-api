@@ -20,7 +20,7 @@ import {
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address partnerOf placementParentId systemOwned';
+const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address partnerOf systemOwned';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;
@@ -74,7 +74,6 @@ export const publicQueue = (entry, position = null) => {
     enteredAt: entry.enteredAt,
     allocatedAt: entry.allocatedAt ?? null,
     campaignId: entry.campaignId ? String(entry.campaignId) : null,
-    placementParentId: entry.placementParentId ? String(entry.placementParentId) : null,
     cancelledAt: entry.cancelledAt ?? null,
     position: entry.status === 'queued' ? position : null,
   };
@@ -305,7 +304,7 @@ export class MongoOnboardingRepository {
               accountState: 'partner',
               activatedAt: now,
               activationOrderId: order._id,
-              ...(partner.partnerOf ? { placementParentId: partner.partnerOf, systemOwned: false } : {}),
+              ...(partner.partnerOf ? { systemOwned: false } : {}),
               address: {
                 street: shipping.street,
                 city: shipping.city,
@@ -346,7 +345,6 @@ export class MongoOnboardingRepository {
                 enteredAt: now,
                 allocatedAt: null,
                 campaignId: null,
-                placementParentId: null,
                 cancelledAt: null,
               },
               $setOnInsert: { partnerId },

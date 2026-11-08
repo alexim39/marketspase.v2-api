@@ -32,7 +32,9 @@ export const toNetworkNode = (doc) => {
     plan: o.subscription?.plan ?? 'Basic',
     commissionRank,
     commissionDepth: rankDepth(commissionRank),
-    relationType: o.partnerOf ? 'referral' : o.placementParentId ? 'placement' : null,
+    relationType: o.partnerOf
+      ? (o.placementCampaignId ? 'placement' : 'referral')
+      : null,
     profileImage: o.profileImage ?? null,
     joinedAt: o.createdAt,
   };

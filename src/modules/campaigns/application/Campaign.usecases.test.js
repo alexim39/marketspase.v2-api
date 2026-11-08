@@ -28,7 +28,6 @@ const candidate = (overrides = {}) => ({
     accountState: 'partner',
     kycStatus: 'verified',
     suspendedAt: null,
-    placementParentId: null,
   },
   partnerState: 'Lagos',
   ...overrides,

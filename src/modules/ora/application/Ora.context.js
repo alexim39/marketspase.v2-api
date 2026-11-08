@@ -79,7 +79,7 @@ export class OraContextAssembler {
       const index = RANKS.indexOf(rank);
       ctx.commissionRank = rank;
       ctx.commissionDepth = rankDepth(rank);
-      ctx.placed = !!partner.placementParentId;
+      ctx.placed = !!partner.partnerOf;
       ctx.level = rank;
       ctx.levelLabel = rank;
       ctx.next = RANKS[index + 1] ?? null;

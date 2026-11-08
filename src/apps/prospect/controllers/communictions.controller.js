@@ -6,7 +6,7 @@ import { buildProspectAccess } from '../../../modules/crm/application/Prospect.a
 // history deletes need owner/admin. These routes previously had no auth.
 const guard = buildProspectAccess({
   findProspectById: (id) => ProspectModel.findById(id).select('partnerId').lean().catch(() => null),
-  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean().catch(() => null),
+  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean().catch(() => null),
 });
 const deny = (res, err) => res.status(err?.statusCode ?? 403).json({ message: err?.message ?? 'Forbidden', success: false });
 

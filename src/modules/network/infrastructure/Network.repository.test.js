@@ -2,51 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { childFilter, project } from './Network.mongo.repository.js';
 
-test('growth chain filters only by campaign placement parent', () => {
-  assert.deepEqual(childFilter(['p1'], 'growth'), { placementParentId: { $in: ['p1'] } });
+test('every chain mode traverses the single partnerOf upline', () => {
+  for (const chain of ['growth', 'referral', 'all']) {
+    assert.deepEqual(childFilter(['p1'], chain), { partnerOf: { $in: ['p1'] } });
+  }
 });
 
-test('referral chain filters only by referral parent', () => {
-  assert.deepEqual(childFilter(['p1'], 'referral'), { partnerOf: { $in: ['p1'] } });
-});
-
-test('all chain keeps referral-first fallback behaviour', () => {
-  const filter = childFilter(['p1'], 'all');
-  assert.deepEqual(filter.$or, [
-    { partnerOf: { $in: ['p1'] } },
-    { partnerOf: null, placementParentId: { $in: ['p1'] } },
-  ]);
-});
-
-test('growth projection uses the placement parent even when a referral parent exists', () => {
+test('projection uses partnerOf as the only parent', () => {
   const node = project({
     _id: 'a'.repeat(24),
     username: 'ada',
-    partnerOf: 'referral-parent',
-    placementParentId: 'placement-owner',
+    partnerOf: 'upline-1',
+    placementCampaignId: 'campaign-1',
   }, 'growth');
-  assert.equal(node.parentId, 'placement-owner');
+  assert.equal(node.parentId, 'upline-1');
   assert.equal(node.relationType, 'placement');
 });
 
-test('growth projection never falls back to the referral parent', () => {
+test('a referral member is projected through the same partnerOf edge', () => {
   const node = project({
     _id: 'a'.repeat(24),
     username: 'ada',
-    partnerOf: 'referral-parent',
-    placementParentId: null,
-  }, 'growth');
-  assert.equal(node.parentId, null);
-  assert.equal(node.relationType, null);
+    partnerOf: 'sponsor-1',
+  }, 'referral');
+  assert.equal(node.parentId, 'sponsor-1');
+  assert.equal(node.relationType, 'referral');
 });
 
-test('referral projection ignores the placement parent', () => {
+test('a member with no partnerOf is a system-owned root candidate', () => {
   const node = project({
     _id: 'a'.repeat(24),
     username: 'ada',
-    partnerOf: 'referral-parent',
-    placementParentId: 'placement-owner',
-  }, 'referral');
-  assert.equal(node.parentId, 'referral-parent');
-  assert.equal(node.relationType, 'referral');
+    partnerOf: null,
+  }, 'all');
+  assert.equal(node.parentId, null);
+  assert.equal(node.relationType, null);
 });

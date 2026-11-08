@@ -175,7 +175,6 @@ describe('SignupUseCase', () => {
 
     const row = partners.rows.get('ada@example.com');
     assert.equal(row.partnerOf, 'aisha');
-    assert.equal(row.placementParentId, 'aisha');
     assert.equal(row.systemOwned, false);
     assert.deepEqual(bound, [['lead-1', row._id]]);
   });
@@ -199,7 +198,6 @@ describe('SignupUseCase', () => {
     assert.equal(result.user.email, 'ada@example.com');
     const row = partners.rows.get('ada@example.com');
     assert.equal(row.partnerOf, undefined);
-    assert.equal(row.placementParentId, undefined);
     assert.equal(row.systemOwned, true);
     assert.equal(row.referralCode, 'inactive-partner');
   });

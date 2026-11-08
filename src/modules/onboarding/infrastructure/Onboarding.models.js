@@ -84,11 +84,6 @@ const activationQueueEntrySchema = new mongoose.Schema(
     enteredAt: { type: Date, default: Date.now, index: true },
     allocatedAt: { type: Date, default: null },
     campaignId: { type: mongoose.Schema.Types.ObjectId, default: null },
-    placementParentId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'partner',
-      default: null,
-    },
     cancelledAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'activation_queue' },

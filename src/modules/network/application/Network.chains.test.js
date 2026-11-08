@@ -69,7 +69,6 @@ test('upline walks the requested chain parent links', async () => {
     ...root,
     id: 'owner',
     username: 'owner',
-    placementParentId: 'grand-owner',
     parentId: 'grand-owner',
     relationType: 'placement',
   };
@@ -77,14 +76,13 @@ test('upline walks the requested chain parent links', async () => {
     ...root,
     id: 'grand-owner',
     username: 'grand',
-    placementParentId: null,
     parentId: null,
     relationType: 'placement',
   };
   const network = {
     findNode: async (id, chain) => {
       assert.equal(chain, 'growth');
-      if (id === 'root') return { ...root, placementParentId: 'owner', parentId: 'owner', relationType: 'placement' };
+      if (id === 'root') return { ...root, parentId: 'owner', relationType: 'placement' };
       if (id === 'owner') return growthParent;
       if (id === 'grand-owner') return grandParent;
       return null;

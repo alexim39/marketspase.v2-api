@@ -448,7 +448,6 @@ export class MongoCompensationRepository {
           {
             $set: {
               status: 'accrued',
-              placementParentId: ownerId,
               accruedAt: now,
             },
           },
@@ -464,7 +463,7 @@ export class MongoCompensationRepository {
           visited.add(String(earnerId));
           const earner = await PartnersModel.findById(
             earnerId,
-            'name surname username commissionRank accountState kycStatus suspendedAt placementParentId',
+            'name surname username commissionRank accountState kycStatus suspendedAt partnerOf',
             opts(session),
           ).lean();
           if (!earner) break;
@@ -500,7 +499,7 @@ export class MongoCompensationRepository {
             }
           }
 
-          earnerId = earner.placementParentId ?? null;
+          earnerId = earner.partnerOf ?? null;
         }
 
         await MentorBonusModel.updateOne(
@@ -824,7 +823,7 @@ export class MongoCompensationRepository {
 
   async listMine(partnerId) {
     const partner = await PartnersModel.findById(partnerId)
-      .select('name surname username email balance commissionRank placementParentId')
+      .select('name surname username email balance commissionRank partnerOf')
       .lean();
     if (!partner) throw new NotFoundException('Partner account not found');
 
@@ -863,7 +862,7 @@ export class MongoCompensationRepository {
         balance: Number(partner.balance) || 0,
         commissionRank: normalizedRank(partner.commissionRank),
         depth: rankDepth(normalizedRank(partner.commissionRank)),
-        placed: !!partner.placementParentId,
+        placed: !!partner.partnerOf,
       },
       plan: planSummary(),
       summary: {
@@ -1038,12 +1037,12 @@ export class MongoCompensationRepository {
     for (const sale of pending) {
       try {
         const partner = await PartnersModel.findById(sale.partnerId)
-          .select('placementParentId')
+          .select('partnerOf')
           .lean();
-        if (!partner?.placementParentId) continue;
+        if (!partner?.partnerOf) continue;
         const results = await this.handleAllocation({
           partnerId: sale.partnerId,
-          ownerId: partner.placementParentId,
+          ownerId: partner.partnerOf,
           campaignId: null,
         });
         if (results.length > 0) stats.allocationsAccrued += 1;
@@ -1059,12 +1058,12 @@ export class MongoCompensationRepository {
     for (const bonus of unassigned) {
       try {
         const partner = await PartnersModel.findById(bonus.activationPartnerId)
-          .select('placementParentId')
+          .select('partnerOf')
           .lean();
-        if (!partner?.placementParentId) continue;
+        if (!partner?.partnerOf) continue;
         const updated = await MentorBonusModel.updateOne(
           { _id: bonus._id, status: 'scheduled', mentorId: null },
-          { $set: { mentorId: partner.placementParentId } },
+          { $set: { mentorId: partner.partnerOf } },
         );
         if (updated.modifiedCount > 0) stats.mentorsAttached += 1;
       } catch {

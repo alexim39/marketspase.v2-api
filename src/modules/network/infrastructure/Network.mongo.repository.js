@@ -7,38 +7,21 @@ export const project = (doc, chain = 'all') => {
   if (!doc) return null;
   const node = toNetworkNode(doc);
   const raw = typeof doc.toObject === 'function' ? doc.toObject() : doc;
-  const referralParent = raw.partnerOf ? String(raw.partnerOf) : null;
-  const placementParent = raw.placementParentId ? String(raw.placementParentId) : null;
-  if (chain === 'growth') {
-    node.parentId = placementParent;
-    node.relationType = placementParent ? 'placement' : null;
-  } else if (chain === 'referral') {
-    node.parentId = referralParent;
-    node.relationType = referralParent ? 'referral' : null;
-  } else {
-    node.parentId = referralParent ?? placementParent;
-    node.relationType = referralParent ? 'referral' : placementParent ? 'placement' : null;
-  }
+  // One upline: partnerOf. Campaign context is retained separately on
+  // placementCampaignId for history/analytics, but it is not a second parent.
+  const parent = raw.partnerOf ? String(raw.partnerOf) : null;
+  node.parentId = parent;
+  node.relationType = parent
+    ? (raw.placementCampaignId ? 'placement' : 'referral')
+    : null;
   return node;
 };
 
 /**
- * Campaign placement is a second relationship: a partner may have no referral
- * upline but be placed with a campaign mentor. In that case the mentor is the
- * effective network parent so the partner appears in team/tree/coach views.
- * Growth commissions follow `placementParentId`; referral/shop commissions
- * follow `partnerOf`.
+ * Single-upline tree. Growth, referral and all views now traverse the same
+ * `partnerOf` edge; the chain argument remains for API compatibility.
  */
-export const childFilter = (parentIds, chain = 'all') => {
-  if (chain === 'growth') return { placementParentId: { $in: parentIds } };
-  if (chain === 'referral') return { partnerOf: { $in: parentIds } };
-  return {
-    $or: [
-      { partnerOf: { $in: parentIds } },
-      { partnerOf: null, placementParentId: { $in: parentIds } },
-    ],
-  };
-};
+export const childFilter = (parentIds, _chain = 'all') => ({ partnerOf: { $in: parentIds } });
 
 /** Mongo implementation of the network read contracts. All reads `.lean()`. */
 export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
@@ -64,13 +47,10 @@ export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
     return docs.map((doc) => project(doc));
   }
 
-  /** Everyone with ≥1 direct recruit or campaign placement — snapshot work list. */
+  /** Everyone with ≥1 direct downline — snapshot work list. */
   async findLeaderIds(limit = 2000) {
-    const [referralParents, placementParents] = await Promise.all([
-      PartnersModel.distinct('partnerOf'),
-      PartnersModel.distinct('placementParentId'),
-    ]);
-    return [...new Set([...referralParents, ...placementParents].map(String).filter(Boolean))]
+    const partnerIds = await PartnersModel.distinct('partnerOf');
+    return [...new Set(partnerIds.map(String).filter(Boolean))]
       .slice(0, Math.min(Math.max(Number(limit) || 2000, 1), 5000));
   }
 
@@ -83,7 +63,7 @@ export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
   async recentChildren(partnerId, limit = 5) {
     const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
     const docs = await PartnersModel.find(childFilter([String(partnerId)]))
-      .select('name surname username createdAt partnerOf placementParentId commissionRank')
+      .select('name surname username createdAt partnerOf commissionRank')
       .sort({ createdAt: -1 })
       .limit(lim)
       .lean();

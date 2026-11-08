@@ -70,7 +70,7 @@ export const buildProspectRouter = (deps = {}) => {
   // owner/admin for PII, deletes and converts. Null-safe in tests via deps.
   const guard = deps.guard ?? buildProspectAccess({
     findProspectById: (id) => prospects.findById(id),
-    findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean(),
+    findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean(),
   });
   const create = new CreateProspectUseCase({ prospects, campaigns });
   const c = makeProspectController({

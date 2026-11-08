@@ -21,11 +21,14 @@ test('network nodes expose commission rank and earning depth', () => {
 
 test('network nodes expose the relationship used by the tree', () => {
   const referral = toNetworkNode({ _id: id, username: 'ada', partnerOf: 'parent-1' });
-  const placement = toNetworkNode({ _id: id, username: 'ada', placementParentId: 'owner-1' });
-  const both = toNetworkNode({ _id: id, username: 'ada', partnerOf: 'parent-1', placementParentId: 'owner-1' });
+  const placement = toNetworkNode({
+    _id: id,
+    username: 'ada',
+    partnerOf: 'owner-1',
+    placementCampaignId: 'campaign-1',
+  });
   assert.equal(referral.relationType, 'referral');
   assert.equal(placement.relationType, 'placement');
-  assert.equal(both.relationType, 'referral');
 });
 
 test('unknown or missing rank normalizes to Partner', () => {

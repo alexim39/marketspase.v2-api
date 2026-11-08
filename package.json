@@ -16,6 +16,7 @@
     "smoke:store": "node scripts/smoke-store-flow.js",
     "ci:mongo": "node scripts/ci-init-mongo-replica.js",
     "migrate:pii": "node scripts/migrate-pii-encryption.js",
+    "migrate:upline": "node scripts/migrate-single-upline.mjs",
     "audit:legacy": "node scripts/legacy-route-audit.mjs",
     "ops:check": "node scripts/ops-check.mjs"
   },

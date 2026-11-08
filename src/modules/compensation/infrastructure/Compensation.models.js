@@ -13,7 +13,6 @@ const commissionSaleSchema = new mongoose.Schema(
       default: 'pending_placement',
       index: true,
     },
-    placementParentId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
     activatedAt: { type: Date, required: true },
     accruedAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },

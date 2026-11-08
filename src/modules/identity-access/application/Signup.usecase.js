@@ -67,10 +67,6 @@ export class SignupUseCase {
           ...(ownerId
             ? {
               partnerOf: ownerId,
-              // Sponsorship is also the activation/mentor placement. This
-              // guarantees a referred member is never reallocated to another
-              // campaign owner.
-              placementParentId: ownerId,
               systemOwned: false,
             }
             : { systemOwned: true }),

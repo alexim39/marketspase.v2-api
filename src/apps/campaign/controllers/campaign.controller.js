@@ -23,7 +23,7 @@ import { runAllocationForCampaign } from '../../../jobs/allocation-due.js';
 // :4201 site records them for anonymous visitors).
 const guard = buildProspectAccess({
   findProspectById: async () => null,
-  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf placementParentId').lean().catch(() => null),
+  findPartnerById: (id) => PartnersModel.findById(id).select('role email partnerOf').lean().catch(() => null),
 });
 const sessionId = (req) => (req.auth?.partnerId ? String(req.auth.partnerId) : null);
 const deny = (res, err) => res.status(err?.statusCode ?? 403).json({ message: err?.message ?? 'Forbidden', success: false });

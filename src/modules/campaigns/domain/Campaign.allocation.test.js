@@ -34,7 +34,7 @@ const partner = (overrides = {}) => ({
   accountState: 'partner',
   kycStatus: 'verified',
   suspendedAt: null,
-  placementParentId: null,
+  partnerOf: null,
   ...overrides,
 });
 
@@ -54,22 +54,21 @@ describe('campaign allocation gates', () => {
     assert.equal(campaignInFlight(campaign({ flight: { startAt: new Date('2026-11-01T00:00:00Z'), endAt: new Date('2026-11-02T00:00:00Z') } }), now), false);
   });
 
-  it('requires activated, verified, unsuspended partners who are not placed', () => {
+  it('requires activated, verified, unsuspended partners who are not already sponsored', () => {
     assert.equal(partnerEligibleForAllocation(partner()), true);
     assert.equal(partnerEligibleForAllocation(partner({ accountState: 'member' })), false);
     assert.equal(partnerEligibleForAllocation(partner({ kycStatus: 'pending' })), false);
     assert.equal(partnerEligibleForAllocation(partner({ suspendedAt: new Date() })), false);
     assert.equal(partnerEligibleForAllocation(partner({ partnerOf: 'sponsor-1' })), false);
-    assert.equal(partnerEligibleForAllocation(partner({ placementParentId: 'owner-9' })), false);
   });
 
-  it('campaign owners must be activated and KYC verified but may be placed under another owner', () => {
-    assert.equal(ownerEligibleForCampaign(partner({ placementParentId: 'owner-9' })), true);
+  it('campaign owners must be activated and KYC verified but may have their own upline', () => {
+    assert.equal(ownerEligibleForCampaign(partner({ partnerOf: 'owner-9' })), true);
     assert.equal(ownerEligibleForCampaign(partner({ kycStatus: 'pending' })), false);
   });
 
   it('treats legacy accounts with missing activation/KYC fields as active and verified', () => {
-    const legacy = { _id: 'legacy', suspendedAt: null, placementParentId: null };
+    const legacy = { _id: 'legacy', suspendedAt: null, partnerOf: null };
     assert.equal(ownerEligibleForCampaign(legacy), true);
     assert.equal(partnerEligibleForAllocation(legacy), true);
     assert.equal(ownerEligibleForCampaign({ ...legacy, accountState: 'member' }), false);

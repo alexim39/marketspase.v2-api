@@ -62,7 +62,7 @@ const weekStart = (now = new Date()) => {
 };
 
 const ownerProjection = 'name surname username email phone';
-const partnerProjection = 'name surname username email phone address accountState kycStatus suspendedAt partnerOf placementParentId systemOwned placedAt';
+const partnerProjection = 'name surname username email phone address accountState kycStatus suspendedAt partnerOf systemOwned placedAt';
 
 const ownerLabel = (partner) => (
   [partner?.name, partner?.surname].filter(Boolean).join(' ') || partner?.username || partner?.email || 'Partner'
@@ -546,7 +546,7 @@ export class MongoCampaignRepository {
         if (partner && !isActivatedPartner(partner)) reasons.push('Not activated');
         if (partner?.suspendedAt) reasons.push('Suspended');
         if (partner && !isKycVerified(partner)) reasons.push(`KYC ${partner.kycStatus ?? 'not_started'}`);
-        if (partner?.placementParentId) reasons.push('Already placed');
+        if (partner?.partnerOf) reasons.push('Already has an upline');
         return {
           queueEntryId: String(entry._id),
           partner: partner ? {
@@ -773,7 +773,6 @@ export class MongoCampaignRepository {
             status: 'allocated',
             allocatedAt: now,
             campaignId,
-            placementParentId: ownerId,
             cancelledAt: null,
           },
         },
@@ -818,7 +817,6 @@ export class MongoCampaignRepository {
           _id: partnerId,
           suspendedAt: null,
           partnerOf: null,
-          placementParentId: null,
           ...activationEligibilityFilter,
         },
         {
@@ -826,7 +824,6 @@ export class MongoCampaignRepository {
             // Organic signup: the campaign mentor becomes the single upline
             // for referral, activation and product commissions.
             partnerOf: ownerId,
-            placementParentId: ownerId,
             placementCampaignId: campaignId,
             systemOwned: false,
             placedAt: now,
@@ -1043,7 +1040,8 @@ export class MongoCampaignRepository {
         },
         {
           $set: {
-            placementParentId: null,
+            partnerOf: null,
+            systemOwned: true,
             placementCampaignId: null,
             placedAt: null,
           },
@@ -1058,7 +1056,6 @@ export class MongoCampaignRepository {
             status: 'queued',
             allocatedAt: null,
             campaignId: null,
-            placementParentId: null,
             cancelledAt: null,
           },
         },

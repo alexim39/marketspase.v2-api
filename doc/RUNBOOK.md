@@ -340,6 +340,11 @@ execution writes an `ora.action.execute` audit event.
   no login, wallet, KYC, rank or commission entitlement, and must never appear
   in member counts, commission walks, mentor bonuses or payout runs. Network
   tree/org responses expose it as read-only metadata for display only.
+- **Single-upline migration:** run `npm run migrate:upline` (dry run) before
+  deploying this API, then `APPLY=1 npm run migrate:upline`. It backfills
+  `partnerOf` from legacy `placementParentId`, keeps `partnerOf` on conflicts,
+  and unsets the legacy field from partners, commission sales and activation
+  queue rows. The API no longer reads `placementParentId`.
 - Mentor bonus timing: `MENTOR_BONUS_DAYS` controls the delay after activation
   (default 7; `0` means payable at the next hourly mentor-bonus run). It only
   affects **newly recorded activations**; existing `mentor_bonuses` rows keep

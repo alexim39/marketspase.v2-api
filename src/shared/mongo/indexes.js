@@ -119,7 +119,6 @@ export const INDEXES = [
   { collection: 'partner_allocations', keys: { campaignId: 1, status: 1 }, options: {} },
   { collection: 'partner_allocations', keys: { campaignId: 1, allocatedAt: -1 }, options: {} },
   { collection: 'partner_allocations', keys: { ownerId: 1, allocatedAt: -1 }, options: {} },
-  { collection: 'partners', keys: { placementParentId: 1 }, options: {} },
   { collection: 'partners', keys: { placementCampaignId: 1 }, options: {} },
   { collection: 'partners', keys: { commissionRank: 1 }, options: {} },
   { collection: 'commission_sales', keys: { orderId: 1 }, options: { unique: true } },

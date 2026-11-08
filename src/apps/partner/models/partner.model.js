@@ -120,11 +120,6 @@ const partnersSchema = mongoose.Schema(
       ref: 'ActivationOrder',
       default: null,
     },
-    placementParentId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'partner',
-      default: null,
-    },
     placementCampaignId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'GrowthCampaign',
