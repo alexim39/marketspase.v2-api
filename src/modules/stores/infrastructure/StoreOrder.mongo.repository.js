@@ -875,13 +875,13 @@ export class StoreOrderRepository {
     if (order.status === 'delivered') {
       return customerOrder(order, publicReturnRequest(await findReturnRequest(order._id)));
     }
-    if (!['shipped', 'processing', 'paid'].includes(order.status)) {
+    if (!['shipped'].includes(order.status)) {
       throw new ConflictException('This order cannot be confirmed as received yet');
     }
     const at = now();
     const settings = await this.getStoreSettings();
     const updated = await StoreOrderModel.findOneAndUpdate(
-      { _id: order._id, status: { $in: ['shipped', 'processing', 'paid'] } },
+      { _id: order._id, status: 'shipped' },
       {
         $set: {
           status: 'delivered',

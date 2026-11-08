@@ -11,6 +11,7 @@ import { ValidationException } from '../../../shared/domain/AppError.js';
 import { env } from '../../../shared/config/env.js';
 import { recordAudit } from '../../audit/index.js';
 import { buildImageStore } from '../../settings/infrastructure/CloudinaryClient.js';
+import { logger } from '../../../shared/observability/logger.js';
 import { StoreRepository } from '../infrastructure/Store.mongo.repository.js';
 import { StoreOrderRepository } from '../infrastructure/StoreOrder.mongo.repository.js';
 import { StoreCustomerLeadRepository } from '../infrastructure/StoreCustomerLead.mongo.repository.js';
@@ -344,6 +345,10 @@ export const buildStoreRouter = (deps = {}) => {
     asyncHandler(async (req, res) => {
       const data = await orderRepo.getOrder(req.validated.params.reference, {
         token: orderToken(req),
+      });
+      logger.info('store_order_tracking_accessed', {
+        reference: req.validated.params.reference,
+        ip: req.ip ?? null,
       });
       return sendSuccess(res, { data });
     }),

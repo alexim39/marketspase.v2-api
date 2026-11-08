@@ -33,7 +33,7 @@ export const runProgressionDemotionJob = async (deps = {}) => {
     const snapshot = await mine.execute({ partnerId, now, readOnly: true }).catch(() => null);
     const decision = evaluateDemotion({
       level: candidate.level,
-      lastPromotionAt: candidate.lastPromotionAt,
+      lastPromotionAt: candidate.lastPromotionAt ?? candidate.levelAt,
       misses: candidate.demotionMisses,
       maintenanceOk: snapshot?.signals?.maintenanceOk === true,
       now,

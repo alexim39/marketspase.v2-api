@@ -21,7 +21,7 @@ import {
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus activatedAt createdAt emailVerified address partnerOf systemOwned';
+const partnerProjection = 'name surname username email phone balance accountState kycStatus suspendedAt activatedAt createdAt emailVerified address partnerOf systemOwned';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;

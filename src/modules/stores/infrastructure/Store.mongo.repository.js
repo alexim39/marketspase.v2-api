@@ -523,7 +523,13 @@ export class StoreRepository {
   async getPublicProduct(slug, productId) {
     if (!hasId(productId)) throw new NotFoundException('Product not found');
     const clean = text(slug, 80).toLowerCase();
-    const store = await StoreModel.findOne({ slug: clean, status: 'published' }).lean();
+    let store = await StoreModel.findOne({ slug: clean, status: 'published' }).lean();
+    if (!store) {
+      const partner = await PartnersModel.findOne({ username: clean }).select('_id').lean().catch(() => null);
+      if (partner) {
+        store = await StoreModel.findOne({ partnerId: partner._id, status: 'published' }).lean();
+      }
+    }
     if (!store) throw new NotFoundException('Store not found');
     const product = await StoreProductModel.findOne({
       _id: productId,
