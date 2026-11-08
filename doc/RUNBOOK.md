@@ -55,7 +55,7 @@ circuit breaker is open.
    ```bash
    npm run migrate:upline              # dry run: inspect placement-only + conflicts
    APPLY=1 npm run migrate:upline      # backfill partnerOf, drop legacy field
-   npm run migrate:upline              # expect 0 placement-only, 0 conflicts
+   npm run audit:upline                # read-only: expect ok: true
    ```
    The new API does not read `placementParentId`. Running the migration first
    prevents placed members from losing their upline on deploy.
@@ -432,6 +432,11 @@ npm run ops:check -- --api-only --api-url https://api.example.com
 # PII migration
 npm run migrate:pii
 APPLY=1 npm run migrate:pii
+
+# Single-upline migration + read-only audit
+npm run migrate:upline
+APPLY=1 npm run migrate:upline
+npm run audit:upline
 
 # Legacy endpoint audit (during the 7-day window)
 npm run audit:legacy
