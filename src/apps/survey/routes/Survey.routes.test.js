@@ -97,27 +97,4 @@ describe('v1 survey routes', () => {
     assert.equal(result.status, 400);
     assert.equal(result.body.code, 'VALIDATION_ERROR');
   });
-
-  it('accepts a valid partner survey', async () => {
-    const result = await request('/v1/survey/partners', {
-      difficulty: 'Follow-up',
-      challenges: ['Time', 'Tools'],
-      strategies: ['Daily calls'],
-      targetAudience: ['Friends'],
-      recruitmentTool: 'WhatsApp',
-      misconception: 'Get rich quick',
-      businessMotivation: 'Freedom',
-      recruitmentAttempt: 'Warm circle',
-      trainingSupport: 'Weekly',
-      comfortWithTech: 'Good',
-      businessTimeDedication: 'Evenings',
-      phoneNumber: '08030000000',
-      name: 'Ada',
-      gender: 'Female',
-      interestedInTraining: 'Yes',
-    });
-
-    assert.equal(result.status, 200);
-    assert.deepEqual(seen.challenges, ['Time', 'Tools']);
-  });
 });

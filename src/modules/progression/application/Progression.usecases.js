@@ -10,13 +10,13 @@ const DAY = 86400000;
 /**
  * Live signals from source aggregates (never stored).
  * Bounded: downline BFS is depth- + cap-limited like everywhere else.
- * Leadership legs (`prospects`, `community`, `events`, `reports`) are
+ * Leadership legs (`prospects`, `community`, `events`) are
  * optional — absent deps degrade to zero (skills gate unmet, never a
  * crash), so old constructions and unit fakes keep working.
  */
 export async function assembleSignals(
   partnerId,
-  { network, orders, progress, prospects, community, eventStore, reports },
+  { network, orders, progress, prospects, community, eventStore },
   now = new Date(),
 ) {
   const end = new Date(now);
@@ -25,7 +25,7 @@ export async function assembleSignals(
   const start90 = new Date(end.getTime() - 90 * DAY);
   const safe = (promise, fallback) => Promise.resolve(promise).then((v) => v ?? fallback, () => fallback);
   const [{ ids: downline }] = await Promise.all([collectDownlineIds(network, partnerId)]);
-  const [recruits, cur, prev, active, levels, touched, posts, rsvps, authored, decisions, pendingRows] = await Promise.all([
+  const [recruits, cur, prev, active, levels, touched, posts, rsvps, decisions, pendingRows] = await Promise.all([
     (network.countRecruitedChildren ?? network.countChildren).call(network, partnerId),
     orders.volumeBetween(partnerId, start30, end),
     orders.volumeBetween(partnerId, start60, start30),
@@ -34,7 +34,6 @@ export async function assembleSignals(
     safe(prospects?.countTouchedSince?.(partnerId, start30), 0),
     safe(community?.countPostsByAuthorSince?.(partnerId, start30), 0),
     safe(eventStore?.countRsvpsSince?.(partnerId, start90), 0),
-    safe(reports?.listByAuthor?.(partnerId, 50), []),
     safe(progress.decisionsByApprover?.(partnerId, start90), []),
     safe(progress.listPendingConfirmations?.(downline.slice(0, 2000), CONFIRMABLE_KEYS, 200), []),
   ]);
@@ -43,10 +42,6 @@ export async function assembleSignals(
     const key = normalizeLevel(lvl);
     counts[key] = (counts[key] ?? 0) + 1;
   }
-  const reportsSubmitted = (authored ?? []).filter((r) => {
-    const t = new Date(r.createdAt ?? 0).getTime();
-    return !Number.isNaN(t) && t >= end.getTime() - 60 * DAY;
-  }).length;
   // Responsiveness: own decision latencies plus stale backlog among direct
   // reports only (parentId match — deeper uplines own deeper members).
   const decisionLatencies = (decisions ?? [])
@@ -79,18 +74,15 @@ export async function assembleSignals(
     touchedProspects: touched,
     communityPosts: posts,
     eventRsvps: rsvps,
-    reportsSubmitted,
     responsive: { medianMs: responsiveMedian, decided: decisionLatencies.length, directStale },
   };
 }
 
-const STAMPS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'qualifiedConfirmed', 'appointment', 'maintenance'];
+const STAMPS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'qualifiedConfirmed', 'appointment'];
 
 const toMilestones = (doc = {}) => {
   const m = {};
   for (const k of STAMPS) if (doc[k] !== undefined) m[k] = doc[k];
-  if (doc.accounts !== undefined) m.accounts = doc.accounts;
-  if (doc.maintenance !== undefined && m.maintenance === undefined) m.maintenance = doc.maintenance;
   if (doc.officeAddress !== undefined) m.officeAddress = doc.officeAddress;
   if (doc.appointedBy !== undefined) m.appointedBy = doc.appointedBy;
   return m;
@@ -100,49 +92,10 @@ const toMilestones = (doc = {}) => {
 export const buildMilestonePatch = (input = {}) => {
   const patch = {};
   for (const k of STAMPS) {
-    // maintenance carries evidence (ref/month) — handled in the dedicated
-    // block below with dotted $sets, never a whole-object overwrite.
-    if (k === 'maintenance') continue;
     if (input[k] === undefined) continue;
     const done = input[k]?.done ?? input[k];
     if (typeof done !== 'boolean') throw new ValidationException(`Invalid ${k}`);
     patch[k] = { done, at: done ? new Date() : null };
-  }
-  if (input.accounts !== undefined) {
-    const raw = typeof input.accounts === 'object' && input.accounts !== null ? input.accounts : { count: input.accounts };
-    const count = Number(raw.count ?? 0);
-    if (!Number.isInteger(count) || count < 0 || count > 1000) throw new ValidationException('Invalid accounts');
-    const refs = Array.isArray(raw.refs)
-      ? raw.refs.map((r) => String(r ?? '').trim().slice(0, 100)).filter(Boolean).slice(0, 10)
-      : [];
-    const maintenanceRef = String(raw.maintenanceRef ?? '').trim().slice(0, 100);
-    const maintenanceMonth = String(raw.maintenanceMonth ?? '').trim().slice(0, 7);
-    if (maintenanceMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(maintenanceMonth)) throw new ValidationException('Invalid maintenance month (YYYY-MM)');
-    if (count >= 1 && refs.length === 0) throw new ValidationException('At least one DTC account reference is required as evidence');
-    patch['accounts.count'] = count;
-    patch['accounts.refs'] = refs;
-    patch['accounts.maintenanceRef'] = maintenanceRef;
-    patch['accounts.maintenanceMonth'] = maintenanceMonth;
-    // Submitting evidence (re)opens the confirmation — upline must verify.
-    patch['accounts.done'] = count >= 1;
-    patch['accounts.at'] = count >= 1 ? new Date() : null;
-    patch['accounts.confirmedBy'] = null;
-    patch['accounts.confirmedAt'] = null;
-  }
-  if (input.maintenance !== undefined) {
-    const raw = typeof input.maintenance === 'object' && input.maintenance !== null ? input.maintenance : { done: input.maintenance };
-    const done = raw.done ?? (raw.ref ? true : false);
-    if (typeof done !== 'boolean') throw new ValidationException('Invalid maintenance');
-    const ref = String(raw.ref ?? '').trim().slice(0, 100);
-    const month = String(raw.month ?? '').trim().slice(0, 7);
-    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new ValidationException('Invalid maintenance month (YYYY-MM)');
-    if (done === true && !ref) throw new ValidationException('DTC receipt / order reference is required as evidence');
-    patch['maintenance.done'] = done;
-    patch['maintenance.at'] = done ? new Date() : null;
-    patch['maintenance.ref'] = done ? ref : '';
-    patch['maintenance.month'] = done ? month : '';
-    patch['maintenance.confirmedBy'] = null;
-    patch['maintenance.confirmedAt'] = null;
   }
   if (input.officeAddress !== undefined) {
     const addr = String(input.officeAddress ?? '').trim().slice(0, 200);
@@ -161,14 +114,14 @@ export const buildMilestonePatch = (input = {}) => {
 
 /** My journey: derived level, next gate, promotion detection (recognition hook). */
 export class GetMyProgressionUseCase {
-  /** @param {{progress, network, orders, recognition, events?, prospects?, community?, eventStore?, reports?}} deps (recognition optional - auto-posts promotions; events optional - promotion fan-out) */
+  /** @param {{progress, network, orders, recognition, events?, prospects?, community?, eventStore?}} deps (recognition optional - auto-posts promotions; events optional - promotion fan-out) */
   constructor({
     progress, network, orders, recognition, events = null,
-    prospects = null, community = null, eventStore = null, reports = null,
+    prospects = null, community = null, eventStore = null,
   }) {
     Object.assign(this, {
       progress, network, orders, recognition, events,
-      prospects, community, eventStore, reports,
+      prospects, community, eventStore,
     });
   }
 

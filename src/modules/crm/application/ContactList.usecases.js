@@ -1,205 +1,30 @@
-import crypto from 'node:crypto';
-import { ValidationException } from '../../../shared/domain/AppError.js';
-import { MIN_CONTACTS, batchSla, prospectPhoneAccess } from '../domain/ContactList.js';
-import { CONTACT_LIST_EVENTS, contactListSubmittedPayload } from '../domain/ContactListEvents.js';
 import { LEVEL_LABELS } from '../../progression/domain/Progression.levels.js';
 import { collectDownlineIds } from '../../network/infrastructure/Network.mongo.repository.js';
 
-/** GET /v1/prospects/contact-list/mine — working list + submitted batches. */
-export class GetMyContactListUseCase {
-  /** @param {{prospects}} deps */
-  constructor({ prospects }) {
-    this.prospects = prospects;
-  }
-
-  async execute({ partnerId }) {
-    const [unsubmitted, batches] = await Promise.all([
-      this.prospects.listUnsubmitted(partnerId),
-      this.prospects.submittedBatches(partnerId),
-    ]);
-    const slim = (p) => ({
-      id: String(p.id ?? p._id),
-      prospectName: p.prospectName,
-      prospectSurname: p.prospectSurname ?? '',
-      prospectPhone: p.prospectPhone,
-      relationship: p.relationship ?? 'Other',
-      priority: p.priority ?? 'normal',
-      createdAt: p.createdAt ?? null,
-    });
-    return {
-      unsubmitted: unsubmitted.map(slim),
-      unsubmittedCount: unsubmitted.length,
-      minRequired: MIN_CONTACTS,
-      canSubmit: unsubmitted.length >= MIN_CONTACTS,
-      batches,
-    };
-  }
-}
-
-/** POST /v1/prospects/contact-list/submit — stamp one batch, notify upline. */
-export class SubmitContactListUseCase {
-  /** @param {{prospects, network?, events?}} deps */
-  constructor({ prospects, network = null, events = null }) {
-    Object.assign(this, { prospects, network, events });
-  }
-
-  async execute({ partnerId }) {
-    const pending = await this.prospects.listUnsubmitted(partnerId);
-    if (pending.length < MIN_CONTACTS) {
-      throw new ValidationException(
-        `Add at least ${MIN_CONTACTS} contacts before submitting (you have ${pending.length})`,
-      );
-    }
-    const batch = `list-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
-    const { count, submittedAt } = await this.prospects.submitContactList(partnerId, batch);
-    if (this.events) {
-      try {
-        const node = await this.network?.findNode?.(partnerId).catch(() => null);
-        await this.events.emit(
-          CONTACT_LIST_EVENTS.SUBMITTED,
-          contactListSubmittedPayload({
-            partnerId,
-            memberName: node
-              ? [node.name, node.surname].filter(Boolean).join(' ') || node.username
-              : null,
-            batch,
-            count,
-          }),
-        ).catch(() => null);
-      } catch { /* submit fan-out never fails the submit */ }
-    }
-    return { batch, count, submittedAt };
-  }
-}
-
-/** GET /v1/prospects/contact-list/downline — submitted lists with progress. */
-export class ListDownlineContactListsUseCase {  /** @param {{prospects, network}} deps */
-  constructor({ prospects, network }) {
-    Object.assign(this, { prospects, network });
-  }
-
-  async execute({ requesterId, limit = 100, now = new Date() }) {
-    const [{ ids }, direct] = await Promise.all([
-      collectDownlineIds(this.network, requesterId),
-      this.network.findChildren
-        ? this.network.findChildren([String(requesterId)], 500, 'referral').catch(() => [])
-        : [],
-    ]);
-    const bounded = ids.slice(0, 2000);
-    const directIds = new Set((direct ?? []).map((node) => String(node.id)));
-    const [rows, contacts] = await Promise.all([
-      this.prospects.downlineSubmittedBatches(bounded),
-      this.prospects.submittedContacts(bounded, 500),
-    ]);
-    const capped = rows.slice(0, Math.min(Math.max(Number(limit) || 100, 1), 200));
-    if (capped.length === 0) return { items: [], total: 0 };
-    const byList = new Map();
-    for (const c of contacts) {
-      const k = `${c.partnerId}::${c.listBatch ?? 'legacy'}`;
-      if (!byList.has(k)) byList.set(k, []);
-      byList.get(k).push(c);
-    }
-    const slimContact = (c) => {
-      const directUpline = directIds.has(String(c.partnerId));
-      const phoneAccess = prospectPhoneAccess({
-        consentToContact: c.consentToContact === true,
-        directUpline,
-        hasPhone: Boolean(c.prospectPhone),
-      });
-      return {
-        id: String(c.id ?? c._id),
-        prospectName: c.prospectName,
-        prospectSurname: c.prospectSurname ?? '',
-        prospectPhone: phoneAccess.visible ? c.prospectPhone : null,
-        phoneHiddenReason: phoneAccess.reason,
-        relationship: c.relationship ?? 'Other',
-        priority: c.priority ?? 'normal',
-        bestTimeToCall: phoneAccess.visible ? (c.bestTimeToCall ?? '') : '',
-        consentToContact: c.consentToContact === true,
-        stage: c.status?.stage ?? 'New',
-      };
-    };
-    const withContacts = capped.map((r) => {
-      const all = (byList.get(`${r.partnerId}::${r.batch}`) ?? []).map(slimContact);
-      // Unworked first so the upline calls fresh numbers, then cap.
-      all.sort((a, b) => Number(a.stage !== 'New') - Number(b.stage !== 'New'));
-      // Derived first-touch SLA (no storage): untouched batches go overdue
-      // after 48h so the workbench can surface them first.
-      const sla = batchSla({ submittedAt: r.submittedAt, worked: r.worked, now });
-      return {
-        ...r,
-        directUpline: directIds.has(String(r.partnerId)),
-        contacts: all.slice(0, 30),
-        sla,
-      };
-    });
-    // Overdue first, then newest — the upline sees what needs them now.
-    withContacts.sort((a, b) =>
-      Number(b.sla?.overdue === true) - Number(a.sla?.overdue === true)
-      || new Date(b.submittedAt ?? 0).getTime() - new Date(a.submittedAt ?? 0).getTime());
-    const nodes = await this.network.findNodesByIds([...new Set(withContacts.map((r) => r.partnerId))]);
-    const labels = Object.fromEntries(nodes.map((nd) => [String(nd.id), {
-      username: nd.username,
-      name: [nd.name, nd.surname].filter(Boolean).join(' ') || nd.username,
-    }]));
-    return {
-      items: withContacts.map((r) => ({ ...r, member: labels[r.partnerId] ?? null })),
-      total: rows.length,
-    };
-  }
-}
-
 /**
- * POST /v1/prospects/contact-list/resolve-phone — resolve a booking phone to
- * one contact id in the requester's own + downline pipeline. Returns ids only,
- * never the phone, so hidden/no-consent numbers are not exposed to the client.
- */
-export class ResolveContactByPhoneUseCase {
-  /** @param {{prospects, network}} deps */
-  constructor({ prospects, network }) {
-    Object.assign(this, { prospects, network });
-  }
-
-  async execute({ requesterId, phone }) {
-    if (!this.prospects.findByPhoneInPartners) return { match: null };
-    const { ids } = await collectDownlineIds(this.network, requesterId);
-    const scoped = [String(requesterId), ...ids].slice(0, 2001);
-    const matches = await this.prospects.findByPhoneInPartners(scoped, phone, 3).catch(() => []);
-    if (matches.length !== 1) return { match: null };
-    return { match: matches[0] };
-  }
-}
-
-/**
- * GET /v1/prospects/contact-list/activation — per-member onboarding board.
- * One light row per downline member (no contact arrays, so huge downlines
- * stay cheap): IPO/QSG/SMO stamps + list totals + oldest pending age + overdue
- * + next action. Progress store is optional — missing stamps read as undone.
+ * GET /v1/prospects/activation-board — per-member onboarding board.
+ *
+ * One light row per downline member: level, confirmed IPO/QSG/SMO stamps and
+ * the single next training action. Contact-list submission/workbench was
+ * retired, so this board no longer reads or reports warm-list data.
  */
 export class ListActivationBoardUseCase {
-  /** @param {{prospects, network, progress?}} deps */
-  constructor({ prospects, network, progress = null }) {
-    Object.assign(this, { prospects, network, progress });
+  /** @param {{network, progress?}} deps */
+  constructor({ network, progress = null }) {
+    Object.assign(this, { network, progress });
   }
 
-  async execute({ requesterId, limit = 200, now = new Date() }) {
+  async execute({ requesterId, limit = 200 }) {
     const { ids, depths } = await collectDownlineIds(this.network, requesterId);
     const bounded = ids.slice(0, 2000);
     if (bounded.length === 0) return { items: [], total: 0 };
-    // Batch rows uncap to 5000 groups so per-member totals stay exact even
-    // for huge downlines; the member rows below are what get capped.
-    const [rows, nodes, training, levels] = await Promise.all([
-      this.prospects.downlineSubmittedBatches(bounded, 5000),
+
+    const [nodes, training, levels] = await Promise.all([
       this.network.findNodesByIds(bounded).catch(() => []),
       this.progress?.listConfirmationStats?.(bounded, ['ipo', 'qsg', 'smo']).catch(() => []) ?? [],
       this.progress?.levelsFor?.(bounded).catch(() => ({})) ?? {},
     ]);
-    const byMember = new Map();
-    for (const r of rows) {
-      const k = String(r.partnerId);
-      if (!byMember.has(k)) byMember.set(k, []);
-      byMember.get(k).push(r);
-    }
+
     const stamps = new Map();
     for (const t of training ?? []) {
       const k = String(t.partnerId ?? t.id ?? '');
@@ -209,38 +34,23 @@ export class ListActivationBoardUseCase {
       username: nd.username,
       name: [nd.name, nd.surname].filter(Boolean).join(' ') || nd.username,
     }]));
+
     const items = bounded.map((id) => {
       const pid = String(id);
-      const batches = byMember.get(pid) ?? [];
-      const total = batches.reduce((n, b) => n + (b.total ?? 0), 0);
-      const worked = batches.reduce((n, b) => n + (b.worked ?? 0), 0);
-      const unworked = Math.max(0, total - worked);
-      const pendingDates = batches
-        .filter((b) => (b.total ?? 0) - (b.worked ?? 0) > 0 && b.submittedAt)
-        .map((b) => new Date(b.submittedAt).getTime())
-        .filter((t) => !Number.isNaN(t));
-      const oldestPendingAt = pendingDates.length > 0 ? new Date(Math.min(...pendingDates)) : null;
-      const newestDates = batches
-        .map((b) => b.submittedAt ? new Date(b.submittedAt).getTime() : NaN)
-        .filter((t) => !Number.isNaN(t));
-      const newestSubmittedAt = newestDates.length > 0 ? new Date(Math.max(...newestDates)) : null;
-      const overdue = batches.some((b) => batchSla({ submittedAt: b.submittedAt, worked: b.worked, now }).overdue);
       const stamp = stamps.get(pid) ?? {};
       // Gates count confirmed training only (done + upline confirmation).
       const ipoDone = stamp.ipo?.done === true && stamp.ipo?.confirmedAt != null;
       const qsgDone = stamp.qsg?.done === true && stamp.qsg?.confirmedAt != null;
       const smoDone = stamp.smo?.done === true && stamp.smo?.confirmedAt != null;
-      // Ladder level (stored default) + distance from the viewing upline.
       const level = levels?.[pid] ?? 'partner';
       const depth = depths?.[pid] ?? 1;
-      let nextAction = 'All worked — ask for the next batch';
+
+      let nextAction = 'Training complete — support first sale';
       let nextTone = 'ok';
       if (!ipoDone) { nextAction = 'Complete IPO'; nextTone = 'warn'; }
       else if (!qsgDone) { nextAction = 'Complete QSG'; nextTone = 'warn'; }
       else if (!smoDone) { nextAction = 'Complete SMO'; nextTone = 'warn'; }
-      else if (total === 0) { nextAction = 'Submit contact list'; nextTone = 'warn'; }
-      else if (overdue) { nextAction = `Call now — ${unworked} unworked, overdue 48h`; nextTone = 'bad'; }
-      else if (unworked > 0) { nextAction = `Work list — ${unworked} of ${total} left`; nextTone = 'info'; }
+
       return {
         partnerId: pid,
         member: labels[pid] ?? null,
@@ -251,25 +61,48 @@ export class ListActivationBoardUseCase {
         ipoDone,
         qsgDone,
         smoDone,
-        lists: batches.length,
-        total,
-        worked,
-        unworked,
-        oldestPendingAt,
-        newestSubmittedAt,
-        overdue,
         nextAction,
         nextTone,
       };
     });
-    // Overdue first, then needs-work, then no-list, then done; oldest pending first within band.
-    const rank = (m) => (m.overdue ? 0 : m.unworked > 0 ? 1 : m.total === 0 ? 2 : 3);
-    items.sort((a, b) =>
-      rank(a) - rank(b)
-      || (a.oldestPendingAt ?? a.newestSubmittedAt ?? 0) - (b.oldestPendingAt ?? b.newestSubmittedAt ?? 0));
-    // Serve the most urgent slice; total stays honest so the UI can say
-    // "showing X of Y" instead of silently dropping members.
+
+    // Needs-training first, then direct/older? Keep a stable, useful order:
+    // incomplete IPO first, then QSG, SMO, then complete.
+    const rank = (m) => (!m.ipoDone ? 0 : !m.qsgDone ? 1 : !m.smoDone ? 2 : 3);
+    items.sort((a, b) => rank(a) - rank(b) || a.depth - b.depth);
     const capped = items.slice(0, Math.min(Math.max(Number(limit) || 200, 1), 500));
     return { items: capped, total: items.length };
+  }
+}
+
+/**
+ * GET /v1/prospects/downline-phones — phone → owner mapping for the booking
+ * context. Read-only and scoped to the caller's downline; no warm-list rows.
+ */
+export class ListDownlinePhonesUseCase {
+  constructor({ prospects, network }) {
+    Object.assign(this, { prospects, network });
+  }
+
+  async execute({ requesterId }) {
+    const { ids } = await collectDownlineIds(this.network, requesterId);
+    const bounded = ids.slice(0, 2000);
+    if (bounded.length === 0) return { items: [], total: 0 };
+    const [rows, nodes] = await Promise.all([
+      this.prospects.phonesForPartners(bounded).catch(() => []),
+      this.network.findNodesByIds(bounded).catch(() => []),
+    ]);
+    const members = Object.fromEntries((nodes ?? []).map((node) => [String(node.id), {
+      username: node.username,
+      name: [node.name, node.surname].filter(Boolean).join(' ') || node.username,
+    }]));
+    return {
+      items: rows.map((row) => ({
+        partnerId: row.partnerId,
+        phone: row.phone,
+        member: members[row.partnerId] ?? null,
+      })),
+      total: rows.length,
+    };
   }
 }

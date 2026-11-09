@@ -43,13 +43,11 @@ describe('job health ledger', () => {
     const now = new Date('2026-03-01T12:00:00Z');
     const store = fakeStore([
       { job: 'growth-campaign-allocation', lastFinishedAt: new Date('2026-03-01T11:50:00Z'), lastOk: true, runs: 10, fails: 0 },
-      { job: 'campaign-expiry', lastFinishedAt: new Date('2026-02-27T01:30:00Z'), lastOk: true, runs: 4, fails: 0 },
       { job: 'compensation-reconcile', lastFinishedAt: new Date('2026-03-01T11:50:00Z'), lastOk: false, runs: 10, fails: 1 },
     ]);
     const health = await jobsHealth(store, now);
     const byJob = Object.fromEntries(health.map((h) => [h.job, h]));
     assert.equal(byJob['growth-campaign-allocation'].stale, false);
-    assert.equal(byJob['campaign-expiry'].stale, true);
     assert.equal(byJob['compensation-reconcile'].stale, true);
   });
 

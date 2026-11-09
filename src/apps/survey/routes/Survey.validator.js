@@ -42,23 +42,3 @@ export const ProspectSurveySchema = z.object({
   state: z.string().trim().max(80).optional(),
   campaignId: objectId.optional().nullable(),
 });
-
-/** Public partner survey form. */
-export const PartnerSurveySchema = z.object({
-  difficulty: text(1, 120),
-  challenges: list(30),
-  strategies: list(30),
-  targetAudience: list(30),
-  recruitmentTool: text(1, 200),
-  misconception: text(1, 200),
-  businessMotivation: text(1, 200),
-  recruitmentAttempt: text(1, 200),
-  trainingSupport: text(1, 200),
-  comfortWithTech: text(1, 120),
-  businessTimeDedication: text(1, 120),
-  phoneNumber: z.string().trim().regex(/^[0-9]{7,20}$/, 'Enter a valid phone number'),
-  reservationCode: z.string().trim().max(80).optional(),
-  name: text(1, 120),
-  gender: text(1, 40),
-  interestedInTraining: text(1, 40),
-});

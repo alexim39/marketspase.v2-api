@@ -63,12 +63,6 @@ describe('messaging routes', () => {
     const badRoute = await fetch(`http://127.0.0.1:${port}/route/nope`, { headers: auth });
     assert.equal(badRoute.status, 400);
 
-    const badSms = await fetch(`http://127.0.0.1:${port}/sms-fallback`, {
-      method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
-      body: JSON.stringify({ to: 'nope', body: 'hi' }),
-    });
-    assert.equal(badSms.status, 400);
-
     const badDirect = await fetch(`http://127.0.0.1:${port}/`, {
       method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
       body: JSON.stringify({ to: 'nope', body: 'hi' }),

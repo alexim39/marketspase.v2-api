@@ -262,108 +262,21 @@ export class MongoProspectRepository {
     return res.deletedCount ?? 0;
   }
 
-  /** Unsubmitted onboarding-list rows, oldest first. */
-  async listUnsubmitted(partnerId) {
-    const docs = await ProspectModel.find({ partnerId, deletedAt: null, listSubmitted: { $ne: true } })
-      .sort({ createdAt: 1 })
-      .lean();
-    return docs.map(ProspectMapper.toDomain);
-  }
-
-  /** Submitted batches with per-stage progress, newest batch first. */
-  async submittedBatches(partnerId) {
-    const rows = await ProspectModel.aggregate([
-      { $match: { partnerId: { $in: matchPartnerIds(partnerId) }, deletedAt: null, listSubmitted: true } },
-      {
-        $group: {
-          _id: '$listBatch',
-          count: { $sum: 1 },
-          submittedAt: { $max: '$listSubmittedAt' },
-          stages: { $push: { $ifNull: ['$status.stage', 'New'] } },
-        },
-      },
-      { $sort: { submittedAt: -1 } },
-    ]);
-    return rows.map((r) => {
-      const stageCounts = {};
-      for (const s of r.stages) stageCounts[s] = (stageCounts[s] ?? 0) + 1;
-      return {
-        batch: r._id ?? 'legacy',
-        submittedAt: r.submittedAt,
-        total: r.count,
-        stageCounts,
-        worked: r.count - (stageCounts.New ?? 0),
-      };
-    });
-  }
-
-  /**
-   * Stamp every unsubmitted row as one submitted batch. Returns the count
-   * stamped (0 when there is nothing to submit — the use case enforces
-   * the minimum before calling).
-   */
-  async submitContactList(partnerId, batch) {
-    const now = new Date();
-    const res = await ProspectModel.updateMany(
-      { partnerId, listSubmitted: { $ne: true } },
-      { $set: { listSubmitted: true, listSubmittedAt: now, listBatch: batch } },
-    );
-    return { count: res.modifiedCount ?? 0, submittedAt: now };
-  }
-
-  /** Submitted contact rows across partners, oldest first (bounded). */
-  async submittedContacts(partnerIds, limit = 500) {
+  /** Phone → owner mapping for booking context (scoped, read-only). */
+  async phonesForPartners(partnerIds) {
     if (partnerIds.length === 0) return [];
-    const lim = Math.min(Math.max(Number(limit) || 500, 1), 1000);
-    const docs = await ProspectModel.find({ partnerId: { $in: matchPartnerIds(partnerIds) }, listSubmitted: true })
-      .select('partnerId prospectName prospectSurname prospectPhone relationship priority bestTimeToCall consentToContact listBatch status createdAt')
-      .sort({ createdAt: 1 })
-      .limit(lim)
-      .lean();
-    return docs.map(ProspectMapper.toDomain);
-  }
-
-  /** Resolve a scoped prospect by phone without returning the phone itself. */
-  async findByPhoneInPartners(partnerIds, phone, limit = 3) {
-    if (!partnerIds.length) return [];
-    const normalized = normalizePhone(phone);
-    if (!normalized) return [];
     const docs = await ProspectModel.find({
       partnerId: { $in: matchPartnerIds(partnerIds) },
-      prospectPhone: normalized,
-    }).select('_id partnerId').limit(Math.min(Math.max(Number(limit) || 3, 1), 10)).lean();
-    return docs.map((doc) => ({ prospectId: String(doc._id), partnerId: String(doc.partnerId) }));
-  }
-
-  /** Submitted batches across many partners (upline view, bounded). */
-  async downlineSubmittedBatches(partnerIds, cap = 200) {
-    if (partnerIds.length === 0) return [];
-    const lim = Math.min(Math.max(Number(cap) || 200, 1), 5000);
-    const rows = await ProspectModel.aggregate([
-      { $match: { partnerId: { $in: matchPartnerIds(partnerIds) }, listSubmitted: true } },
-      {
-        $group: {
-          _id: { partnerId: '$partnerId', batch: '$listBatch' },
-          count: { $sum: 1 },
-          submittedAt: { $max: '$listSubmittedAt' },
-          stages: { $push: { $ifNull: ['$status.stage', 'New'] } },
-        },
-      },
-      { $sort: { submittedAt: -1 } },
-      { $limit: lim },
-    ]);
-    return rows.map((r) => {
-      const stageCounts = {};
-      for (const s of r.stages) stageCounts[s] = (stageCounts[s] ?? 0) + 1;
-      return {
-        partnerId: String(r._id.partnerId),
-        batch: r._id.batch ?? 'legacy',
-        submittedAt: r.submittedAt,
-        total: r.count,
-        stageCounts,
-        worked: r.count - (stageCounts.New ?? 0),
-      };
-    });
+      prospectPhone: { $nin: [null, ''] },
+      deletedAt: null,
+    })
+      .select('partnerId prospectPhone')
+      .limit(5000)
+      .lean();
+    return docs.map((doc) => ({
+      partnerId: String(doc.partnerId),
+      phone: String(doc.prospectPhone ?? ''),
+    }));
   }
 }
 

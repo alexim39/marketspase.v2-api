@@ -29,22 +29,13 @@ export class ProspectRepository {
   async pushCommunication(id, communication) { throw new Error('Not implemented'); }
   /** Earliest prospect per partner: {partnerId: isoDate} (one aggregate). */
   async firstProspectDates(ids) { throw new Error('Not implemented'); }
-  /** Prospects with any touch (communication) since `since` — leadership signal. */
   async countTouchedSince(partnerId, since) { throw new Error('Not implemented'); }
-  /** Unsubmitted onboarding-list rows, oldest first. */
-  async listUnsubmitted(partnerId) { throw new Error('Not implemented'); }
-  /** Submitted batches with per-stage progress, newest first. */
-  async submittedBatches(partnerId) { throw new Error('Not implemented'); }
-  /** Stamp unsubmitted rows as one batch → {count, submittedAt}. */
-  async submitContactList(partnerId, batch) { throw new Error('Not implemented'); }
-  /** Submitted batches across partners (upline view, bounded). */
-  async downlineSubmittedBatches(partnerIds) { throw new Error('Not implemented'); }
-  /** Submitted contact rows across partners, oldest first (bounded). */
-  async submittedContacts(partnerIds, limit) { throw new Error('Not implemented'); }
   /** @returns {Promise<{prospect:any|null, removed:boolean}>} */
   async pullCommunication(prospectId, communicationId) { throw new Error('Not implemented'); }
   /** @returns {Promise<boolean>} true when something was deleted */
   async deleteById(id) { throw new Error('Not implemented'); }
+  /** Phone → owner mapping for booking context. */
+  async phonesForPartners(partnerIds) { throw new Error('Not implemented'); }
 }
 
 export class PartnerLookup {

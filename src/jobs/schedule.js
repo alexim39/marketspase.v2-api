@@ -12,10 +12,8 @@ import { runDailyBriefJob } from './daily-brief.js';
 import { runWeeklyReviewJob } from './weekly-review.js';
 import { runDigestJob } from './digest.js';
 import { runDormantNudgeJob } from './dormant-nudge.js';
-import { runOutreachDueJob } from './outreach-due.js';
 import { runBroadcastDueJob } from './broadcast-due.js';
 import { runGrowthAllocationDueJob } from './growth-allocation-due.js';
-import { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 import { JobRunModel, withJobHealth } from './job-health.js';
 import { runSessionRemindersJob } from './session-reminders.js';
 import { runErasureDueJob } from './erasure-due.js';
@@ -47,7 +45,7 @@ import { withDistributedLock } from '../shared/jobs/DistributedLock.js';
  * - self-erasure sweep (daily 03:30 server-local): 48h reminders + due executions.
  * Jobs never throw into the scheduler — failures are logged, not fatal.
  * `runSnapshotJob` / `runBirthdayJob` / `runDailyBriefJob` /
- * `runWeeklyReviewJob` / `runDigestJob` / `runDormantNudgeJob` / `runOutreachDueJob` /
+ * `runWeeklyReviewJob` / `runDigestJob` / `runDormantNudgeJob` /
  * `runBroadcastDueJob` / `runSessionRemindersJob` are
  * exported for tests and triggers.
  */
@@ -97,10 +95,8 @@ export function scheduleJobs() {
   cron.schedule('0 8 * * *', run('birthdays', () => runBirthdayJob()));
   cron.schedule('0 9 * * *', run('dormant-nudge', () => runDormantNudgeJob()));
   cron.schedule('0 19 * * *', run('digests', () => runDigestJob()));
-  cron.schedule('* * * * *', run('outreach-due', () => runOutreachDueJob()));
   cron.schedule('* * * * *', run('broadcast-due', () => runBroadcastDueJob()));
   cron.schedule('*/15 * * * *', run('growth-campaign-allocation', () => withJobHealth(JobRunModel, 'growth-campaign-allocation', () => runGrowthAllocationDueJob())));
-  cron.schedule('30 1 * * *', run('campaign-expiry', () => withJobHealth(JobRunModel, 'campaign-expiry', () => runCampaignExpiryDueJob())));
   cron.schedule('*/15 * * * *', run('session-reminders', () => runSessionRemindersJob()));
   cron.schedule('*/15 * * * *', run('event-rsvp-reminders', () => runEventRsvpDueJob()));
   cron.schedule('30 3 * * *', run('erasure-due', () => runErasureDueJob()));
@@ -113,7 +109,7 @@ export function scheduleJobs() {
   cron.schedule('*/20 * * * * *', run('outbox-delivery', () => withJobHealth(JobRunModel, 'outbox-delivery', () => runOutboxDueJob()), 2 * 60 * 1000));
   cron.schedule('45 2 * * *', run('rank-group-sync', () => withJobHealth(JobRunModel, 'rank-group-sync', () => runRankGroupSyncJob()), 30 * 60 * 1000));
   cron.schedule('15 4 1 * *', run('progression-demotion', () => withJobHealth(JobRunModel, 'progression-demotion', () => runProgressionDemotionJob()), 30 * 60 * 1000));
-  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, outreach + broadcasts due every minute, growth campaign partner allocation every 15 minutes, campaign flight expiry at 01:30, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
+  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, broadcasts due every minute, growth campaign partner allocation every 15 minutes, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';
@@ -121,10 +117,8 @@ export { runDailyBriefJob } from './daily-brief.js';
 export { runWeeklyReviewJob } from './weekly-review.js';
 export { runDigestJob } from './digest.js';
 export { runDormantNudgeJob } from './dormant-nudge.js';
-export { runOutreachDueJob } from './outreach-due.js';
 export { runBroadcastDueJob } from './broadcast-due.js';
 export { runGrowthAllocationDueJob } from './growth-allocation-due.js';
-export { runCampaignExpiryDueJob } from './campaign-expiry-due.js';
 export { runSessionRemindersJob } from './session-reminders.js';
 export { runEventRsvpDueJob } from './event-rsvp-due.js';
 export { runErasureDueJob } from './erasure-due.js';

@@ -11,27 +11,26 @@ const snapshot = () => ({
   level: 3,
   levelLabel: 'Builder',
   opportunities: [{
-    id: `opp:followup:${PID}`,
-    type: 'send_sms',
+    id: `opp:stage:${PID}`,
+    type: 'advance_stage',
     area: 'Pipeline',
-    title: 'Follow up with Paul',
-    reason: 'Overdue by 2 days',
+    title: 'Advance Paul',
+    reason: 'Ready for the next stage',
     page: '/dashboard/prospects/pipeline',
     capabilityKey: 'pipeline.followups',
-    summary: 'Short check-in SMS ready',
-    payload: { prospectId: PID, body: 'Default draft' },
+    summary: 'Move to Interested',
+    payload: { prospectId: PID, stage: 'Interested' },
   }],
 });
 
 const modelReply = () => [
-  'Paul is overdue by two days. Here is a short check-in you can approve.',
+  'Paul is ready for the next stage. Approve the move when you are ready.',
   '',
   '```actions',
   JSON.stringify([{
-    opportunityId: `opp:followup:${PID}`,
-    label: 'Send reminder SMS',
-    summary: 'Short check-in to Paul',
-    draft: 'Hi Paul, just checking in. Still interested?',
+    opportunityId: `opp:stage:${PID}`,
+    label: 'Move Paul to Interested',
+    summary: 'Pipeline stage update',
   }]),
   '```',
 ].join('\n');
@@ -100,28 +99,18 @@ const prospect = (over = {}) => ({
   id: PID,
   partnerId: OWNER,
   prospectName: 'Paul',
-  prospectPhone: '08030000000',
-  prospectEmail: 'paul@example.com',
-  consentToContact: true,
   status: { stage: 'Contacted' },
   ...over,
 });
 
 const buildFlow = ({ lead = prospect() } = {}) => {
   const store = actionStore();
-  const sms = [];
+  const stages = [];
   const audit = [];
   const executor = new OraActionExecutor({
     prospects: { findById: async () => lead },
-    sendSms: {
-      execute: async (input) => {
-        sms.push(input);
-        return { sent: 1, total: 1, cost: 6.49, status: 'success' };
-      },
-    },
-    sendEmail: { execute: async () => ({ sent: 1, total: 1, status: 'success' }) },
     logCommunication: { execute: async () => ({}) },
-    updateStatus: { execute: async () => ({ id: PID }) },
+    updateStatus: { execute: async (input) => { stages.push(input); return { id: PID }; } },
   });
   const ask = new AskOraUseCase({
     conversations: conversations(),
@@ -134,54 +123,37 @@ const buildFlow = ({ lead = prospect() } = {}) => {
     executor,
     audit: (event) => { audit.push(event); return Promise.resolve(); },
   });
-  return { store, sms, audit, ask, approve };
+  return { store, stages, audit, ask, approve };
 };
 
-test('a chat proposal becomes one approval card and sends once after approval', async () => {
-  const { store, sms, audit, ask, approve } = buildFlow();
+test('a chat proposal becomes one approval card and executes once after approval', async () => {
+  const { store, stages, audit, ask, approve } = buildFlow();
 
-  const turn = await ask.execute({ partnerId: OWNER, message: 'What is my pipeline status?' });
+  const turn = await ask.execute({ partnerId: OWNER, message: 'Advance Paul in my pipeline' });
 
   assert.equal(turn.actions.length, 1);
-  assert.equal(turn.actions[0].type, 'send_sms');
+  assert.equal(turn.actions[0].type, 'advance_stage');
   assert.equal(turn.actions[0].status, 'proposed');
-  assert.equal(turn.actions[0].payload.body, 'Hi Paul, just checking in. Still interested?');
   assert.equal(store.rows.size, 1);
 
   const first = await approve.execute({ partnerId: OWNER, actionId: turn.actions[0].id });
   assert.equal(first.status, 'executed');
-  assert.equal(first.result.sent, 1);
-  assert.equal(sms.length, 1);
-  assert.equal(sms[0].to[0], '08030000000');
+  assert.equal(stages.length, 1);
 
   const second = await approve.execute({ partnerId: OWNER, actionId: turn.actions[0].id });
   assert.equal(second.status, 'executed');
-  assert.equal(sms.length, 1, 'approving twice must not send twice');
+  assert.equal(stages.length, 1, 'approving twice must not execute twice');
   assert.equal(audit.length, 1);
   assert.equal(audit[0].action, 'ora.action.execute');
 });
 
-test('a manual lead without consent cannot execute an approved SMS', async () => {
-  const { sms, ask, approve, store } = buildFlow({
-    lead: prospect({ consentToContact: false, prospectSource: 'Manual' }),
-  });
+test('a lead owned by another partner cannot be advanced', async () => {
+  const { stages, ask, approve } = buildFlow({ lead: prospect({ partnerId: 'partner-2' }) });
 
-  const turn = await ask.execute({ partnerId: OWNER, message: 'Follow up with Paul' });
-  await assert.rejects(
-    approve.execute({ partnerId: OWNER, actionId: turn.actions[0].id }),
-    /not consented/i,
-  );
-  assert.equal(sms.length, 0);
-  assert.equal(store.rows.get(turn.actions[0].id).status, 'failed');
-});
-
-test('a lead owned by another partner cannot be contacted', async () => {
-  const { sms, ask, approve } = buildFlow({ lead: prospect({ partnerId: 'partner-2' }) });
-
-  const turn = await ask.execute({ partnerId: OWNER, message: 'Follow up with Paul' });
+  const turn = await ask.execute({ partnerId: OWNER, message: 'Advance Paul' });
   await assert.rejects(
     approve.execute({ partnerId: OWNER, actionId: turn.actions[0].id }),
     /not in your pipeline/i,
   );
-  assert.equal(sms.length, 0);
+  assert.equal(stages.length, 0);
 });

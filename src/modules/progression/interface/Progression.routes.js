@@ -11,7 +11,6 @@ import { MongoNetworkRepository } from '../../network/infrastructure/Network.mon
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
-import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
 import { resolveSubject } from '../../network/application/SubjectScope.js';
 import { RecognitionUseCases } from '../../community/application/Community.usecases.js';
@@ -20,31 +19,11 @@ import { MongoCommunityStore } from '../../community/infrastructure/Community.mo
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 const stamp = z.object({ done: z.boolean() }).passthrough();
 
-const accountsSchema = z.union([
-  z.object({
-    count: z.number().int().min(0).max(1000),
-    refs: z.array(z.string().max(100)).max(10).optional(),
-    maintenanceRef: z.string().max(100).optional(),
-    maintenanceMonth: z.string().max(7).optional(),
-  }).passthrough(),
-  z.number().int().min(0).max(1000),
-]);
-const maintenanceSchema = z.union([
-  z.object({
-    done: z.boolean().optional(),
-    ref: z.string().max(100).optional(),
-    month: z.string().max(7).optional(),
-  }).passthrough(),
-  z.boolean(),
-]);
-
 const MilestonesSchema = z.object({
   ipo: stamp.optional(),
   qsg: stamp.optional(),
   smo: stamp.optional(),
   leadership: stamp.optional(),
-  accounts: accountsSchema.optional(),
-  maintenance: maintenanceSchema.optional(),
   fullTime: stamp.optional(),
   office: stamp.optional(),
   officeAddress: z.string().max(200).optional(),
@@ -68,7 +47,6 @@ export const buildProgressionRouter = (deps = {}) => {
     prospects: deps.prospects ?? new MongoProspectRepository(),
     community,
     eventStore: deps.eventStore ?? new MongoEventStore(),
-    reports: deps.reports ?? new MongoReportStore(),
   });
   const update = deps.update ?? new UpdateMilestonesUseCase({ progress, network });
   const team = new TeamDistributionUseCase({ progress, network });

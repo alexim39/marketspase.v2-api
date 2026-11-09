@@ -1,6 +1,5 @@
 import { bucketFollowUps } from '../../crm/domain/Prospect.reminders.js';
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
-import { hasAutomationConsent } from './Ora.consent.js';
 import { lagosDateKey } from './Ora.plans.js';
 
 /**
@@ -12,15 +11,6 @@ import { lagosDateKey } from './Ora.plans.js';
  */
 const MAX_OPPORTUNITIES = 8;
 const MAX_PIPELINE = 3;
-
-const firstNameOf = (name) => String(name ?? '').trim().split(/\s+/)[0] || 'there';
-
-const smsDraft = (name) => `Hi ${firstNameOf(name)}, just checking in on our last conversation. Is this still something you'd like to explore? I can share the next step whenever you're ready.`;
-
-const emailDraft = (name) => ({
-  subject: `Checking in, ${firstNameOf(name)}`,
-  body: `Hi ${firstNameOf(name)},\n\nI wanted to check in on our last conversation. If you're still interested, I can share the next step whenever you're ready.\n\nNo pressure either way.`,
-});
 
 const openPage = ({ id, page, capabilityKey, area, title, reason, prospectId = null, prospectName = null }) => ({
   id,
@@ -61,59 +51,18 @@ export const buildOraOpportunities = ({
     const stage = prospect.status?.stage;
     if (stage === 'Closed' || stage === 'Converted' || prospect.status?.status === 'Closed') return false;
     const name = `${prospect.prospectName ?? ''} ${prospect.prospectSurname ?? ''}`.trim() || 'this prospect';
-    const consent = hasAutomationConsent(prospect);
-    const phone = String(prospect.prospectPhone ?? '').trim();
-    const email = String(prospect.prospectEmail ?? '').trim();
     seenProspects.add(id);
 
-    if (consent && phone) {
-      opportunities.push({
-        id: `opp:followup:${id}`,
-        type: 'send_sms',
-        area: 'Pipeline',
-        title: `Follow up with ${name}`,
-        reason,
-        page: '/dashboard/prospects/pipeline',
-        capabilityKey: 'pipeline.followups',
-        prospectId: id,
-        prospectName: name,
-        contactChannel: 'phone',
-        requiresApproval: true,
-        payload: { prospectId: id, body: smsDraft(name) },
-        summary: hot ? 'Hot lead · short SMS ready' : 'Short check-in SMS ready',
-      });
-      return true;
-    }
-    if (consent && email) {
-      const draft = emailDraft(name);
-      opportunities.push({
-        id: `opp:followup:${id}`,
-        type: 'send_email',
-        area: 'Pipeline',
-        title: `Email ${name}`,
-        reason,
-        page: '/dashboard/prospects/pipeline',
-        capabilityKey: 'pipeline.followups',
-        prospectId: id,
-        prospectName: name,
-        contactChannel: 'email',
-        requiresApproval: true,
-        payload: { prospectId: id, ...draft },
-        summary: hot ? 'Hot lead · email draft ready' : 'Check-in email draft ready',
-      });
-      return true;
-    }
     opportunities.push(openPage({
       id: `opp:review:${id}`,
       page: '/dashboard/prospects/pipeline',
       capabilityKey: 'pipeline.followups',
       area: 'Pipeline',
-      title: `Review ${name}`,
-      reason: consent
-        ? `${reason} · no phone or email on file`
-        : `${reason} · consent not recorded, so no automated send`,
+      title: `Follow up with ${name}`,
+      reason,
       prospectId: id,
       prospectName: name,
+      summary: hot ? 'Hot lead · open the record' : 'Open the record to follow up',
     }));
     return true;
   };

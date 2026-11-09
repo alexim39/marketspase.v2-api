@@ -117,28 +117,12 @@ export const ownerEmailTemplate = (surveyData) => {
 export const partnerOwnerEmailTemplate = (surveyData) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
     <header style="text-align: center; padding: 10px; background-color: #f4f4f4;">
-      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">Diamond Project Online</span>
+      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">MarketSpase</span>
     </header>
     <main style="padding: 20px;">
       <h2>Partner Survey Submission</h2>
-      <p>A partner named <strong>${surveyData.name.toUpperCase()} </strong> with phone number <strong>${surveyData.phoneNumber}</strong> just submitted the survey form from <a href="https://survey.c21fg.online">Diamond Project Online Survey</a>.</p>
-      <p>This is just for your information</p>
-
-      <h3>Prospect Contact Details</h3>
-
-      <ul>
-        <li><strong>Name: </strong> ${surveyData.name.toUpperCase()}</ol>
-        <li><strong>Phone number: </strong> ${surveyData.phoneNumber}</li>
-      </ul>
-
-      <br>
-      <div style="text-align: center;">
-        <a href="https://c21fg.online/" style="padding: 10px 20px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px; text-align: center; margin: 1em 0;">Go to Partners Platform</a>
-      </div>
+      <p>A partner named <strong>${surveyData.name.toUpperCase()} </strong> with phone number <strong>${surveyData.phoneNumber}</strong> submitted the partner survey.</p>
+      <p>This is just for your information.</p>
     </main>
-    <br>
-    <footer style="text-align: center; padding: 20px; background-color: #f4f4f4; margin-top: 20px;">
-     <p>Diamond Project: Becoming the ultimate version of yourself  </p>
-    </footer>
   </div>
 `;

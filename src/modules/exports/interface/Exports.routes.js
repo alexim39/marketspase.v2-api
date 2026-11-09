@@ -4,7 +4,7 @@ import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
-  ExportCommissionsUseCase, ExportCommunityUseCase, ExportPipelineUseCase, ExportReportsUseCase, ExportTeamUseCase,
+  ExportCommissionsUseCase, ExportCommunityUseCase, ExportPipelineUseCase, ExportTeamUseCase,
 } from '../application/Exports.usecases.js';
 import { toCsv } from '../domain/Export.csv.js';
 import { buildXlsx } from '../domain/Export.xlsx.js';
@@ -13,13 +13,9 @@ import { MongoCommunityStore } from '../../community/infrastructure/Community.mo
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoCompensationRepository } from '../../compensation/infrastructure/Compensation.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
-import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 
 const LimitQuery = z.object({
   limit: z.coerce.number().int().min(1).max(5000).optional(),
-});
-const ReportsQuery = LimitQuery.extend({
-  scope: z.enum(['mine', 'team']).optional().default('mine'),
 });
 const DaysQuery = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(7),
@@ -44,13 +40,11 @@ export const buildExportsRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const growth = deps.growth ?? new MongoCompensationRepository();
   const network = deps.network ?? new MongoNetworkRepository();
-  const reports = deps.reports ?? new MongoReportStore();
   const community = deps.community ?? new MongoCommunityStore();
 
   const team = new ExportTeamUseCase({ network });
   const pipeline = new ExportPipelineUseCase({ prospects });
   const commissions = new ExportCommissionsUseCase({ growth });
-  const periodReports = new ExportReportsUseCase({ reports, network });
   const communityStats = deps.communityStats ?? new ExportCommunityUseCase({
     analytics: deps.analytics ?? new CommunityAnalyticsUseCase({ community }),
   });
@@ -85,16 +79,6 @@ export const buildExportsRouter = (deps = {}) => {
   router.get('/commissions.xlsx', validate({ query: LimitQuery }), asyncHandler(async (req, res) => {
     const q = req.validated?.query ?? req.query;
     await sendXlsx(res, 'Commissions', await commissions.execute({ partnerId: req.auth?.partnerId, limit: q?.limit }));
-  }));
-
-  router.get('/reports.csv', validate({ query: ReportsQuery }), asyncHandler(async (req, res) => {
-    const q = req.validated?.query ?? req.query;
-    sendCsv(res, await periodReports.execute({ partnerId: req.auth?.partnerId, scope: q?.scope }));
-  }));
-
-  router.get('/reports.xlsx', validate({ query: ReportsQuery }), asyncHandler(async (req, res) => {
-    const q = req.validated?.query ?? req.query;
-    await sendXlsx(res, 'Reports', await periodReports.execute({ partnerId: req.auth?.partnerId, scope: q?.scope }));
   }));
 
   router.get('/community.csv', validate({ query: DaysQuery }), asyncHandler(async (req, res) => {

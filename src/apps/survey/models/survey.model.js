@@ -114,29 +114,3 @@ const userSurveySchema = mongoose.Schema(
 
 /* Model */
 export const ProspectSurveyModel = mongoose.model('Survey', userSurveySchema);
-
-/* For Partners */
-
-const partnerSurveyFormSchema = new mongoose.Schema({
-    difficulty: { type: String, required: true },
-    challenges: [{ type: String }], // Array of strings for checkboxes
-    strategies: [{ type: String }], // Array of strings for checkboxes
-    //importanceOfPassiveIncome: { type: String, required: true },
-    targetAudience: [{ type: String }], // Array of strings for checkboxes
-    recruitmentTool: { type: String, required: true },
-    misconception: { type: String, required: true },
-    businessMotivation: { type: String, required: true },
-    recruitmentAttempt: { type: String, required: true },
-    trainingSupport: { type: String, required: true },
-    comfortWithTech: { type: String, required: true },
-    businessTimeDedication: { type: String, required: true },
-    phoneNumber: { type: String, required: true, match: /^[0-9]+$/ },
-    reservationCode: { type: String },
-    name: { type: String, required: true },
-    gender: { type: String, required: true },
-    interestedInTraining: { type: String, required: true },
-  }, {
-    timestamps: true, // Adds createdAt and updatedAt timestamps automatically
-  });
-  
-export const PartnerSurveyModel = mongoose.model('Partner-Survey', partnerSurveyFormSchema);

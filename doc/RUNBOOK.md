@@ -292,11 +292,12 @@ Jobs use one lease per cluster in `joblocks`; each sweep writes its outcome to
 5. If a deploy introduced the regression, roll back; otherwise add the
    missing index before increasing the timeout.
 
-### 4.7 Ora SMS / email approval failures
+### 4.7 Ora approval failures
 
-Ora never sends without an approved action. The action moves
-`proposed -> executing -> executed|failed`; approvals are idempotent and every
-execution writes an `ora.action.execute` audit event.
+Ora never sends SMS or email. Approved actions are limited to opening a page,
+scheduling a follow-up, advancing a pipeline stage and saving the daily plan.
+The action moves `proposed -> executing -> executed|failed`; approvals are
+idempotent and every execution writes an `ora.action.execute` audit event.
 
 1. Find the action:
    ```bash
@@ -304,31 +305,23 @@ execution writes an `ora.action.execute` audit event.
      db["ora-actions"].find({ status: "failed" }).sort({ createdAt: -1 }).limit(5).toArray()
    '
    ```
-2. `ForbiddenException` / "not consented": the lead is manual/contact-list and
-   has no `consentToContact: true`. Survey (`Website`, `Unique Link`),
-   `Admin Push` and personal-page form leads are treated as opt-in. Do not flip
-   consent manually for a manual lead; contact them outside automation.
-3. "not in your pipeline": the stored payload references another partner's
+2. "not in your pipeline": the stored payload references another partner's
    prospect. Ownership is re-checked on live data at execution.
-4. BulkSMS errors:
-   - `BSNG-2001` / missing `FROM`: `BULKSMS_SENDER_ID` is unset or not approved.
-   - `401/403`: rotate `BULKSMS_API_TOKEN`.
-   - `BSNG-2013`: the message was classified against the route. Retry with
-     `SMS_HTTP_EXTRA={"gateway":"corporate"}` for transactional content.
-   - `BSNG-2012`: duplicate within one minute. Wait; do not hammer retries.
-   - No credit: top up the BulkSMSNigeria account.
-5. A live test SMS costs about ₦6.49. Use one known test number, never a
-   prospect list. The settings-only test is covered by `npm test`
-   (`SmsSender.test.js`) and spends nothing.
-6. After fixing config, re-approve only actions still in `failed` state. An
+3. An unknown action type means the stored row predates the retirement of
+   Ora SMS/email execution. Skip it; do not replay it.
+4. After fixing the cause, re-approve only actions still in `failed` state. An
    `executed` action is final; do not replay it.
+5. Transactional SMS provider errors (verification, activation, payout notices)
+   still use BulkSMSNigeria: `BSNG-2001` means the sender ID is missing or not
+   approved; `401/403` means rotate `BULKSMS_API_TOKEN`; no credit means top up
+   the provider account.
 
 ### 4.8 Money actions and idempotency
 
 - Withdrawals, deposits, store checkout and campaign purchases require an
   idempotency key. A retry with the same key returns the original result; a
-  different key creates a new attempt. The retired lead-pool claim/refund
-  routes are no longer part of this surface.
+  different key creates a new attempt. Legacy lead-pool claims, page-lead
+  acceptance and partner bulk outreach are retired.
 - Double-spend protection is enforced inside Mongo transactions with
   conditional balance updates. If a transaction aborts, no ledger row is
   written.

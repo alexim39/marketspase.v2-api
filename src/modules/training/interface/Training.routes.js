@@ -18,7 +18,6 @@ import { MongoNetworkRepository } from '../../network/infrastructure/Network.mon
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
-import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { RecognitionUseCases } from '../../community/application/Community.usecases.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
 
@@ -61,7 +60,6 @@ export const buildTrainingRouter = (deps = {}) => {
       prospects: deps.prospects ?? new MongoProspectRepository(),
       community: communityStore,
       eventStore: deps.eventStore ?? new MongoEventStore(),
-      reports: deps.reports ?? new MongoReportStore(),
     }),
   });
 

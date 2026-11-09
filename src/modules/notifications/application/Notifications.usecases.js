@@ -1,5 +1,5 @@
 import { buildProspectNotifications } from '../../crm/domain/Prospect.notifications.js';
-import { buildConversionAlerts, buildInactivityAlerts, buildMentionAlerts, buildReleaseAlerts } from '../domain/Feed.items.js';
+import { buildConversionAlerts, buildInactivityAlerts, buildMentionAlerts } from '../domain/Feed.items.js';
 
 const rankUrgency = (a) => (a.urgency ? 0 : 1);
 const MENTION_LOOKBACK_DAYS = 30;
@@ -7,15 +7,13 @@ const MENTION_LIMIT = 20;
 
 /**
  * Unified feed: follow-ups (crm builder) + inactivity + conversions +
- * commission releases + @mentions, minus read items.
- * Urgent first, newest first. `community` is optional — without it the
- * feed behaves exactly as before (keeps old fakes/tests green).
+ * @mentions, minus read items. Urgent first, newest first. `community` is
+ * optional — without it the feed behaves exactly as before.
  */
 export class GetNotificationFeedUseCase {
-  /** @param {{prospects, ledger, reads, community?}} deps */
-  constructor({ prospects, ledger, reads, community }) {
+  /** @param {{prospects, reads, community?}} deps */
+  constructor({ prospects, reads, community }) {
     this.prospects = prospects;
-    this.ledger = ledger;
     this.reads = reads;
     this.community = community ?? null;
   }
@@ -44,9 +42,8 @@ export class GetNotificationFeedUseCase {
 
   async execute({ partnerId, now = new Date(), limit = 100 }) {
     const { items: list } = await this.prospects.findByPartnerId(partnerId, { limit: 500, skip: 0 });
-    const [read, releases, mentions] = await Promise.all([
+    const [read, mentions] = await Promise.all([
       this.reads.readIds(partnerId),
-      this.ledger.findReleasedSince(partnerId, 30),
       this.resolveMentions(partnerId, now),
     ]);
 
@@ -64,7 +61,6 @@ export class GetNotificationFeedUseCase {
       })),
       ...buildInactivityAlerts(list, now),
       ...buildConversionAlerts(list, { now }),
-      ...buildReleaseAlerts(releases, { now }),
       ...mentions,
     ];
 

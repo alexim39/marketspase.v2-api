@@ -16,7 +16,6 @@ import { env } from '../../../shared/config/env.js';
 import { MongoNotificationStore } from '../infrastructure/Notifications.mongo.repository.js';
 import { MongoStoredNotificationStore } from '../infrastructure/StoredNotifications.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
-import { MongoCommissionLedger } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
 
 const FeedQuery = z.object({
@@ -62,11 +61,10 @@ const PreferencesSchema = z.object({
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildNotificationsRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
-  const ledger = deps.ledger ?? new MongoCommissionLedger();
-  const reads = deps.reads ?? new MongoNotificationStore();
+    const reads = deps.reads ?? new MongoNotificationStore();
   const community = deps.community ?? new MongoCommunityStore();
 
-  const feed = new GetNotificationFeedUseCase({ prospects, ledger, reads, community });
+  const feed = new GetNotificationFeedUseCase({ prospects, reads, community });
   const markRead = new MarkNotificationsReadUseCase({ reads });
   const centerStore = deps.centerStore ?? new MongoStoredNotificationStore();
   const center = new ListCenterUseCase({ stored: centerStore, feed });

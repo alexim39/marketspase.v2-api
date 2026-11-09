@@ -80,7 +80,7 @@ test('assembly carries wallet, stage mix and live opportunities', async () => {
   assert.equal(ctx.store.pendingReceipts, 1);
   assert.equal(ctx.plan.dateKey, '2026-11-07');
   assert.equal(ctx.plan.items[0].title, 'Follow up with Paul');
-  assert.ok(ctx.opportunities.some((o) => o.type === 'send_sms' && o.prospectName === 'Paul Obi'));
+  assert.ok(ctx.opportunities.some((o) => o.type === 'open_page' && o.prospectName === 'Paul Obi'));
   assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'team.hub'));
   assert.ok(ctx.opportunities.some((o) => o.capabilityKey === 'products.store-orders'));
   assert.ok(ctx.opportunities.some((o) => o.id === 'opp:plan:today'));

@@ -23,16 +23,6 @@ export const makeProspectController = (uc, opts = {}) => {
     res.status(200).json({ message: 'Contact created successfully!', success: true, data });
   }),
 
-  importContacts: asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    // Session owns the import: partnerId always comes from auth.
-    const data = await uc.importContacts.execute({ partnerId: me(req), rows: body.rows });
-    res.status(200).json({
-      message: `Imported ${data.inserted} of ${data.total} contacts${data.skipped.length > 0 ? ` (${data.skipped.length} skipped)` : ''}`,
-      data, success: true,
-    });
-  }),
-
   update: asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const prospectId = req.validated?.params?.prospectId ?? req.params.prospectId ?? body.prospectId;
@@ -198,33 +188,14 @@ export const makeProspectController = (uc, opts = {}) => {
     });
   }),
 
-  contactListMine: asyncHandler(async (req, res) => {
-    const data = await uc.contactListMine.execute({ partnerId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Contact list retrieved successfully', data, success: true });
-  }),
-
-  contactListSubmit: asyncHandler(async (req, res) => {
-    const data = await uc.contactListSubmit.execute({ partnerId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Contact list submitted to your upline', data, success: true });
-  }),
-
-  contactListDownline: asyncHandler(async (req, res) => {
-    const data = await uc.contactListDownline.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Downline contact lists retrieved successfully', data, success: true });
-  }),
-
-  contactListActivation: asyncHandler(async (req, res) => {
-    const data = await uc.contactListActivation.execute({ requesterId: req.auth?.partnerId });
+  activationBoard: asyncHandler(async (req, res) => {
+    const data = await uc.activationBoard.execute({ requesterId: req.auth?.partnerId });
     res.status(200).json({ message: 'Activation board retrieved successfully', data, success: true });
   }),
 
-  contactListResolvePhone: asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const data = await uc.contactListResolvePhone.execute({
-      requesterId: me(req),
-      phone: body.phone,
-    });
-    res.status(200).json({ message: 'Contact resolved successfully', data, success: true });
+  downlinePhones: asyncHandler(async (req, res) => {
+    const data = await uc.downlinePhones.execute({ requesterId: req.auth?.partnerId });
+    res.status(200).json({ message: 'Downline phones retrieved successfully', data, success: true });
   }),
   };
 };

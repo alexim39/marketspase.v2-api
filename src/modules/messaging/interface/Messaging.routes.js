@@ -10,10 +10,6 @@ import {
 import { MongoMessageStore } from '../infrastructure/Messaging.mongo.repository.js';
 import { MongoNetworkRepository, isAncestor } from '../../network/infrastructure/Network.mongo.repository.js';
 import { PartnersModel } from '../../identity-access/infrastructure/Auth.models.js';
-import { SMS_CHARGE_PER_PAGE } from '../../outreach/domain/Outreach.entity.js';
-import { outreachDeps, outreachSms } from '../../outreach/infrastructure/Outreach.store.js';
-import { SendBulkSmsUseCase } from '../../outreach/application/Outreach.usecases.js';
-import { env } from '../../../shared/config/env.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 
@@ -43,10 +39,6 @@ const PeopleQuery = z.object({
   q: z.string().trim().max(60).optional().default(''),
   limit: z.coerce.number().int().min(1).max(25).optional().default(10),
 });
-const SmsFallbackSchema = z.object({
-  to: objectId,
-  body: z.string().trim().min(1).max(960),
-});
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildMessagingRouter = (deps = {}) => {
@@ -59,8 +51,6 @@ export const buildMessagingRouter = (deps = {}) => {
   const contacts = new ListContactsUseCase({ network });
   const searchPeople = deps.searchPeople ?? new SearchPeopleUseCase({});
   const thread = deps.thread ?? new GetThreadUseCase({ messages, network });
-  // Overridable for tests; default wires the standard outreach pipeline.
-  const sendSmsFallback = deps.sendSmsFallback ?? null;
   const announce = new SendAnnouncementUseCase({ messages, network });
   const announceTeam = new SendTeamAnnouncementUseCase({ messages });
   const inbox = new ListInboxUseCase({ messages });
@@ -163,36 +153,9 @@ export const buildMessagingRouter = (deps = {}) => {
         presence: online ? 'online' : mins <= 60 ? 'recent' : null,
         lastSeenAt: doc.lastSeenAt ?? null,
         maskedPhone,
-        smsUnitCost: Number(SMS_CHARGE_PER_PAGE) || 0,
       },
       success: true,
     });
-  }));
-
-  // SMS fallback for an offline counterpart — approved per message on the
-  // client. Resolves the number server-side (never exposed), charges the
-  // sender's wallet through the standard outreach pipeline.
-  router.post('/sms-fallback', validate({ body: SmsFallbackSchema }), asyncHandler(async (req, res) => {
-    const body = req.validated?.body ?? req.body;
-    const me = String(req.auth?.partnerId ?? '');
-    const id = String(body.to);
-    const related = (await isAncestor(network, me, id).catch(() => false))
-      || (await isAncestor(network, id, me).catch(() => false));
-    if (!related) {
-      return res.status(403).json({ message: 'SMS fallback is limited to your upline and downline', success: false });
-    }
-    const target = await PartnersModel.findById(id).select('phone').lean().catch(() => null);
-    const phone = String(target?.phone ?? '').trim();
-    if (!phone) {
-      return res.status(422).json({ message: 'No phone number on file for this contact', success: false });
-    }
-    const sender = sendSmsFallback ?? (() => {
-      const stores = outreachDeps({});
-      const link = outreachSms({ smsEnv: env.sms });
-      return new SendBulkSmsUseCase({ ...stores, sms: link.sms, smsEnabled: link.smsEnabled });
-    })();
-    const data = await sender.execute({ partnerId: me, to: [phone], body: body.body });
-    res.status(200).json({ message: `SMS sent to ${data.sent} of ${data.total} recipient${data.total === 1 ? '' : 's'}`, data, success: true });
   }));
 
   return router;

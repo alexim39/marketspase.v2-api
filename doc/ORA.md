@@ -30,20 +30,17 @@ Open-page cards do not need approval.
 | `pipeline.reminders` | `/dashboard/prospects/reminders` |
 | `pipeline.board` | `/dashboard/prospects/board` |
 | `pipeline.sessions` | `/dashboard/prospects/bookings` |
-| `pipeline.page-leads` | Customer Leads (legacy key) / `/dashboard/prospects/personal-list` redirects to `/dashboard/prospects/customer-leads` |
+| `pipeline.customer-leads` | `/dashboard/prospects/customer-leads` |
 | `team.hub` | `/dashboard/team` |
 | `team.activation` | `/dashboard/mentorship/team/activation` |
 | `team.partners` | `/dashboard/mentorship/partners/my-partners` |
 | `team.tree` | `/dashboard/network/tree` |
-| `team.coaching` | `/dashboard/training/coach` |
-| `team.cell-meeting` | `/dashboard/cell-meeting` |
 | `onboarding.activate` | `/dashboard/activate` |
 | `campaigns.fund` | `/dashboard/campaigns` |
 | `promote.hub` | `/dashboard/promote` |
 | `promote.page` | `/dashboard/settings/landing-page` |
 | `promote.content` | `/dashboard/resources/ads-contents` |
 | `promote.guides` | `/dashboard/resources/prospecting-contents` |
-| `promote.outreach` | `/dashboard/promote/outreach` |
 | `wallet.home` | `/dashboard/wallet` |
 | `wallet.history` | `/dashboard/wallet/history` |
 | `wallet.deposit` | `/dashboard/wallet/deposit` |
@@ -71,8 +68,6 @@ Open-page cards do not need approval.
 | `notifications.center` | `/dashboard/notifications/center` |
 | `insights.home` | `/dashboard/insights` |
 | `insights.my-business` | `/dashboard/insights/my-business` |
-| `insights.team-reports` | `/dashboard/insights/team-reports` |
-| `insights.contact-analytics` | `/dashboard/insights/contact-analytics` |
 | `insights.downloads` | `/dashboard/insights/downloads` |
 | `support.ticket` | `/dashboard/support/ticket` |
 | `support.about` | `/dashboard/support/about/app` |
@@ -82,20 +77,18 @@ Open-page cards do not need approval.
 
 The source of truth is `src/modules/ora/domain/Ora.capabilities.js`.
 
-> **Legacy key:** `pipeline.page-leads` is still present in the capability map but the partner “My Page Leads” inbox no longer exists. It opens the Customer Leads surface (store checkout buyers). The admin Page Leads desk remains only for historical survey rows.
-
 ## Executable actions
 
 | Action | What it does | Guardrails |
 | --- | --- | --- |
-| `send_sms` | Sends an approved SMS through `v1/outreach` economics | owner match, recorded consent, valid Nigerian mobile, wallet balance, per-send rate limits |
-| `send_email` | Sends an approved email | owner match, recorded consent, valid email |
 | `schedule_followup` | Logs a dated follow-up commitment | owner match, valid date |
 | `advance_stage` | Moves a prospect to a pipeline stage | owner match, valid stage |
 | `save_daily_plan` | Saves or edits today's 1-3 focus items | partner scope, max 3 items, dashboard-only links |
 | `open_page` | Opens the relevant platform area | capability allowlist |
 
-No money movement, campaign funding, lead purchase, withdrawal or refund is executed directly by Ora. Those remain explicit partner actions on their existing screens.
+No money movement, campaign funding, lead purchase, withdrawal, refund, SMS or
+email send is executed by Ora. Those remain explicit partner actions on their
+existing screens.
 
 ## Daily plan
 
@@ -125,9 +118,9 @@ opportunities; the member approves it before anything is stored.
 - team pulse for Leader/Ambassador ranks
 - today's plan (save or update the 1-3 focus items)
 
-The model may reference only these opportunity IDs. Contact details never enter the prompt; the executor reloads the prospect and re-checks ownership and consent.
+The model may reference only these opportunity IDs. Contact details never enter the prompt; the executor reloads the prospect and re-checks ownership before a stage move or follow-up.
 
-Consent: manual/contact-list prospects need `consentToContact: true`. Survey-sourced leads (`Website`, `Unique Link`), `Admin Push` leads and personal-page form submissions are opt-in by submission, including older rows. Customer Leads are store buyers, not pipeline prospects; Ora must not treat them as marketing consent.
+Consent: manual prospects still carry `consentToContact`; survey (`Website`, `Unique Link`), `Admin Push` and personal-page form submissions are opt-in by submission. Customer Leads are store buyers, not pipeline prospects. Ora no longer sends SMS/email, so consent gates the partner's own manual follow-up, not an automated send.
 
 The live context also carries the pipeline stage mix, wallet balance, team size/recent partners, active/pending campaigns, store listings, pending receipts, open store orders, goals, next event, today's saved plan and unread notifications, so answers can quote real numbers.
 

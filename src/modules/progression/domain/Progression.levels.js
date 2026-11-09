@@ -75,7 +75,7 @@ export const TRAINING_KEY_LABELS = { ipo: 'IPO', qsg: 'QSG', smo: 'SMO', leaders
  * self-attested before (office / full-time / onboarding). Gates use
  * `confirmed()` for every key here, never bare `done`.
  */
-export const CONFIRMABLE_KEYS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession', 'accounts', 'maintenance'];
+export const CONFIRMABLE_KEYS = ['ipo', 'qsg', 'smo', 'leadership', 'fullTime', 'office', 'onboardingSession'];
 export const CONFIRM_KEY_LABELS = {
   ipo: 'IPO',
   qsg: 'QSG',
@@ -84,8 +84,6 @@ export const CONFIRM_KEY_LABELS = {
   fullTime: 'Full-time',
   office: 'Office',
   onboardingSession: 'Onboarding session',
-  accounts: 'DTC accounts',
-  maintenance: 'Monthly maintenance',
 };
 
 /**

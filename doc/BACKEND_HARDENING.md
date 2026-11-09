@@ -48,7 +48,7 @@ with the same body replays the original response for 24 hours. The same key
 with a different body returns `409 IDEMPOTENCY_KEY_REUSED`. A concurrent
 request returns `409 REQUEST_IN_PROGRESS` with `retry_after: 1`.
 
-Covered: withdrawals, deposit init, store checkout, campaign creation, outreach SMS/email and onboarding orders. The retired lead-pool claim/refund and page-lead acceptance routes are no longer part of this surface.
+Covered: withdrawals, deposit init, store checkout, campaign creation and onboarding orders. The retired lead-pool claim/refund, page-lead acceptance and partner bulk-outreach routes are no longer part of this surface.
 Legacy `/campaign` create endpoints honour the header when supplied; the v1
 flow requires it. The web client adds a key and retries once on a transport
 failure.
@@ -107,7 +107,7 @@ backoff and marked `failed` after five attempts for inspection.
 ## Public forms
 
 - Contact: `POST /v1/contact/submit`, `POST /v1/contact/pre-approach`.
-- Surveys: `POST /v1/survey/submit`, `POST /v1/survey/partners`.
+- Surveys: `POST /v1/survey/submit` (partner surveys and the admin partner-survey desk are retired).
 - Tickets: `POST /v1/tickets` and `POST /v1/tickets/submit`.
 - Newsletter: `POST /v1/email-subscription/subscribe` plus the tokenised
   `GET /v1/email-subscription/confirm/:token` and `/unsubscribe/:token` links.
@@ -155,10 +155,13 @@ backoff and marked `failed` after five attempts for inspection.
   (use the `/v1` public forms; `/emailSubscription/*` keeps temporary redirects
   for already-sent email links), legacy email/SMS inbox reads (use v1 message
   reads), booking email-list exports, partner public-search/username lookup and
-  individual partner social-link writes (use `/partners/landing-page`).
+  individual partner social-link writes (use `/partners/landing-page`). Partner
+  bulk SMS/email outreach, `/emails`, `/sms`, cell meetings, coaching notes,
+  team reports, contact lists and page-lead desks are retired.
 
 - Legacy email/SMS sends, inbox reads and campaign creation are retired in
-  favour of their `/v1` slices.
+  favour of their `/v1` slices. Partner bulk outreach is retired; transactional
+  notifications still use the shared outbox and notification senders.
 - Run `npm run audit:legacy -- <jsonl-log>` (or pipe structured logs) to see
   request counts per normalised legacy path. The report only counts
   `http_request` rows with `legacy: true`; use it to prove a route is unused

@@ -25,11 +25,6 @@ export const CreateProspectSchema = z.object({
   notes: z.string().trim().max(2000).optional().default(''),
 });
 
-/** Member contact import — parsed rows, capped; per-row issues never fail the batch. */
-export const ImportContactsSchema = z.object({
-  rows: z.array(z.record(z.string(), z.unknown())).min(1).max(500),
-});
-
 export const UpdateProspectSchema = z.object({
   prospectName: z.string().trim().min(2).max(80).optional(),
   prospectSurname: z.string().trim().max(80).optional(),
@@ -102,37 +97,8 @@ export const ConvertProspectSchema = z.object({
 });
 
 
-/** POST /v1/prospects/accept-page-lead — free accept of your own page lead. */
-export const AcceptPageLeadSchema = z.object({
-  surveyId: objectId,
-});
-
 /** POST /v1/prospects/:prospectId/rate — 1–5 star quality vote. */
 export const RateLeadSchema = z.object({
   score: z.number().min(1).max(5),
   note: z.string().trim().max(500).optional().default(''),
-});
-
-/** GET /v1/prospects/admin/page-leads — private page-lead desk (admin). */
-export const AdminPageLeadsQuery = z.object({
-  q: z.string().trim().max(60).optional(),
-  owner: z.string().trim().max(80).optional(),
-  state: z.string().trim().max(80).optional(),
-  status: z.enum(['Not Moved', 'Claimed', 'Moved to Contact', 'Returned from contact List', 'all']).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  skip: z.coerce.number().int().min(0).optional(),
-});
-
-/** :pageLeadId for admin page-lead rows (survey ObjectIds). */
-export const PageLeadIdParam = z.object({ pageLeadId: objectId });
-
-/** PATCH /v1/prospects/admin/page-leads/:id — reassign owner. */
-export const ReassignPageLeadSchema = z.object({
-  owner: z.string().trim().min(2).max(80),
-});
-
-
-/** POST /v1/prospects/contact-list/resolve-phone — id-only booking match. */
-export const ResolveContactPhoneSchema = z.object({
-  phone: z.string().trim().min(7).max(20),
 });

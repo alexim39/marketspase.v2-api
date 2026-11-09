@@ -193,16 +193,16 @@ export const COURSES = [
         'smo-2',
         'Maintenance and compliance',
         'Video lesson in production — the video version of this lesson is being recorded and will appear here automatically. The written lesson below covers everything needed for certification.\n\nMonthly personal maintenance keeps your accounts qualified and your team paid. Review product maintenance history in the app, keep at least the required accounts active, and never let a month slip silently — one gap breaks compounding for your whole downline.',
-        ['Never miss a maintenance month', 'Your gap costs your team too', 'Record DTC evidence for upline confirmation'],
+        ['Never miss a maintenance month', 'Your gap costs your team too', 'Shop orders count automatically'],
         [
           { q: 'Missing a maintenance month affects…', options: ['Only you', 'Your whole downline’s compounding', 'Nobody'], answer: 1 },
           { q: 'How often to review maintenance?', options: ['Monthly', 'Yearly', 'Never'], answer: 0 },
-          { q: 'If you maintain via DTC, you must…', options: ['Record the receipt as evidence for upline confirmation', 'Keep it to yourself', 'Skip the month'], answer: 0 },
+          { q: 'Shop orders count toward maintenance automatically.', options: ['Yes - no form needed', 'Only after upline approval', 'Never'], answer: 0 },
           { q: 'Shop orders count toward maintenance…', options: ['Automatically — no form needed', 'Only after upline approval', 'Never'], answer: 0 },
         ],
         null,
         {
-          transcript: 'TRANSCRIPT — Maintenance and compliance (Standard Method of Operation). Monthly maintenance is the membership fee of compounding: it keeps your accounts qualified and your downline paid. Review your maintenance history in the app every month — shop orders count automatically. If you maintain through DTC, record the receipt as evidence in My Journey so your upline can confirm it. Three maintained accounts is the Leader bar. Never let a month slip silently: one quiet gap breaks compounding for everyone below you, and trust, once broken over money rhythm, is slow to rebuild.',
+          transcript: 'TRANSCRIPT - Maintenance and compliance (Standard Method of Operation). Monthly maintenance is the membership fee of compounding: it keeps your accounts qualified and your downline paid. Review your maintenance history in the app every month - shop orders count automatically. Never let a month slip silently: one quiet gap breaks compounding for everyone below you, and trust, once broken over money rhythm, is slow to rebuild.',
         },
       ),
       lesson(

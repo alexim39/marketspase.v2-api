@@ -30,33 +30,30 @@ const input = (over = {}) => ({
   ...over,
 });
 
-test('a stale consenting prospect becomes an approvable SMS opportunity', () => {
+test('a stale prospect becomes an open-record opportunity', () => {
   const rows = buildOraOpportunities(input());
-  const row = rows.find((o) => o.type === 'send_sms');
+  const row = rows.find((o) => o.type === 'open_page' && o.prospectId === 'p1');
   assert.ok(row);
-  assert.equal(row.prospectId, 'p1');
-  assert.equal(row.requiresApproval, true);
   assert.equal(row.capabilityKey, 'pipeline.followups');
-  assert.match(row.payload.body, /Paul/);
 });
 
-test('no recorded consent falls back to a review page, never an automated send', () => {
+test('no recorded consent still opens the record, never an automated send', () => {
   const rows = buildOraOpportunities(input({
     prospects: { items: [prospect({ consentToContact: false })], total: 1 },
   }));
   const row = rows.find((o) => o.prospectId === 'p1');
   assert.equal(row.type, 'open_page');
-  assert.match(row.reason, /consent not recorded/i);
+  assert.notEqual(row.requiresApproval, true);
 });
 
-test('survey and admin-pushed leads are opt-in even on legacy rows', () => {
+test('survey and admin-pushed leads also open the record', () => {
   const rows = buildOraOpportunities(input({
     prospects: {
       items: [prospect({ consentToContact: false, prospectSource: 'Website' })],
       total: 1,
     },
   }));
-  assert.equal(rows.find((o) => o.prospectId === 'p1').type, 'send_sms');
+  assert.equal(rows.find((o) => o.prospectId === 'p1').type, 'open_page');
 });
 
 test('at-risk goals, unread notifications and the next event are captured', () => {

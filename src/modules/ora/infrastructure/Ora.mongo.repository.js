@@ -102,7 +102,7 @@ const oraActionSchema = new mongoose.Schema(
     opportunityId: { type: String, default: null, maxlength: 120 },
     type: {
       type: String,
-      enum: ['send_sms', 'send_email', 'schedule_followup', 'advance_stage', 'save_daily_plan'],
+      enum: ['open_page', 'schedule_followup', 'advance_stage', 'save_daily_plan'],
       required: true,
     },
     capabilityKey: { type: String, default: null, maxlength: 80 },

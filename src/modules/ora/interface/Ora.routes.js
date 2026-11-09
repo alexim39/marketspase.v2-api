@@ -25,7 +25,6 @@ import { ListUpcomingUseCase } from '../../events/application/Events.usecases.js
 import { MongoEventStore } from '../../events/infrastructure/Events.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
-import { MongoReportStore } from '../../reports/infrastructure/Reports.mongo.repository.js';
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
@@ -82,7 +81,6 @@ export const buildOraRouter = (deps = {}) => {
     prospects,
     community: deps.community ?? new MongoCommunityStore(),
     eventStore: deps.eventRsvps ?? new MongoEventStore(),
-    reports: deps.reportStore ?? new MongoReportStore(),
   });
   const goals = deps.goals ?? new ListGoalsUseCase({
     goals: deps.goalStore ?? new MongoGoalStore(), orders, prospects, network,

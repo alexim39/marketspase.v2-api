@@ -5,7 +5,7 @@ import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { GetOverviewUseCase, resolveOverviewTarget } from '../application/Dashboard.usecases.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
-import { MongoOrderReader, MongoCommissionLedger } from '../../billing/infrastructure/Billing.mongo.repository.js';
+import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoGoalStore } from '../../goals/infrastructure/Goals.mongo.repository.js';
 import { MongoNotificationStore } from '../../notifications/infrastructure/Notifications.mongo.repository.js';
@@ -28,11 +28,10 @@ export const buildDashboardRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const orders = deps.orders ?? new MongoOrderReader();
   const network = deps.network ?? new MongoNetworkRepository();
-  const ledger = deps.ledger ?? new MongoCommissionLedger();
-  const reads = deps.reads ?? new MongoNotificationStore();
+    const reads = deps.reads ?? new MongoNotificationStore();
   const goalStore = deps.goalStore ?? new MongoGoalStore();
 
-  const feed = deps.feed ?? new GetNotificationFeedUseCase({ prospects, ledger, reads });
+  const feed = deps.feed ?? new GetNotificationFeedUseCase({ prospects, reads });
   const goals = deps.goals ?? new ListGoalsUseCase({ goals: goalStore, orders, prospects, network });
   const stuck = deps.stuck ?? new GetStuckProspectsUseCase({ prospects });
   const reminders = deps.reminders ?? new GetFollowUpRemindersUseCase({ prospects });

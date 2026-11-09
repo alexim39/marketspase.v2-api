@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import PartnerRouter from './src/apps/partner/index.js';
 import BookingRouter from './src/apps/booking/index.js';
-import CampaignRouter from './src/apps/campaign/index.js';
 import ContactV1Router from './src/apps/contact/routes/Contact.routes.js';
 import TransactionRouter from './src/apps/transaction/index.js';
 import ProspectRouter from './src/apps/prospect/index.js';
@@ -20,8 +19,6 @@ import SurveyV1Router from './src/apps/survey/routes/Survey.routes.js';
 import EmailSubscriptionV1Router from './src/apps/email-subscription/routes/EmailSubscription.routes.js';
 import LegacyEmailSubscriptionRouter from './src/apps/email-subscription/routes/LegacyEmailSubscription.routes.js';
 
-import EmailRouter from './src/apps/email/index.js';
-import SmsRouter from './src/apps/sms/index.js';
 import TeamsRouter from './src/apps/teams/index.js';
 
 // Strangler Fig: DDD slices (new) mounted alongside legacy routers
@@ -37,7 +34,6 @@ import GoalsRouter from './src/modules/goals/index.js';
 import AnalyticsRouter from './src/modules/analytics/index.js';
 import SearchRouter from './src/modules/search/index.js';
 import DashboardRouter from './src/modules/dashboard/index.js';
-import ReportsRouter from './src/modules/reports/index.js';
 import ExportsRouter from './src/modules/exports/index.js';
 import MessagingRouter from './src/modules/messaging/index.js';
 import { buildGroupRouter } from './src/modules/messaging/interface/Group.routes.js';
@@ -48,8 +44,6 @@ import AdminTrainingRouter from './src/modules/training/interface/AdminTraining.
 import DepositRouter from './src/modules/billing/interface/Deposit.routes.js';
 import AuditRouter from './src/modules/audit/index.js';
 import BroadcastRouter from './src/modules/broadcast/index.js';
-import CoachingRouter from './src/modules/coaching/index.js';
-import CellMeetingRouter from './src/modules/mentorship/interface/CellMeeting.routes.js';
 import CommunityRouter from './src/modules/community/index.js';
 import MarketingRouter from './src/modules/marketing/index.js';
 import EventsRouter from './src/modules/events/index.js';
@@ -57,7 +51,6 @@ import OraRouter from './src/modules/ora/index.js';
 import SettingsV1Router from './src/modules/settings/index.js';
 import StoresRouter from './src/modules/stores/index.js';
 import AdminStoreRouter from './src/modules/stores/interface/AdminStore.routes.js';
-import OutreachRouter from './src/modules/outreach/index.js';
 import SubscriptionsRouter from './src/modules/subscriptions/index.js';
 import { buildAdminBonusRouter, buildBonusRouter } from './src/modules/bonuses/interface/Bonus.routes.js';
 import { buildAdminTutorialRouter, buildTutorialRouter } from './src/modules/tutorials/interface/Tutorial.routes.js';
@@ -68,7 +61,6 @@ import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
-import { subscribeContactListFanout } from './src/modules/notifications/application/ContactListFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
 import { subscribeStoreOrderFanout } from './src/modules/notifications/application/StoreOrderFanout.js';
 import { subscribeRankGroupFanout } from './src/modules/notifications/application/RankGroupFanout.js';
@@ -86,7 +78,6 @@ import { buildPushSender } from './src/modules/notifications/infrastructure/Push
 import ProspectV1Router from './src/modules/crm/index.js';
 import PagesRouter from './src/modules/partner-pages/interface/Pages.routes.js';
 import PublicPagesRouter from './src/modules/partner-pages/interface/PublicPages.routes.js';
-import PartnerSurveysRouter from './src/modules/partner-surveys/interface/Surveys.routes.js';
 import { errorMiddleware } from './src/shared/http/errorMiddleware.js';
 import { ensureIndexes } from './src/shared/mongo/indexes.js';
 import { scheduleJobs } from './src/jobs/schedule.js';
@@ -166,13 +157,10 @@ app.get('/', (req, res) => res.send('Node server is up and running'));
 // and session checks. Keeping the old mount would duplicate credential paths.
 app.use('/partners', PartnerRouter);
 app.use('/booking', BookingRouter);
-app.use('/campaign', CampaignRouter);
 app.use('/billing', TransactionRouter);
 app.use('/prospect', ProspectRouter);
 app.use('/products', ProductRouter);
 
-app.use('/emails', EmailRouter);
-app.use('/sms', SmsRouter);
 app.use('/team', TeamsRouter);
 /* DDD v1 (new, strangler) — same data, validated boundary */
 app.use('/v1/tickets', TicketV1Router);
@@ -186,7 +174,6 @@ app.use('/v1/auth', AuthV1Router);
 app.use('/v1/prospects', ProspectV1Router);
 app.use('/v1/admin/pages', PagesRouter);
 app.use('/v1/public/pages', PublicPagesRouter);
-app.use('/v1/admin/partner-surveys', PartnerSurveysRouter);
 app.use('/v1/onboarding', OnboardingRouter);
 app.use('/v1/admin/onboarding', buildAdminOnboardingRouter());
 app.use('/v1/campaigns', CampaignsRouter);
@@ -204,7 +191,6 @@ app.use('/v1/goals', GoalsRouter);
 app.use('/v1/analytics', AnalyticsRouter);
 app.use('/v1/search', SearchRouter);
 app.use('/v1/dashboard', DashboardRouter);
-app.use('/v1/reports', ReportsRouter);
 app.use('/v1/exports', ExportsRouter);
 app.use('/v1/messages', MessagingRouter);
 app.use('/v1/messages', buildGroupRouter({ rankGroups: rankGroupService }));
@@ -215,15 +201,12 @@ app.use('/v1/admin/audit', AuditRouter);
 app.use('/v1/admin/jobs', JobHealthRouter);
 app.use('/v1/admin/recycle-bin', RecycleBinRouter);
 app.use('/v1/admin/broadcast', BroadcastRouter);
-app.use('/v1/coaching', CoachingRouter);
-app.use('/v1/mentorship', CellMeetingRouter);
 app.use('/v1/community', CommunityRouter);
 app.use('/v1/marketing', MarketingRouter);
 app.use('/v1/events', EventsRouter);
 app.use('/v1/ora', OraRouter);
 app.use('/v1/settings', SettingsV1Router);
 app.use('/v1/stores', StoresRouter);
-app.use('/v1/outreach', OutreachRouter);
 app.use('/v1/admin/subscriptions', SubscriptionsRouter);
 app.use('/v1/bonuses', buildBonusRouter());
 app.use('/v1/admin/bonuses', buildAdminBonusRouter());
@@ -278,13 +261,6 @@ app.use(errorMiddleware);
     network: new MongoNetworkRepository(),
   });
   subscribeGoalFanout({
-    events: domainEvents,
-    stored: lifecycleStore,
-    delivery: lifecycleDelivery,
-    partners: lifecyclePartners,
-    network: new MongoNetworkRepository(),
-  });
-  subscribeContactListFanout({
     events: domainEvents,
     stored: lifecycleStore,
     delivery: lifecycleDelivery,

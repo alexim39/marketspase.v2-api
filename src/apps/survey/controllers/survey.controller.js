@@ -1,11 +1,9 @@
-import { ProspectSurveyModel, PartnerSurveyModel } from '../models/survey.model.js';
+import { ProspectSurveyModel } from '../models/survey.model.js';
 import { PartnersModel } from '../../partner/models/partner.model.js';
 import { sendEmail } from "../../../services/emailService.js";
-import { ownerEmailTemplate, partnerOwnerEmailTemplate } from '../services/email/ownerTemplate.js';
+import { ownerEmailTemplate } from '../services/email/ownerTemplate.js';
 import { userWelcomeEmailTemplate } from '../services/email/userTemplate.js';
 import { normalizeState, sameState } from '../../../shared/geo/nigerianStates.js';
-import { NotifyUseCase } from '../../../modules/notifications/application/NotificationsCenter.usecases.js';
-import { MongoStoredNotificationStore } from '../../../modules/notifications/infrastructure/StoredNotifications.mongo.repository.js';
 
 // Prospect survey form handler
 export const ProspectSurveyForm = async (req, res) => {
@@ -31,39 +29,6 @@ export const ProspectSurveyForm = async (req, res) => {
     const survey = new ProspectSurveyModel({ ...surveyData, stateNorm: normalizeState(surveyData.state) });
     await survey.save();
 
-    const notifyNewLead = async (partner) => {
-      try {
-        const stored = new MongoStoredNotificationStore();
-        await new NotifyUseCase({ stored }).execute({
-          recipientId: String(partner._id),
-          category: 'system',
-          priority: 'medium',
-          title: `New lead in ${surveyData.state || 'your area'}`,
-          body: `${surveyData.name ?? 'Someone'} just asked to be contacted — open Pipeline → Page leads to accept.`,
-          icon: 'person_add',
-          link: '/dashboard/prospects/personal-list',
-          key: `new-lead:${String(survey._id)}:${String(partner._id)}`,
-        });
-      } catch { /* arrival alerts never fail the submit */ }
-    };
-
-    const notifyPageLead = async (partner) => {
-      try {
-        const stored = new MongoStoredNotificationStore();
-        await new NotifyUseCase({ stored }).execute({
-          recipientId: String(partner._id),
-          category: 'system',
-          priority: 'high',
-          title: `New page lead: ${surveyData.name ?? 'Someone'} via /${surveyData.username}`,
-          body: `${surveyData.name ?? 'Someone'} (${surveyData.phoneNumber ?? 'no phone'}) joined via your public page — open My Page Leads to accept.`,
-          icon: 'inbox',
-          link: '/dashboard/prospects/personal-list',
-          key: `page-lead:${String(survey._id)}:${String(partner._id)}`,
-        });
-      } catch { /* arrival alerts never fail the submit */ }
-    };
-
-    // Prepare email templates
     const ownerSubject = 'New Prospect Notification - Diamond Project';
     const ownerMessage = ownerEmailTemplate(surveyData);
     const userSubject = 'Welcome to Diamond Project';
@@ -81,7 +46,6 @@ export const ProspectSurveyForm = async (req, res) => {
         referringPartner.settings.notification.receive !== 'off')
     ) {
       await sendEmail(referringPartner.email, ownerSubject, ownerMessage).catch(() => null);
-      await notifyPageLead(referringPartner);
     } else {
       // Case 2: partners in the lead's (normalized) state. Normalization
       // matters: exact-match once spammed the whole platform over casing.
@@ -100,7 +64,6 @@ export const ProspectSurveyForm = async (req, res) => {
       if (eligibleStatePartners.length > 0) {
         for (const partner of eligibleStatePartners) {
           await sendEmail(partner.email, ownerSubject, ownerMessage).catch(() => null);
-          await notifyNewLead(partner);
         }
       } else {
         // Case 3: no state match — notify platform admins only (capped),
@@ -133,43 +96,6 @@ export const ProspectSurveyForm = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'An error occurred while saving your survey. Please try again later.'
-    });
-  }
-};
-
-
-// Partner Survey form handler
-export const PartnerSurveyForm = async (req, res) => {
-  try {
-    const surveyData = req.body;
-
-    // Save the survey data to MongoDB
-    const survey = new PartnerSurveyModel(surveyData);
-    await survey.save();
-
-
-    // Send email to form owner
-    const ownerSubject = 'Partner Survey Submission';
-    const ownerMessage = partnerOwnerEmailTemplate(surveyData);
-    const configured = process.env.PARTNER_SURVEY_ALERTS
-      || process.env.SUPPORT_OWNER_EMAILS
-      || 'contacts@c21fg.online';
-    const ownerEmails = [...new Set(
-      configured.split(',').map((email) => email.trim()).filter(Boolean),
-    )];
-    for (const email of ownerEmails) {
-      await sendEmail(email, ownerSubject, ownerMessage).catch(() => null);
-    }
-
-    res.status(200).json({
-        success: true, 
-        survey
-    });
-
-  } catch (error) {
-    res.status(500).json({ 
-        success: false,
-        message: 'An error occurred while processing your request. Please try again later.'
     });
   }
 };

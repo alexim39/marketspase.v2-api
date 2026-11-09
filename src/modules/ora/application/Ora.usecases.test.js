@@ -6,14 +6,14 @@ const snapshot = {
   opportunities: [
     {
       id: 'opp:followup:507f1f77bcf86cd799439011',
-      type: 'send_sms',
+      type: 'advance_stage',
       area: 'Pipeline',
-      title: 'Follow up with Paul',
+      title: 'Advance Paul',
       reason: 'Overdue by 2 days',
       page: '/dashboard/prospects/pipeline',
       capabilityKey: 'pipeline.followups',
-      summary: 'Short check-in SMS ready',
-      payload: { prospectId: '507f1f77bcf86cd799439011', body: 'Default draft' },
+      summary: 'Move to Interested',
+      payload: { prospectId: '507f1f77bcf86cd799439011', stage: 'Interested' },
     },
     {
       id: 'opp:review:507f1f77bcf86cd799439012',
@@ -63,16 +63,15 @@ test('materializes an opportunity into a persisted approval action', async () =>
     actions,
     proposals: [{
       opportunityId: 'opp:followup:507f1f77bcf86cd799439011',
-      label: 'Send reminder SMS',
-      summary: 'Short check-in to Paul',
-      draft: 'Hi Paul, are you still interested?',
+      label: 'Move Paul to Interested',
+      summary: 'Pipeline stage update',
     }],
   });
   assert.equal(out.length, 1);
-  assert.equal(out[0].type, 'send_sms');
+  assert.equal(out[0].type, 'advance_stage');
   assert.equal(out[0].status, 'proposed');
   assert.equal(out[0].requiresApproval, true);
-  assert.equal(out[0].payload.body, 'Hi Paul, are you still interested?');
+  assert.equal(out[0].payload.stage, 'Interested');
   assert.equal(actions.created.length, 1);
 });
 
@@ -196,9 +195,8 @@ test('a pipeline question still yields an approval card when the model omits one
   const out = await usecase.execute({ partnerId: 'p1', message: 'What is my pipeline status?' });
 
   assert.equal(out.actions.length, 1);
-  assert.equal(out.actions[0].type, 'send_sms');
-  assert.equal(out.actions[0].payload.body, 'Default draft');
-  assert.equal(created.length, 1);
+  assert.equal(out.actions[0].type, 'open_page');
+  assert.equal(created.length, 0);
 });
 
 test('chat responses carry the per-partner daily usage budget', async () => {
@@ -239,8 +237,8 @@ test('the daily cap rejects the next message with usage details', async () => {
 test('approval claims once, executes once and returns the existing result afterwards', async () => {
   const state = { status: 'proposed', executions: 0 };
   const stored = {
-    id: 'a1', type: 'send_sms', opportunityId: 'opp:1',
-    payload: { prospectId: '507f1f77bcf86cd799439011' },
+    id: 'a1', type: 'advance_stage', opportunityId: 'opp:1',
+    payload: { prospectId: '507f1f77bcf86cd799439011', stage: 'Interested' },
     status: 'proposed',
   };
   const actions = {
@@ -251,7 +249,7 @@ test('approval claims once, executes once and returns the existing result afterw
     },
     async findById() {
       return state.status === 'executed'
-        ? { ...stored, status: 'executed', result: { sent: 1 } }
+        ? { ...stored, status: 'executed', result: { type: 'advance_stage', stage: 'Interested' } }
         : { ...stored, status: state.status };
     },
     async markExecuted(_id, result) {
@@ -261,7 +259,7 @@ test('approval claims once, executes once and returns the existing result afterw
     async markFailed() { state.status = 'failed'; return {}; },
   };
   const executor = {
-    async execute() { state.executions += 1; return { sent: 1, total: 1 }; },
+    async execute() { state.executions += 1; return { type: 'advance_stage', stage: 'Interested' }; },
   };
   const approve = new ApproveOraActionUseCase({ actions, executor });
 

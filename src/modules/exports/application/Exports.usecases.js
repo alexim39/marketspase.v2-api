@@ -168,30 +168,3 @@ export class ExportCommunityUseCase {
     };
   }
 }
-
-/** Period reports — own submissions or the direct-downline feed. */
-export class ExportReportsUseCase {
-  /** @param {{reports, network}} deps */
-  constructor({ reports, network }) {
-    Object.assign(this, { reports, network });
-  }
-
-  async execute({ partnerId, scope = 'mine' }) {
-    const rows = scope === 'team'
-      ? await this.reports.listByAuthors(
-        (await this.network.findChildren([String(partnerId)], 500)).map((c) => c.id), 500,
-      )
-      : await this.reports.listByAuthor(partnerId, 500);
-    const columns = [
-      { header: 'Author', format: (r) => r.author?.name ?? '' },
-      { key: 'title', header: 'Title' },
-      { header: 'Period start', format: (r) => isoDate(r.periodStart) },
-      { header: 'Period end', format: (r) => isoDate(r.periodEnd) },
-      { key: 'highlights', header: 'Highlights' },
-      { key: 'blockers', header: 'Blockers' },
-      { key: 'plans', header: 'Plans' },
-      { header: 'Submitted', format: (r) => isoDate(r.createdAt) },
-    ];
-    return { name: exportBasename(`reports-${scope}`), columns, rows, count: rows.length };
-  }
-}

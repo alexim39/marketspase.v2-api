@@ -43,12 +43,6 @@ const draftFor = (proposal, opportunity, reply = '') => {
     }
     return opportunity.payload ?? {};
   }
-  if (opportunity.type === 'send_sms') {
-    return { ...(opportunity.payload ?? {}), body: draft.slice(0, 960) };
-  }
-  if (opportunity.type === 'send_email') {
-    return { ...(opportunity.payload ?? {}), body: draft.slice(0, 20000) };
-  }
   if (opportunity.type === 'save_daily_plan') {
     const parsed = parsePlanDraft(draft);
     const items = parsed.length > 0 ? parsed : planDraftFromReply(reply);
@@ -65,14 +59,6 @@ const fallbackProposals = (message, snapshot) => {
   const text = String(message ?? '').toLowerCase();
   const opportunities = snapshot?.opportunities ?? [];
   if (/pipeline|prospect|lead|follow.?up|\bcall\b|remind/.test(text)) {
-    const actionable = opportunities.find((o) => o.type === 'send_sms' || o.type === 'send_email');
-    if (actionable) {
-      return [{
-        opportunityId: actionable.id,
-        label: actionable.type === 'send_sms' ? 'Send reminder SMS' : 'Send follow-up email',
-        summary: actionable.summary || actionable.reason,
-      }];
-    }
     const review = opportunities.find((o) => o.capabilityKey === 'pipeline.followups');
     if (review) return [{ capability: review.capabilityKey, label: 'Open follow-ups' }];
   }

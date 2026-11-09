@@ -1,8 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import {
-    CreateContactList,  GetContactsCreatedBy,  importSurveyToContact, getAllMySurveyProspect,
-    getProspectById, UpdateProspectStatus, UpdateProspectsStatusMany, UpdateProspectRemark, deleteSingleFromProspect, UpdateContactList, getSurveyProspectFor, moveSingleProspectBackToSurvey
+    CreateContactList,  GetContactsCreatedBy, getAllMySurveyProspect,
+    getProspectById, UpdateProspectStatus, UpdateProspectsStatusMany, UpdateProspectRemark, deleteSingleFromProspect, UpdateContactList, getSurveyProspectFor
 } from '../controllers/prospect.controller.js'
 import { UpdateProspectCommunications, DeleteProspectCommunication} from '../controllers/communictions.controller.js'
 import { requireAuth } from '../../../shared/http/requireAuth.js';
@@ -26,8 +26,6 @@ const prospectFields = {
   bestTimeToCall: z.string().trim().max(120).optional(),
   consentToContact: z.boolean().optional(),
   notes: z.string().trim().max(2000).optional(),
-  listBatch: z.string().trim().max(80).nullable().optional(),
-  listSubmitted: z.boolean().optional(),
   survey: z.object({
     ageRange: z.string().trim().max(40).optional(),
     socialMedia: z.array(z.string().trim().max(60)).max(20).optional(),
@@ -99,9 +97,7 @@ ProspectRouter.get('/for/:createdBy', requireAuth, getSurveyProspectFor);
 // Get all surver prospect gotton by the system (Username !== business) — owner or admin
 ProspectRouter.get('/my/:username', requireAuth, getAllMySurveyProspect);
 // import prospect for user - owner, upline or admin of the target
-ProspectRouter.get('/import/:partnerId', requireAuth, importSurveyToContact );
-// delete signle prospect for user on survey model
-//ProspectRouter.get('/delete-single/:prospectId', deleteSingleFromSurvey );
+// REMOVED: warm-list import is retired.
 // get signle prospect byid — owner, upline or admin
 ProspectRouter.get('/getById/:prospectId', requireAuth, getProspectById );
 // update status — owner, upline (support) or admin
@@ -116,8 +112,7 @@ ProspectRouter.get('/delete/:prospectId', requireAuth, deleteSingleFromProspect 
 ProspectRouter.post('/communications', requireAuth, validateBodyInPlace(ProspectCommunication), UpdateProspectCommunications);
 // delete communication entry from array — owner or admin
 ProspectRouter.delete('/communications/:prospectId/:communicationId', requireAuth, DeleteProspectCommunication );
-// Move prospect back to survey list — owner or admin
-ProspectRouter.get('/move-back-to-survey/:prospectId', requireAuth, moveSingleProspectBackToSurvey );
+// REMOVED: move prospect back to the retired survey list.
 
 
 export default ProspectRouter;
