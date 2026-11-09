@@ -1,6 +1,6 @@
 # MarketSpase Operations Runbook
 
-Last updated: 2026-11-07
+Last updated: 2026-11-09
 
 This is the on-call guide for the API in `api/`. It covers deploy order,
 health checks, the alert thresholds used by `npm run ops:check`, and the
@@ -88,24 +88,26 @@ circuit breaker is open.
 - If a bad release is writing money/PII data, stop traffic first
   (`/health/live` is the load-balancer probe), then roll back.
 
-### Production host notes (2026-11-07)
+### Production host notes (2026-11-09)
 
-- The API host currently remains the Back4App `b4a.run` service. A push to
-  GitHub runs CI only; the service must be redeployed from the dashboard (or
-  its build hook) after CI is green.
-- The live API did **not** expose `/health` before this release. After the
-  redeploy, verify `GET /health` returns `200` and `checks.database.status` is
-  `up`; a `404` means the old build is still serving.
-- Set `EXTRA_CORS_ORIGINS` in the API host environment for the new platform
-  origins:
+- The API host remains the Back4App `b4a.run` service. A push to GitHub runs CI
+  only; the service must be redeployed from the dashboard (or its build hook)
+  after CI is green.
+- **Current release blocker:** `GET https://c21fg-f054fmrs.b4a.run/health`
+  returns **404**, so the host is still serving a pre-hardening build. Run the
+  single-upline migration first, then redeploy the API.
+- After redeploy, verify `GET /health` returns `200` and
+  `checks.database.status` is `up`.
+- Set `EXTRA_CORS_ORIGINS` in the API host environment for the platform, store
+  and admin origins:
   `EXTRA_CORS_ORIGINS=https://marketspase.com,https://www.marketspase.com`.
   Verify a preflight to `/v1/auth/signin` returns the matching
   `access-control-allow-origin`.
-- Deploy the platform build (`ng build platform`) to the platform host after
-  the API is healthy. The full web CI (`npm run ci`) already builds platform,
-  store and admin.
+- Deploy the platform, store and admin builds after the API is healthy. The
+  full web CI (`npm run ci`) already builds all three apps.
 - The `/emailSubscription/*` redirect removal is calendar-bound: keep it until
-  the 7-day audit window ends.
+  the 7-day audit window ends on **2026-11-14** and `audit:legacy` shows no
+  traffic.
 
 ---
 
@@ -303,9 +305,9 @@ execution writes an `ora.action.execute` audit event.
    '
    ```
 2. `ForbiddenException` / "not consented": the lead is manual/contact-list and
-   has no `consentToContact: true`. Survey (`Website`, `Unique Link`) and
-   `Admin Push` leads are treated as opt-in. Do not flip consent manually for a
-   manual lead; contact them outside automation.
+   has no `consentToContact: true`. Survey (`Website`, `Unique Link`),
+   `Admin Push` and personal-page form leads are treated as opt-in. Do not flip
+   consent manually for a manual lead; contact them outside automation.
 3. "not in your pipeline": the stored payload references another partner's
    prospect. Ownership is re-checked on live data at execution.
 4. BulkSMS errors:
@@ -323,9 +325,10 @@ execution writes an `ora.action.execute` audit event.
 
 ### 4.8 Money actions and idempotency
 
-- Withdrawals, deposits, store checkout, campaign purchases and lead claims
-  require an idempotency key. A retry with the same key returns the original
-  result; a different key creates a new attempt.
+- Withdrawals, deposits, store checkout and campaign purchases require an
+  idempotency key. A retry with the same key returns the original result; a
+  different key creates a new attempt. The retired lead-pool claim/refund
+  routes are no longer part of this surface.
 - Double-spend protection is enforced inside Mongo transactions with
   conditional balance updates. If a transaction aborts, no ledger row is
   written.

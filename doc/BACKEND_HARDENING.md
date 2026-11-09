@@ -1,5 +1,7 @@
 # Backend hardening contract
 
+Last verified: 2026-11-09
+
 This document is the source of truth for the reliability, security and
 operational controls added to the API. Keep it in sync with route changes.
 Deploy order, alert thresholds and incident playbooks live in
@@ -46,8 +48,7 @@ with the same body replays the original response for 24 hours. The same key
 with a different body returns `409 IDEMPOTENCY_KEY_REUSED`. A concurrent
 request returns `409 REQUEST_IN_PROGRESS` with `retry_after: 1`.
 
-Covered: withdrawals, deposit init, store checkout, campaign creation, lead
-claims, page-lead acceptance, outreach SMS/email and onboarding orders.
+Covered: withdrawals, deposit init, store checkout, campaign creation, outreach SMS/email and onboarding orders. The retired lead-pool claim/refund and page-lead acceptance routes are no longer part of this surface.
 Legacy `/campaign` create endpoints honour the header when supplied; the v1
 flow requires it. The web client adds a key and retries once on a transport
 failure.
@@ -116,7 +117,8 @@ backoff and marked `failed` after five attempts for inspection.
   deletion is role-gated under `/v1/admin/subscriptions`.
 - Legacy `/emailSubscription/subscribe|confirm|unsubscribe` paths now 307/302
   redirect to v1 so links already sent by email keep working. Remove the
-  redirect shim once `audit:legacy` shows no traffic.
+  redirect shim once `audit:legacy` shows no traffic; the current window ends
+  on 2026-11-14.
 
 ## Health
 
