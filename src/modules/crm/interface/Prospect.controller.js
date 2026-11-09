@@ -192,10 +192,5 @@ export const makeProspectController = (uc, opts = {}) => {
     const data = await uc.activationBoard.execute({ requesterId: req.auth?.partnerId });
     res.status(200).json({ message: 'Activation board retrieved successfully', data, success: true });
   }),
-
-  downlinePhones: asyncHandler(async (req, res) => {
-    const data = await uc.downlinePhones.execute({ requesterId: req.auth?.partnerId });
-    res.status(200).json({ message: 'Downline phones retrieved successfully', data, success: true });
-  }),
   };
 };

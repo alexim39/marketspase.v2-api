@@ -34,8 +34,6 @@ export class ProspectRepository {
   async pullCommunication(prospectId, communicationId) { throw new Error('Not implemented'); }
   /** @returns {Promise<boolean>} true when something was deleted */
   async deleteById(id) { throw new Error('Not implemented'); }
-  /** Phone → owner mapping for booking context. */
-  async phonesForPartners(partnerIds) { throw new Error('Not implemented'); }
 }
 
 export class PartnerLookup {

@@ -1,5 +1,4 @@
 import { PartnersModel } from "../models/partner.model.js";
-import { BookingModel } from "./../../booking/models/booking.model.js";
 import { ProspectSurveyModel } from "../../survey/models/survey.model.js";
 import bcrypt from "bcryptjs";
 import { sendEmail } from "../../../services/emailService.js";
@@ -221,20 +220,11 @@ export const updateUsername = async (req, res) => {
 
       // Update related collections only if the username has changed
       if (oldUsername !== username) {
-        const [prospectResult, bookingResult] = await Promise.all([
-          ProspectSurveyModel.updateMany(
-            { username: oldUsername },
-            { $set: { username } },
-            { session }
-          ),
-          BookingModel.updateMany(
-            { username: oldUsername },
-            { $set: { username } },
-            { session }
-          ),
-        ]);
-        //console.log("Prospect Survey Updates:", prospectResult);
-        //console.log("Booking Updates:", bookingResult);
+        await ProspectSurveyModel.updateMany(
+          { username: oldUsername },
+          { $set: { username } },
+          { session }
+        );
       }
     } else {
       //console.log("No changes to the username detected.");

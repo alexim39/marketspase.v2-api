@@ -60,7 +60,7 @@ export const appBaseUrl = () =>
 
 // Reusable function to send emails.
 // Never throws: legacy callers `await` this bare inside request flows
-// (booking, survey, tickets), so a mail hiccup must not 500 the request.
+// (survey, tickets), so a mail hiccup must not 500 the request.
 // Check the returned `{ sent }` when delivery actually matters.
 export const sendEmail = async (email, subject, htmlContent, options = {}) => {
   if (['true', '1', 'yes'].includes(String(process.env.MAIL_DISABLED ?? '').toLowerCase())) {

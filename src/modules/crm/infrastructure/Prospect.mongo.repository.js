@@ -261,23 +261,6 @@ export class MongoProspectRepository {
     const res = await ProspectModel.deleteMany({ partnerId });
     return res.deletedCount ?? 0;
   }
-
-  /** Phone → owner mapping for booking context (scoped, read-only). */
-  async phonesForPartners(partnerIds) {
-    if (partnerIds.length === 0) return [];
-    const docs = await ProspectModel.find({
-      partnerId: { $in: matchPartnerIds(partnerIds) },
-      prospectPhone: { $nin: [null, ''] },
-      deletedAt: null,
-    })
-      .select('partnerId prospectPhone')
-      .limit(5000)
-      .lean();
-    return docs.map((doc) => ({
-      partnerId: String(doc.partnerId),
-      phone: String(doc.prospectPhone ?? ''),
-    }));
-  }
 }
 
 export class MongoPartnerLookup {

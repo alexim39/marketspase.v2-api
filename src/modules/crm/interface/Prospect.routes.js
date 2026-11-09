@@ -11,7 +11,7 @@ import {
   CreateProspectUseCase, UpdateProspectUseCase, UpdateProspectStatusUseCase, DeleteProspectUseCase,
 } from '../application/Prospect.commands.js';
 import { LogCommunicationUseCase, RemoveCommunicationUseCase } from '../application/Prospect.communications.js';
-import { ListActivationBoardUseCase, ListDownlinePhonesUseCase } from '../application/ContactList.usecases.js';
+import { ListActivationBoardUseCase } from '../application/ContactList.usecases.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import {
@@ -63,7 +63,6 @@ export const buildProspectRouter = (deps = {}) => {
     convert: new ConvertProspectToPartnerUseCase({ prospects }),
     rate: new RateLeadUseCase({}),
     activationBoard: new ListActivationBoardUseCase({ network, progress }),
-    downlinePhones: new ListDownlinePhonesUseCase({ prospects, network }),
   }, { guard });
 
   const router = express.Router();
@@ -77,7 +76,6 @@ export const buildProspectRouter = (deps = {}) => {
   // Activation board uses training/progression only; contact-list submission
   // and page-lead desks are retired.
   router.get('/activation-board', c.activationBoard);
-  router.get('/downline-phones', c.downlinePhones);
   router.put('/update', validate({ body: UpdateProspectSchema }), c.update);
   router.put('/:prospectId', validate({ params: ProspectIdParam, body: UpdateProspectSchema }), c.update);
 

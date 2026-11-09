@@ -10,7 +10,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import PartnerRouter from './src/apps/partner/index.js';
-import BookingRouter from './src/apps/booking/index.js';
 import ContactV1Router from './src/apps/contact/routes/Contact.routes.js';
 import TransactionRouter from './src/apps/transaction/index.js';
 import ProspectRouter from './src/apps/prospect/index.js';
@@ -54,7 +53,6 @@ import AdminStoreRouter from './src/modules/stores/interface/AdminStore.routes.j
 import SubscriptionsRouter from './src/modules/subscriptions/index.js';
 import { buildAdminBonusRouter, buildBonusRouter } from './src/modules/bonuses/interface/Bonus.routes.js';
 import { buildAdminTutorialRouter, buildTutorialRouter } from './src/modules/tutorials/interface/Tutorial.routes.js';
-import { buildAdminKitRouter, buildKitRouter } from './src/modules/kits/interface/Kit.routes.js';
 import JobHealthRouter from './src/jobs/JobHealth.routes.js';
 import RecycleBinRouter from './src/modules/recycle-bin/interface/RecycleBin.routes.js';
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
@@ -156,7 +154,6 @@ app.get('/', (req, res) => res.send('Node server is up and running'));
 // Legacy auth surface retired — /v1/auth owns signin, signout, refresh, reset
 // and session checks. Keeping the old mount would duplicate credential paths.
 app.use('/partners', PartnerRouter);
-app.use('/booking', BookingRouter);
 app.use('/billing', TransactionRouter);
 app.use('/prospect', ProspectRouter);
 app.use('/products', ProductRouter);
@@ -212,8 +209,6 @@ app.use('/v1/bonuses', buildBonusRouter());
 app.use('/v1/admin/bonuses', buildAdminBonusRouter());
 app.use('/v1/tutorials', buildTutorialRouter());
 app.use('/v1/admin/tutorials', buildAdminTutorialRouter());
-app.use('/v1/kits', buildKitRouter());
-app.use('/v1/admin/kits', buildAdminKitRouter());
 
 
 

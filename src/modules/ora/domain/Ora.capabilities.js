@@ -33,7 +33,6 @@ export const ORA_CAPABILITIES = Object.freeze([
   cap('pipeline.followups', 'Pipeline', 'Follow-ups', '/dashboard/prospects/pipeline', PIPELINE, 'Read, message, schedule and advance prospects.'),
   cap('pipeline.reminders', 'Pipeline', 'Follow-up reminders', '/dashboard/prospects/reminders', PIPELINE, 'Work promises due today or overdue.'),
   cap('pipeline.board', 'Pipeline', 'Deal board', '/dashboard/prospects/board', ['open_page', 'advance_stage'], 'Move deals between stages.'),
-  cap('pipeline.sessions', 'Pipeline', 'Booked sessions', '/dashboard/prospects/bookings', OPEN, 'Review upcoming and past sessions.'),
   cap('pipeline.customer-leads', 'Pipeline', 'Customer leads', '/dashboard/prospects/customer-leads', OPEN, 'Review store checkout customers.'),
   cap('team.hub', 'Team', 'Team overview', '/dashboard/team', OPEN, 'Show who needs coaching or activation.'),
   cap('team.activation', 'Team', 'Activation board', '/dashboard/mentorship/team/activation', OPEN, 'Track new partners waiting to activate.'),

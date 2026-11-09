@@ -116,39 +116,3 @@ export const buildProspectAccess = ({ findProspectById, findPartnerById }) => { 
     },
   };
 };
-
-/**
- * Partner-scoped guard for slices without a prospect (e.g. bookings, which
- * key off `username`). Same owner/upline/admin rule as requireListAccess.
- */
-export const buildPartnerAccess = ({ findPartnerById }) => {
-  if (!findPartnerById) throw new Error('buildPartnerAccess requires findPartnerById');
-
-  const requester = async (requesterId) => {
-    if (!requesterId) throw new UnauthorizedException('User unauthenticated');
-    const me = await findPartnerById(requesterId).catch(() => null);
-    if (!me) throw new UnauthorizedException('User unauthenticated');
-    return me;
-  };
-
-  return {
-    async requireListAccess(requesterId, ownerId) {
-      const me = await requester(requesterId);
-      if (!ownerId) throw new NotFoundException('Partner not found');
-      if (isAdminDoc(me)) return { ownerId: String(ownerId), relation: 'admin' };
-      if (String(requesterId) === String(ownerId)) return { ownerId: String(ownerId), relation: 'owner' };
-      if (await isUplineOf(findPartnerById, requesterId, ownerId)) {
-        return { ownerId: String(ownerId), relation: 'upline' };
-      }
-      throw new NotFoundException('Record not found');
-    },
-
-    async requireOwnerId(requesterId, ownerId, action = 'perform this action') {
-      const me = await requester(requesterId);
-      if (!ownerId) throw new NotFoundException('Partner not found');
-      if (isAdminDoc(me)) return { ownerId: String(ownerId), relation: 'admin' };
-      if (String(requesterId) === String(ownerId)) return { ownerId: String(ownerId), relation: 'owner' };
-      throw new ForbiddenException(`Only the owner can ${action}`);
-    },
-  };
-};

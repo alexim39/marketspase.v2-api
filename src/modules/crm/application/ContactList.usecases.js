@@ -74,35 +74,3 @@ export class ListActivationBoardUseCase {
     return { items: capped, total: items.length };
   }
 }
-
-/**
- * GET /v1/prospects/downline-phones — phone → owner mapping for the booking
- * context. Read-only and scoped to the caller's downline; no warm-list rows.
- */
-export class ListDownlinePhonesUseCase {
-  constructor({ prospects, network }) {
-    Object.assign(this, { prospects, network });
-  }
-
-  async execute({ requesterId }) {
-    const { ids } = await collectDownlineIds(this.network, requesterId);
-    const bounded = ids.slice(0, 2000);
-    if (bounded.length === 0) return { items: [], total: 0 };
-    const [rows, nodes] = await Promise.all([
-      this.prospects.phonesForPartners(bounded).catch(() => []),
-      this.network.findNodesByIds(bounded).catch(() => []),
-    ]);
-    const members = Object.fromEntries((nodes ?? []).map((node) => [String(node.id), {
-      username: node.username,
-      name: [node.name, node.surname].filter(Boolean).join(' ') || node.username,
-    }]));
-    return {
-      items: rows.map((row) => ({
-        partnerId: row.partnerId,
-        phone: row.phone,
-        member: members[row.partnerId] ?? null,
-      })),
-      total: rows.length,
-    };
-  }
-}

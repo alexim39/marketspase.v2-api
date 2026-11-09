@@ -29,7 +29,6 @@ Open-page cards do not need approval.
 | `pipeline.followups` | `/dashboard/prospects/pipeline` |
 | `pipeline.reminders` | `/dashboard/prospects/reminders` |
 | `pipeline.board` | `/dashboard/prospects/board` |
-| `pipeline.sessions` | `/dashboard/prospects/bookings` |
 | `pipeline.customer-leads` | `/dashboard/prospects/customer-leads` |
 | `team.hub` | `/dashboard/team` |
 | `team.activation` | `/dashboard/mentorship/team/activation` |

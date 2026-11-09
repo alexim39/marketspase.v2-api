@@ -8,11 +8,9 @@ import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { NotFoundException } from '../../../shared/domain/AppError.js';
 import { recordAudit } from '../../audit/index.js';
 import { ProspectModel } from '../../../apps/prospect/models/prospect.model.js';
-import { BookingModel } from '../../../apps/booking/models/booking.model.js';
 import { TeamModel } from '../../../apps/teams/models/teams.model.js';
 import { EmailSubscriptionModel } from '../../../apps/email-subscription/models/email-subscription.model.js';
 import { GoalModel } from '../../goals/infrastructure/Goals.mongo.repository.js';
-import { KitModel } from '../../kits/infrastructure/Kit.mongo.js';
 import { TutorialModel } from '../../tutorials/infrastructure/Tutorial.mongo.js';
 import { EventModel } from '../../events/infrastructure/Events.mongo.repository.js';
 import { PostModel } from '../../community/infrastructure/Community.mongo.repository.js';
@@ -23,20 +21,10 @@ const ENTITIES = Object.freeze({
     fields: ['prospectName', 'prospectSurname', 'prospectPhone'],
     label: 'prospect',
   },
-  bookings: {
-    model: BookingModel,
-    fields: ['name', 'surname', 'email', 'consultDate'],
-    label: 'booking',
-  },
   goals: {
     model: GoalModel,
     fields: ['title', 'kind'],
     label: 'goal',
-  },
-  kits: {
-    model: KitModel,
-    fields: ['title', 'area'],
-    label: 'kit',
   },
   tutorials: {
     model: TutorialModel,

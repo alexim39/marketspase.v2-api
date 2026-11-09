@@ -87,8 +87,8 @@ backoff and marked `failed` after five attempts for inspection.
 ## Recycle bin
 
 - `GET /v1/admin/recycle-bin/:entity` lists soft-deleted records for
-  `prospects`, `bookings`, `goals`, `kits`, `tutorials`, `events`,
-  `community-posts`, `teams` and `subscriptions`.
+  `prospects`, `goals`, `tutorials`, `events`, `community-posts`, `teams`
+  and `subscriptions`.
 - `POST /v1/admin/recycle-bin/:entity/:id/restore` clears `deletedAt`.
 - Both routes require an admin session and write a `content.restore` audit row.
 - Search, limit and skip are supported; responses include the standard `meta`.
@@ -141,23 +141,24 @@ backoff and marked `failed` after five attempts for inspection.
   reads, writes and aggregations. Slow queries return `503 SLOW_QUERY` with a
   clear next step.
 - Soft delete uses `deletedAt`; business records are never hard-deleted except
-  legal erasure and dependent join rows. Covered: prospects, bookings, goals,
-  kits, tutorials, events, community posts, teams and email subscriptions.
+  legal erasure and dependent join rows. Covered: prospects, goals, tutorials,
+  events, community posts, teams and email subscriptions.
 - Pass `{ withDeleted: true }` on an admin restore/reconciliation query to
   include soft-deleted rows.
 - Legacy requests are tagged `legacy: true` in structured logs so dead routes
   can be measured before removal.
-- Legacy product, team, booking, partner-profile, prospect, campaign and
+- Legacy product, team, partner-profile, prospect, campaign and
   campaign-allocation writes validate and replace `req.body` through
   `validateBodyInPlace`, stripping unknown fields before controllers.
 - Retired legacy mounts: `/auth` (use `/v1/auth`), campaign create endpoints
   (use `/v1/campaigns`), `/contact`, `/survey`, `/ticket`, `/emailSubscription`
   (use the `/v1` public forms; `/emailSubscription/*` keeps temporary redirects
   for already-sent email links), legacy email/SMS inbox reads (use v1 message
-  reads), booking email-list exports, partner public-search/username lookup and
-  individual partner social-link writes (use `/partners/landing-page`). Partner
-  bulk SMS/email outreach, `/emails`, `/sms`, cell meetings, coaching notes,
-  team reports, contact lists and page-lead desks are retired.
+  reads), partner public-search/username lookup and individual partner
+  social-link writes (use `/partners/landing-page`). Partner bulk SMS/email
+  outreach, `/emails`, `/sms`, cell meetings, coaching notes, team reports,
+  contact lists, page-lead desks, session bookings and presentation kits are
+  retired.
 
 - Legacy email/SMS sends, inbox reads and campaign creation are retired in
   favour of their `/v1` slices. Partner bulk outreach is retired; transactional

@@ -37,7 +37,7 @@ const rsvpSchema = new mongoose.Schema(
     eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true, index: true },
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true },
     status: { type: String, enum: ['going', 'interested', 'declined'], required: true },
-    // Reminder idempotency (event-reminder sweep mirrors session-reminders):
+    // Reminder idempotency (event-reminder sweep):
     // atomic null-check stamps so parallel dynos never double-send.
     reminded24hAt: { type: Date, default: null },
     reminded1hAt: { type: Date, default: null },

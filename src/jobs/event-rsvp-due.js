@@ -9,8 +9,7 @@ import { env } from '../shared/config/env.js';
 /**
  * Event RSVP reminders (every 15 min): T-24h and T-1h nudges to going /
  * interested RSVPs. Member SMS first, then the in-app row (keyed, so reruns
- * dedupe), then push to live devices. Mirrors session-reminders: atomic
- * null-check stamps (parallel dynos never double-send), late finds skip
+ * dedupe), then push to live devices. Atomic null-check stamps (parallel dynos never double-send), late finds skip
  * the 24h leg, declined RSVPs and past events never remind.
  * `runEventRsvpDueJob` is exported for tests and triggers.
  */
