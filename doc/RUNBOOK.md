@@ -90,12 +90,10 @@ circuit breaker is open.
 
 ### Production host notes (2026-11-09)
 
-- The API host remains the Back4App `b4a.run` service. A push to GitHub runs CI
-  only; the service must be redeployed from the dashboard (or its build hook)
-  after CI is green.
-- **Current release blocker:** `GET https://c21fg-f054fmrs.b4a.run/health`
-  returns **404**, so the host is still serving a pre-hardening build. Run the
-  single-upline migration first, then redeploy the API.
+- The API host is the Back4App service at
+  `https://marketspasev2api-p3jkxlvy.back4.app`. The previous host is retired. A
+  push to GitHub runs CI only; the service must be redeployed from the dashboard
+  (or its build hook) after CI is green.
 - After redeploy, verify `GET /health` returns `200` and
   `checks.database.status` is `up`.
 - Set `EXTRA_CORS_ORIGINS` in the API host environment for the platform, store
