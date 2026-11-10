@@ -116,6 +116,31 @@ growthCommissionSchema.index({ saleType: 1, createdAt: -1 });
 mentorBonusSchema.index({ status: 1, dueAt: 1 });
 mentorBonusSchema.index({ mentorId: 1, status: 1, createdAt: -1 });
 
+const partnerRankHistorySchema = new mongoose.Schema(
+  {
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
+    from: {
+      type: String,
+      enum: ['Partner', 'Builder', 'Leader', 'Ambassador'],
+      default: 'Partner',
+    },
+    to: {
+      type: String,
+      enum: ['Partner', 'Builder', 'Leader', 'Ambassador'],
+      required: true,
+    },
+    source: { type: String, enum: ['auto', 'admin', 'backfill'], default: 'auto', index: true },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
+    reason: { type: String, default: '', trim: true, maxlength: 500 },
+  },
+  { timestamps: true, collection: 'partner_rank_history' },
+);
+partnerRankHistorySchema.index({ partnerId: 1, createdAt: -1 });
+
+export const PartnerRankHistoryModel =
+  mongoose.models.PartnerRankHistory
+  || mongoose.model('PartnerRankHistory', partnerRankHistorySchema);
+
 export const CommissionSaleModel =
   mongoose.models.CommissionSale
   || mongoose.model('CommissionSale', commissionSaleSchema);

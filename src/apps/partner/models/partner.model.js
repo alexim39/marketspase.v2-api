@@ -212,6 +212,32 @@ const partnersSchema = mongoose.Schema(
       enum: ['Partner', 'Builder', 'Leader', 'Ambassador'],
       default: 'Partner',
     },
+    // Rank source: auto = mirrored from the journey/training ladder;
+    // admin = temporary or permanent manual override. Commission depth reads
+    // commissionRank, so every rank change is written to partner_rank_history.
+    commissionRankSource: {
+      type: String,
+      enum: ['auto', 'admin'],
+      default: 'auto',
+    },
+    commissionRankReason: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    commissionRankOverrideUntil: {
+      type: Date,
+      default: null,
+    },
+    commissionRankUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Partner',
+      default: null,
+    },
+    commissionRankUpdatedAt: {
+      type: Date,
+      default: null,
+    },
     // Admin suspension — set only via PATCH /v1/admin/partners/:id/suspend.
     // Suspended partners fail signin and session checks; existing JWTs die
     // at expiry (24h) at the latest.

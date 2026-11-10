@@ -1,9 +1,11 @@
 import { domainEvents } from '../../../shared/events/DomainEvents.js';
 import { MongoCompensationRepository } from '../infrastructure/Compensation.mongo.repository.js';
+import { PROGRESSION_EVENTS } from '../../progression/domain/ProgressionEvents.js';
 import {
   CancelActivationCompensationUseCase,
   RecordActivationCompensationUseCase,
   RecordAllocationCompensationUseCase,
+  SyncCommissionRankUseCase,
 } from './Compensation.usecases.js';
 
 const safe = (label, fn) => async (payload) => {
@@ -19,6 +21,18 @@ export const buildCompensationHandlers = ({ repo }) => {
   const activation = new RecordActivationCompensationUseCase({ repo });
   const allocation = new RecordAllocationCompensationUseCase({ repo });
   const cancel = new CancelActivationCompensationUseCase({ repo });
+  const syncRank = new SyncCommissionRankUseCase({ repo });
+
+  const rankSync = (label) => safe(label, (payload) => syncRank.execute({
+    partnerId: payload?.partnerId,
+    from: payload?.from ?? null,
+    to: payload?.to,
+    source: 'auto',
+    reason: payload?.toLabel
+      ? `Journey rank changed to ${payload.toLabel}`
+      : `Journey rank changed to ${payload?.to ?? 'next rank'}`,
+    now: new Date(),
+  }));
 
   return {
     activated: safe('activation', (payload) => activation.execute({
@@ -39,6 +53,8 @@ export const buildCompensationHandlers = ({ repo }) => {
       orderId: payload?.orderId,
       reason: payload?.reason ?? 'Activation reversed',
     })),
+    promoted: rankSync('rank promotion'),
+    demoted: rankSync('rank demotion'),
   };
 };
 
@@ -52,6 +68,8 @@ export const subscribeCompensation = ({
       activated: useCases.activated,
       allocated: useCases.allocated,
       refunded: useCases.refunded,
+      promoted: useCases.promoted,
+      demoted: useCases.demoted,
     }
     : buildCompensationHandlers({ repo });
 
@@ -59,6 +77,8 @@ export const subscribeCompensation = ({
     events.on('partner.activated', handlers.activated),
     events.on('partner.allocated', handlers.allocated),
     events.on('partner.activation_refunded', handlers.refunded),
+    events.on(PROGRESSION_EVENTS.PROMOTED, handlers.promoted),
+    events.on(PROGRESSION_EVENTS.DEMOTED, handlers.demoted),
   ];
   return () => offs.forEach((off) => off());
 };

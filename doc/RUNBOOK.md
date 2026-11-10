@@ -372,6 +372,14 @@ idempotent and every execution writes an `ora.action.execute` audit event.
 - **Personal lead page:** every partner shares `/lead/<username>` (store app).
   Submissions create a `Prospect` with source `Personal Page` in that partner's
   pipeline. The public store remains `/<username>` and is a separate share link.
+- **Commission rank auto-sync:** journey promotions and demotions mirror into
+  `commissionRank` through `progression.promoted` / `progression.demoted`; the
+  hourly compensation reconcile repairs drift. Run `npm run migrate:rank-sync`
+  (dry run) and then `APPLY=1 npm run migrate:rank-sync` once before enabling
+  auto-sync, so legacy rows are tagged: matching ranks become `auto`, mismatches
+  stay `admin` overrides for review. Admin overrides require a reason and can
+  carry an expiry; every rank change is written to `partner_rank_history` and
+  commission entries retain `rankAtAccrual`.
 - Mentor bonus timing: the ₦1,000 activation mentor bonus is paid immediately
   when activation is recorded, to the member's `partnerOf` mentor. If the
   mentor is not yet known (system-owned member) or not KYC-qualified yet, the

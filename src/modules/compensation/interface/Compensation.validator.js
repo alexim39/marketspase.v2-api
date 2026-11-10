@@ -24,6 +24,11 @@ export const VoidCommissionSchema = z.object({
 export const SetCommissionRankSchema = z.object({
   identifier: z.string().trim().min(3).max(254),
   rank: z.enum(RANKS),
+  reason: z.string().trim().min(3).max(300).optional(),
+  overrideUntil: z.string().trim().refine(
+    (value) => !Number.isNaN(Date.parse(value)),
+    'Invalid override expiry',
+  ).optional(),
 });
 
 const isoDate = z.string().trim().refine(

@@ -126,7 +126,21 @@ export class SetCommissionRankUseCase {
     this.repo = repo;
   }
 
-  execute(identifier, rank) {
-    return this.repo.setRank(identifier, rank);
+  execute(payload) {
+    return this.repo.setRank(payload.identifier, payload.rank, {
+      actorId: payload.actorId ?? null,
+      reason: payload.reason ?? '',
+      overrideUntil: payload.overrideUntil ?? null,
+    });
+  }
+}
+
+export class SyncCommissionRankUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute(payload) {
+    return this.repo.syncRankFromProgression(payload);
   }
 }

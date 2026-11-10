@@ -63,9 +63,15 @@ app.use('/v1/admin/compensation', buildAdminCompensationRouter({
     execute: async () => ({ checked: 2, paid: 1, forfeited: 0, held: 1, failed: 0 }),
   },
   setRank: {
-    execute: async (identifier, rank) => {
-      rankInput = { identifier, rank };
-      return { id: partnerId, commissionRank: rank };
+    execute: async (payload) => {
+      rankInput = payload;
+      return {
+        id: partnerId,
+        commissionRank: payload.rank,
+        commissionRankSource: 'admin',
+        commissionRankReason: payload.reason ?? '',
+        commissionRankOverrideUntil: payload.overrideUntil ?? null,
+      };
     },
   },
   reporting: {
@@ -166,6 +172,8 @@ describe('compensation admin routes', () => {
     const ok = await request('/v1/admin/compensation/partners/rank', 'PATCH', {
       identifier: 'ada@example.com',
       rank: 'Leader',
+      reason: 'Pilot review',
+      overrideUntil: '2026-12-31',
     });
     const bad = await request('/v1/admin/compensation/partners/rank', 'PATCH', {
       identifier: 'ada@example.com',
@@ -174,6 +182,8 @@ describe('compensation admin routes', () => {
 
     assert.equal(ok.status, 200);
     assert.equal(rankInput.rank, 'Leader');
+    assert.equal(rankInput.reason, 'Pilot review');
+    assert.equal(rankInput.overrideUntil, '2026-12-31');
     assert.equal(bad.status, 400);
   });
 

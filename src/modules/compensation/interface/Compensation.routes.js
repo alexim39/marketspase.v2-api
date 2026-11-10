@@ -155,15 +155,27 @@ export const buildAdminCompensationRouter = (deps = {}) => {
   }));
 
   router.patch('/partners/rank', validate({ body: SetCommissionRankSchema }), asyncHandler(async (req, res) => {
-    const data = await setRank.execute(req.validated.body.identifier, req.validated.body.rank);
+    const body = req.validated.body;
+    const data = await setRank.execute({
+      identifier: body.identifier,
+      rank: body.rank,
+      reason: body.reason,
+      overrideUntil: body.overrideUntil ?? null,
+      actorId: req.auth.partnerId,
+    });
     void audit({
       actorId: req.auth.partnerId,
       action: 'commission.rank.set',
       targetType: 'partner',
       targetId: data.id,
-      detail: { rank: data.commissionRank },
+      detail: {
+        rank: data.commissionRank,
+        source: data.commissionRankSource,
+        reason: data.commissionRankReason,
+        overrideUntil: data.commissionRankOverrideUntil,
+      },
     });
-    return sendSuccess(res, { message: `Commission rank set to ${data.commissionRank}`, data });
+    return sendSuccess(res, { message: `Commission rank override set to ${data.commissionRank}`, data });
   }));
 
   return router;

@@ -14,6 +14,7 @@ import {
   CommissionSaleModel,
   GrowthCommissionModel,
   MentorBonusModel,
+  PartnerRankHistoryModel,
   ProductCommissionSaleModel,
 } from './Compensation.models.js';
 import {
@@ -27,6 +28,7 @@ import {
   rankDepth,
   rateForLevel,
 } from '../domain/Compensation.plan.js';
+import { rankFromJourneyLevel, shouldAutoSyncRank } from '../domain/Compensation.rank.js';
 import { recordAudit } from '../../audit/index.js';
 import { summarizeProductMargins, productCommissionShares } from '../domain/ProductCommission.js';
 
@@ -871,7 +873,7 @@ export class MongoCompensationRepository {
 
   async listMine(partnerId) {
     const partner = await PartnersModel.findById(partnerId)
-      .select('name surname username email balance commissionRank partnerOf')
+      .select('name surname username email balance commissionRank commissionRankSource commissionRankReason commissionRankOverrideUntil partnerOf')
       .lean();
     if (!partner) throw new NotFoundException('Partner account not found');
 
@@ -909,6 +911,9 @@ export class MongoCompensationRepository {
         username: partner.username ?? '',
         balance: Number(partner.balance) || 0,
         commissionRank: normalizedRank(partner.commissionRank),
+        commissionRankSource: partner.commissionRankSource ?? 'auto',
+        commissionRankReason: partner.commissionRankReason ?? '',
+        commissionRankOverrideUntil: partner.commissionRankOverrideUntil ?? null,
         depth: rankDepth(normalizedRank(partner.commissionRank)),
         placed: !!partner.partnerOf,
       },
@@ -1021,32 +1026,179 @@ export class MongoCompensationRepository {
     };
   }
 
-  async setRank(identifier, rank) {
+  async setRank(identifier, rank, { actorId = null, reason = '', overrideUntil = null, now = new Date() } = {}) {
     const value = String(identifier ?? '').trim();
     if (!value) throw new ValidationException('Partner identifier is required');
     if (!RANKS.includes(rank)) throw new ValidationException('Invalid commission rank');
+    const until = overrideUntil ? new Date(overrideUntil) : null;
+    if (until && Number.isNaN(until.getTime())) throw new ValidationException('Invalid override expiry');
+
     const filter = hasId(value)
       ? { _id: value }
       : (value.includes('@')
         ? { email: value.toLowerCase() }
         : { username: value.toLowerCase().replace(/^@/, '') });
-    const partner = await PartnersModel.findOneAndUpdate(
-      filter,
-      { $set: { commissionRank: rank } },
+    const current = await PartnersModel.findOne(filter)
+      .select('name surname username email commissionRank commissionRankSource')
+      .lean();
+    if (!current) throw new NotFoundException('Partner not found');
+
+    const note = String(reason ?? '').trim().slice(0, 500) || 'Manual commission rank override';
+    const partner = await PartnersModel.findByIdAndUpdate(
+      current._id,
+      {
+        $set: {
+          commissionRank: rank,
+          commissionRankSource: 'admin',
+          commissionRankReason: note,
+          commissionRankOverrideUntil: until,
+          commissionRankUpdatedBy: actorId || null,
+          commissionRankUpdatedAt: now,
+        },
+      },
       { new: true },
-    ).select('name surname username email commissionRank').lean();
+    ).select('name surname username email commissionRank commissionRankSource commissionRankReason commissionRankOverrideUntil commissionRankUpdatedAt').lean();
     if (!partner) throw new NotFoundException('Partner not found');
+
+    const from = normalizedRank(current.commissionRank);
+    if (from !== rank) {
+      await PartnerRankHistoryModel.create({
+        partnerId: partner._id,
+        from,
+        to: rank,
+        source: 'admin',
+        actorId: actorId || null,
+        reason: note,
+      });
+    }
+
     return {
       id: String(partner._id),
       name: labelOf(partner),
       username: partner.username ?? '',
       email: partner.email ?? '',
       commissionRank: normalizedRank(partner.commissionRank),
+      commissionRankSource: partner.commissionRankSource ?? 'admin',
+      commissionRankReason: partner.commissionRankReason ?? note,
+      commissionRankOverrideUntil: partner.commissionRankOverrideUntil ?? null,
+      commissionRankUpdatedAt: partner.commissionRankUpdatedAt ?? now,
     };
   }
 
-  async reconcileCompensation(now = new Date()) {
-    const stats = { salesCreated: 0, allocationsAccrued: 0, mentorsAttached: 0, autoReleased: 0, failed: 0 };
+  /**
+   * Mirror the journey/training rank into the commission rank.
+   * Active admin overrides win; expired overrides fall back to auto.
+   */
+  async syncRankFromProgression({
+    partnerId,
+    from = null,
+    to,
+    source = 'auto',
+    actorId = null,
+    reason = '',
+    now = new Date(),
+  }) {
+    if (!hasId(partnerId)) throw new ValidationException('Invalid partner id');
+    const target = rankFromJourneyLevel(to);
+    const partner = await PartnersModel.findById(partnerId)
+      .select('commissionRank commissionRankSource commissionRankOverrideUntil')
+      .lean();
+    if (!partner) return { skipped: true, reason: 'not-found', commissionRank: 'Partner' };
+    if (!shouldAutoSyncRank(partner, now)) {
+      return {
+        skipped: true,
+        reason: 'manual-override',
+        commissionRank: normalizedRank(partner.commissionRank),
+      };
+    }
+
+    const current = normalizedRank(partner.commissionRank);
+    const note = String(reason ?? '').trim().slice(0, 500)
+      || `Synced from journey rank ${from ?? 'previous'} to ${to}`;
+    const updated = await PartnersModel.findByIdAndUpdate(
+      partnerId,
+      {
+        $set: {
+          commissionRank: target,
+          commissionRankSource: 'auto',
+          commissionRankReason: note,
+          commissionRankOverrideUntil: null,
+          commissionRankUpdatedBy: null,
+          commissionRankUpdatedAt: now,
+        },
+      },
+      { new: true },
+    ).select('commissionRank commissionRankSource commissionRankReason commissionRankUpdatedAt').lean();
+    if (!updated) return { skipped: true, reason: 'not-found', commissionRank: current };
+
+    if (current !== target) {
+      await PartnerRankHistoryModel.create({
+        partnerId,
+        from: current,
+        to: target,
+        source: source === 'backfill' ? 'backfill' : 'auto',
+        actorId: actorId || null,
+        reason: note,
+      });
+    }
+
+    return {
+      skipped: false,
+      changed: current !== target,
+      from: current,
+      to: target,
+      commissionRank: normalizedRank(updated.commissionRank),
+      commissionRankSource: updated.commissionRankSource ?? 'auto',
+    };
+  }
+
+  /**
+   * Repair drift between the stored journey level and commission rank.
+   * Called by the hourly compensation reconcile sweep.
+   */
+  async reconcileCommissionRanks({ progress, now = new Date(), limit = 500 } = {}) {
+    const stats = { scanned: 0, synced: 0, skipped: 0, failed: 0 };
+    if (!progress?.levelsFor) return stats;
+
+    const partners = await PartnersModel.find({
+      $or: [
+        { commissionRankSource: 'auto' },
+        { commissionRankSource: 'admin', commissionRankOverrideUntil: { $ne: null, $lte: now } },
+      ],
+    })
+      .select('_id')
+      .limit(Math.min(Math.max(Number(limit) || 500, 1), 2000))
+      .lean();
+    stats.scanned = partners.length;
+    if (partners.length === 0) return stats;
+
+    const ids = partners.map((partner) => String(partner._id));
+    const levels = await progress.levelsFor(ids).catch(() => ({}));
+    for (const partner of partners) {
+      const level = levels[String(partner._id)];
+      if (!level) {
+        stats.skipped += 1;
+        continue;
+      }
+      try {
+        const result = await this.syncRankFromProgression({
+          partnerId: String(partner._id),
+          to: level,
+          source: 'backfill',
+          reason: 'Reconciled with journey rank',
+          now,
+        });
+        if (result?.changed) stats.synced += 1;
+        else stats.skipped += 1;
+      } catch {
+        stats.failed += 1;
+      }
+    }
+    return stats;
+  }
+
+  async reconcileCompensation(now = new Date(), deps = {}) {
+    const stats = { salesCreated: 0, allocationsAccrued: 0, mentorsAttached: 0, autoReleased: 0, ranksSynced: 0, failed: 0 };
     const cutoff = new Date(now.getTime() - (120 * DAY_MS));
 
     const orders = await ActivationOrderModel.find({
@@ -1139,6 +1291,14 @@ export class MongoCompensationRepository {
       } catch {
         stats.failed += 1;
       }
+    }
+
+    try {
+      const rankStats = await this.reconcileCommissionRanks({ progress: deps.progress, now });
+      stats.ranksSynced = rankStats.synced ?? 0;
+      stats.failed += rankStats.failed ?? 0;
+    } catch {
+      stats.failed += 1;
     }
 
     return stats;

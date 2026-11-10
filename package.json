@@ -17,6 +17,7 @@
     "ci:mongo": "node scripts/ci-init-mongo-replica.js",
     "migrate:pii": "node scripts/migrate-pii-encryption.js",
     "pii:key": "node scripts/generate-pii-key.mjs",
+    "migrate:rank-sync": "node scripts/migrate-rank-sync.mjs",
     "migrate:upline": "node scripts/migrate-single-upline.mjs",
     "audit:upline": "node scripts/check-single-upline.mjs",
     "audit:legacy": "node scripts/legacy-route-audit.mjs",

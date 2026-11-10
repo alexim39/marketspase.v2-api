@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { OraContextAssembler } from './Ora.context.js';
 
 const PID = '507f1f77bcf86cd799439011';
+const NOW = new Date('2026-11-07T10:00:00Z');
+const daysAgo = (days) => new Date(NOW.getTime() - days * 86400000).toISOString();
 
 const assembler = () => new OraContextAssembler({
   prospects: {
@@ -19,8 +21,8 @@ const assembler = () => new OraContextAssembler({
           communications: [{
             status: 'Open',
             type: 'call',
-            date: new Date(Date.now() - 5 * 86400000).toISOString(),
-            followUpDate: new Date(Date.now() - 2 * 86400000).toISOString(),
+            date: daysAgo(5),
+            followUpDate: daysAgo(2),
           }],
         },
         {
@@ -70,7 +72,7 @@ const assembler = () => new OraContextAssembler({
 });
 
 test('assembly carries wallet, stage mix and live opportunities', async () => {
-  const ctx = await assembler().assemble({ partnerId: PID, now: new Date('2026-11-07T10:00:00Z') });
+  const ctx = await assembler().assemble({ partnerId: PID, now: NOW });
   assert.equal(ctx.displayName, 'Ada Obi');
   assert.equal(ctx.walletBalance, 2500);
   assert.equal(ctx.pipeline.byStage.Contacted, 1);
