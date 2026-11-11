@@ -46,7 +46,7 @@ Hydrogen water is a wellness product, not a medicine. This bottle is not a medic
   howToUse: 'Fill the bottle with clean drinking water. Select the 5-minute or 10-minute hydrogen mode and let the cycle finish. Drink the water fresh and follow the included care instructions for cleaning, storage and charging.',
   deliveryNote: 'Nationwide delivery. Dispatch and delivery timelines are confirmed at checkout.',
   price: 450000,
-  partnerPrice: 300000,
+  partnerPrice: 325000,
   retailPrice: 450000,
   stock: null,
   sortOrder: 1,
@@ -88,7 +88,7 @@ if (!APPLY) {
       name: H2OS.name,
       partnerPrice: H2OS.partnerPrice,
       retailPrice: H2OS.retailPrice,
-      expectedPartnerMarginPercent: 31.33,
+      expectedPartnerMarginPercent: 25.78,
       media: H2OS.media.map((item) => item.file),
     },
   }, null, 2));
