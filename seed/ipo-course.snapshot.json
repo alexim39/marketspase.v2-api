@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "kind": "marketspase-training-course",
+  "exportedAt": "2026-11-11T12:27:16.559Z",
+  "sourceDatabase": "marketspaseV2",
+  "sourceAdmin": {
+    "id": "6ae8907e307c5244570bd820",
+    "username": "aimenwo",
+    "name": "Alex Imenwo"
+  },
+  "course": {
+    "_id": "6af43d2a78d4a0509fd40a0f",
+    "title": "Initial Planning Orientation (IPO)",
+    "tagline": "Understand the business, the money flow and your first 30 days.",
+    "description": "IPO is the first step in the MarketSpase Academy. Learn how a network-marketing business earns, how commissions move from a customer order to the field, what professional follow-up looks like, and the simple rhythm that makes the first 30 days count. Finish all four lessons and pass each quiz. Your IPO rank training is recorded automatically.",
+    "milestone": "ipo",
+    "coverUrl": "https://i.ytimg.com/vi/RzOgum0ybNM/hqdefault.jpg",
+    "status": "published",
+    "sortOrder": 0,
+    "publishedAt": "2026-11-11T10:02:17.888Z",
+    "archivedAt": null,
+    "createdBy": "6ae8907e307c5244570bd820",
+    "updatedBy": "6ae8907e307c5244570bd820",
+    "createdAt": "2026-11-11T10:02:18.043Z",
+    "updatedAt": "2026-11-11T10:02:50.162Z",
+    "__v": 0
+  },
+  "lessons": [
+    {
+      "_id": "6af43d2a78d4a0509fd40a18",
+      "courseId": "6af43d2a78d4a0509fd40a0f",
+      "title": "The business model: how you earn",
+      "summary": "Why products come first, how the network works, and what separates a real business from hype. Video: Frazer Brookes.",
+      "body": "Network marketing is a direct-selling business. You earn when products are sold to real customers, and you can also build a team that sells products. There is no salary and no shortcut. Income follows the value you create for customers and the consistency with which you build your team.\n\nYour business has two engines.\n\nRetail: find people who need the products, serve them well, and earn from repeat orders. Team: invite serious people, train them to do the same, and earn from team product sales according to the compensation plan.\n\nThe product is the reason a customer returns. The team is the reason the business can grow beyond your personal hours. Neither works without trust.\n\nBefore you invite anyone, be able to explain three things in five minutes: what problem the product solves, how a partner earns, and what the first 30 days look like. If you cannot explain it simply, you are not ready to recruit. Learn it, practise it, then invite.",
+      "takeaways": [
+        "Income follows product sales and team sales, not tenure or hype.",
+        "Retail customers create the repeat revenue that makes the business durable.",
+        "Learn the product and plan well enough to explain them in five minutes."
+      ],
+      "transcript": "Video summary (not verbatim) — Frazer Brookes explains the network-marketing model: products are sold to real customers, partners can build teams, and income follows the value created. The lesson connects that model to MarketSpase: products and trust come before growth, and every partner should be able to explain the product, earning model and first 30 days simply.",
+      "youtubeId": "RzOgum0ybNM",
+      "youtubeUrl": "https://www.youtube.com/watch?v=RzOgum0ybNM",
+      "thumbnailUrl": "https://i.ytimg.com/vi/RzOgum0ybNM/hqdefault.jpg",
+      "durationSec": 1217,
+      "quiz": [
+        {
+          "q": "How does a partner earn in MarketSpase?",
+          "options": [
+            "A fixed salary from the company",
+            "Through product sales and team product sales",
+            "Only by recruiting new people"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "What makes the business durable?",
+          "options": [
+            "Repeat product customers",
+            "Big launches only",
+            "Changing the plan often"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "Before inviting a prospect, you should…",
+          "options": [
+            "Be able to explain the product, earning model and first 30 days simply",
+            "Wait until you have a title",
+            "Promise a guaranteed income"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "Which statement is true?",
+          "options": [
+            "Recruitment alone is the business",
+            "Products and trust come before growth",
+            "Income is guaranteed once you join"
+          ],
+          "answer": 1
+        }
+      ],
+      "status": "published",
+      "sortOrder": 0,
+      "createdBy": "6ae8907e307c5244570bd820",
+      "updatedBy": "6ae8907e307c5244570bd820",
+      "createdAt": "2026-11-11T10:02:18.478Z",
+      "updatedAt": "2026-11-11T10:02:50.565Z",
+      "__v": 0
+    },
+    {
+      "_id": "6af43d2a78d4a0509fd40a23",
+      "courseId": "6af43d2a78d4a0509fd40a0f",
+      "title": "How commissions flow",
+      "summary": "Pending, released, voided and your ledger — the money lifecycle in plain language. Video: Wealthanize.",
+      "body": "Every product order can create commissions along the referral chain. The company earns from the sale, the partner who served the customer earns, and the mentors above earn according to the compensation plan. The plan is designed so that every contribution has a defined reward.\n\nA commission entry starts as Pending when an order is created. It becomes Released when the order is approved and payable. If the order is refunded, cancelled or reversed, the commission is voided or clawed back. That is why the ledger is the single source of truth: it records what happened, not what someone promised.\n\nCheck your ledger weekly. Know the difference between pending and released money. Keep your account qualified, because a lapse can pause the team-side rewards you have worked to build. If an entry looks wrong, collect the order reference and ask your upline or support instead of guessing.\n\nThe plan is not a get-rich-quick scheme. It is a set of rules that pays only when real products are sold and the business is maintained.",
+      "takeaways": [
+        "Pending → Released → Paid is the normal commission lifecycle.",
+        "Refunds and reversals claw commission back.",
+        "Your in-app ledger is the single source of truth — review it weekly.",
+        "Keep your account qualified so team-side rewards are not interrupted."
+      ],
+      "transcript": "Video summary (not verbatim) — Wealthanize explains common network-marketing compensation plans and how pay is calculated. The lesson connects the concepts to MarketSpase: an order creates a pending commission, approval releases it, refunds or reversals void it, and the member ledger is the auditable record. Check it weekly and keep your account qualified.",
+      "youtubeId": "3ASdyUGcjBg",
+      "youtubeUrl": "https://www.youtube.com/watch?v=3ASdyUGcjBg",
+      "thumbnailUrl": "https://i.ytimg.com/vi/3ASdyUGcjBg/hqdefault.jpg",
+      "durationSec": 1300,
+      "quiz": [
+        {
+          "q": "A new commission starts as…",
+          "options": [
+            "Released",
+            "Pending",
+            "Paid"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "A Pending commission becomes Released when…",
+          "options": [
+            "The order is approved",
+            "You ask your upline",
+            "The month ends"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "A refunded or reversed order means the commission is…",
+          "options": [
+            "Doubled as a bonus",
+            "Voided or clawed back",
+            "Ignored forever"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "Where should you confirm what you actually earned?",
+          "options": [
+            "Your ledger in the app",
+            "A screenshot from someone else",
+            "Word of mouth"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "How often should you review your ledger?",
+          "options": [
+            "Weekly",
+            "Once a year",
+            "Never"
+          ],
+          "answer": 0
+        }
+      ],
+      "status": "published",
+      "sortOrder": 1,
+      "createdBy": "6ae8907e307c5244570bd820",
+      "updatedBy": "6ae8907e307c5244570bd820",
+      "createdAt": "2026-11-11T10:02:18.870Z",
+      "updatedAt": "2026-11-11T10:02:50.962Z",
+      "__v": 0
+    },
+    {
+      "_id": "6af43d2b78d4a0509fd40a2b",
+      "courseId": "6af43d2a78d4a0509fd40a0f",
+      "title": "The first step: become a professional",
+      "summary": "The standard behind lasting success: skills, follow-up and service. Video: Eric Worre.",
+      "body": "The first step is not a clever script. It is deciding to become a professional. Professionals learn the product, keep promises, follow up on time, and treat every prospect with respect. They do not chase, pressure or exaggerate.\n\nYour reputation is the real asset. A prospect may say no today, but they will remember how you handled it. A customer may buy once; good service brings them back. A teammate may struggle; consistent coaching keeps them in the game.\n\nBuild three habits: learn daily (one product fact, one plan concept, one customer story), talk daily (start conversations, listen more than you pitch, record the next action), and follow up daily (do what you said, when you said it).\n\nDo not wait until you feel ready. Readiness comes from repetition. Your upline is your coach; ask for help early, watch them work, and practise until the basics feel normal.",
+      "takeaways": [
+        "Professionalism is a habit: learn, talk, follow up.",
+        "Your reputation grows every time you keep a promise.",
+        "A “no” is redirection, not rejection.",
+        "Do the basics until they feel normal, then teach them to your team."
+      ],
+      "transcript": "Video summary (not verbatim) — Eric Worre explains that lasting network-marketing success begins with becoming a professional: learning the craft, serving people, following up and treating the business with discipline. This lesson applies that standard to MarketSpase conversations, customer service and coaching.",
+      "youtubeId": "Hbne5qAI1FI",
+      "youtubeUrl": "https://www.youtube.com/watch?v=Hbne5qAI1FI",
+      "thumbnailUrl": "https://i.ytimg.com/vi/Hbne5qAI1FI/hqdefault.jpg",
+      "durationSec": 545,
+      "quiz": [
+        {
+          "q": "What is the first professional step?",
+          "options": [
+            "Learn a clever closing script",
+            "Decide to become a professional",
+            "Buy followers"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "How should a professional treat a “no”?",
+          "options": [
+            "As redirection and a future follow-up",
+            "As a personal attack",
+            "As a reason to stop learning"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "Which habit belongs in the daily rhythm?",
+          "options": [
+            "Learn, talk and follow up",
+            "Wait for perfect confidence",
+            "Only post on social media"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "Your upline is best used as…",
+          "options": [
+            "A coach you ask early and often",
+            "A boss who does the work for you",
+            "Someone to avoid"
+          ],
+          "answer": 0
+        }
+      ],
+      "status": "published",
+      "sortOrder": 2,
+      "createdBy": "6ae8907e307c5244570bd820",
+      "updatedBy": "6ae8907e307c5244570bd820",
+      "createdAt": "2026-11-11T10:02:19.261Z",
+      "updatedAt": "2026-11-11T10:02:51.679Z",
+      "__v": 0
+    },
+    {
+      "_id": "6af43d2b78d4a0509fd40a34",
+      "courseId": "6af43d2a78d4a0509fd40a0f",
+      "title": "Your first 30 days",
+      "summary": "A simple, repeatable rhythm for week one and the rest of your first month. Video: Sandro Cazzato.",
+      "body": "Your first 30 days are not about being perfect. They are about building a rhythm you can repeat. Week one is foundation week: finish IPO, complete your profile, write down 50 people you can serve, and book a session with your upline.\n\nWeeks two to four are rhythm weeks. Present the products or opportunity every day, follow up warmly, and log every touch in the CRM. Attend team training, review your numbers against your calendar, and keep your list growing. Small actions, done daily, compound faster than occasional big pushes.\n\nExpect no. A no is information and redirection, not rejection. Thank the person, note the follow-up date, and move to the next conversation. On hard days, call your coach instead of going silent. Duplication begins when your first teammate can copy what they see you do.\n\nAt day 30, review: Did you finish the training? Did you create a daily conversation habit? Did you log your follow-ups? Did you keep your commitments? A yes to those questions is more valuable than a lucky launch.",
+      "takeaways": [
+        "Week one: finish IPO, set up your profile, list 50 people and book your upline session.",
+        "Weeks two to four: present daily, follow up, log every touch and attend training.",
+        "Rejection is redirection. Never go silent; call your coach.",
+        "A consistent first 30 days compounds into a stronger first year."
+      ],
+      "transcript": "Video summary (not verbatim) — Sandro Cazzato discusses how the first 30 days shape the trajectory of a network-marketing business. The lesson turns it into a simple MarketSpase plan: foundation week, a daily conversation and follow-up rhythm, weekly review, and visible duplication.",
+      "youtubeId": "Ee6jWe4viyU",
+      "youtubeUrl": "https://www.youtube.com/watch?v=Ee6jWe4viyU",
+      "thumbnailUrl": "https://i.ytimg.com/vi/Ee6jWe4viyU/hqdefault.jpg",
+      "durationSec": 640,
+      "quiz": [
+        {
+          "q": "What should week one focus on?",
+          "options": [
+            "Foundation: training, profile, 50 names and an upline session",
+            "Mass recruiting everyone you know",
+            "Running paid ads"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "What is the daily rhythm for weeks two to four?",
+          "options": [
+            "Present, follow up and log every touch",
+            "Wait for inbound leads",
+            "Only follow up on Mondays"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "What should you do when someone says no?",
+          "options": [
+            "Thank them, note a follow-up and keep moving",
+            "Argue until they agree",
+            "Delete their number"
+          ],
+          "answer": 0
+        },
+        {
+          "q": "What makes duplication possible?",
+          "options": [
+            "Doing the basics visibly so a teammate can copy you",
+            "Keeping your methods secret",
+            "Waiting until you are famous"
+          ],
+          "answer": 0
+        }
+      ],
+      "status": "published",
+      "sortOrder": 3,
+      "createdBy": "6ae8907e307c5244570bd820",
+      "updatedBy": "6ae8907e307c5244570bd820",
+      "createdAt": "2026-11-11T10:02:19.650Z",
+      "updatedAt": "2026-11-11T10:02:52.079Z",
+      "__v": 0
+    }
+  ]
+}

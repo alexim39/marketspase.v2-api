@@ -14,6 +14,7 @@
     "smoke:paystack": "node scripts/mock-paystack-server.js",
     "smoke:store:seed": "node scripts/seed-store-e2e.js",
     "seed:ipo": "node scripts/seed-ipo-course.js",
+    "restore:ipo": "node scripts/restore-ipo-course.js",
     "settle:pending-withdrawals": "node scripts/settle-pending-manual-withdrawals.js",
     "smoke:store": "node scripts/smoke-store-flow.js",
     "ci:mongo": "node scripts/ci-init-mongo-replica.js",
