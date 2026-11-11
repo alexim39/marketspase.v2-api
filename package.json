@@ -13,6 +13,7 @@
     "smoke:compensation": "node scripts/smoke-compensation-flow.js",
     "smoke:paystack": "node scripts/mock-paystack-server.js",
     "smoke:store:seed": "node scripts/seed-store-e2e.js",
+    "seed:ipo": "node scripts/seed-ipo-course.js",
     "smoke:store": "node scripts/smoke-store-flow.js",
     "ci:mongo": "node scripts/ci-init-mongo-replica.js",
     "migrate:pii": "node scripts/migrate-pii-encryption.js",
