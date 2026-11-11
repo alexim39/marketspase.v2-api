@@ -8,6 +8,7 @@ import {
 
 const ADMIN_ROLES = ['admin', 'Admin', 'ADMIN'];
 const ENSURE_TTL_MS = 5 * 60 * 1000;
+const SYSTEM_SENDER_LABEL = 'MarketSpase';
 
 /**
  * Owns the official journey-level groups.
@@ -101,6 +102,7 @@ export class RankGroupService {
           groupId: group.id,
           senderId: owner,
           body: config.welcome,
+          senderLabel: SYSTEM_SENDER_LABEL,
         }).catch(() => null);
         const messageId = message?.id ?? (message?._id ? String(message._id) : null);
         if (messageId) {

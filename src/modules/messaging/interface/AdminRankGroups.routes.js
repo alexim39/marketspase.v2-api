@@ -66,7 +66,7 @@ export const buildAdminRankGroupsRouter = (deps = {}) => {
     const sender = memberById.get(String(message.senderId)) ?? null;
     return {
       ...message,
-      senderName: sender?.name ?? 'Former member',
+      senderName: message.senderLabel ?? sender?.name ?? 'Former member',
       senderPhoto: sender?.photo ?? null,
       senderRole: sender?.role ?? null,
     };
@@ -212,6 +212,7 @@ export const buildAdminRankGroupsRouter = (deps = {}) => {
       senderId: req.auth?.partnerId,
       body,
       attachments: [],
+      senderLabel: 'MarketSpase',
     });
     const messageId = message?.id ?? (message?._id ? String(message._id) : null);
     await groups.updateGroup(group.id, { pinnedMessageId: messageId });

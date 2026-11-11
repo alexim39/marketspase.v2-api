@@ -58,6 +58,7 @@ const groupMessageSchema = mongoose.Schema(
   {
     groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChatGroup', required: true, index: true },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
+    senderLabel: { type: String, default: null, trim: true, maxlength: 80 },
     body: { type: String, required: true, trim: true, maxlength: 2000 },
     attachments: {
       type: [{

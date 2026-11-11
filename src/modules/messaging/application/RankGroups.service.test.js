@@ -54,8 +54,8 @@ const fakeStore = () => {
     async isBanned(gid, pid) {
       return state.bans.has(key(gid, String(pid)));
     },
-    async createGroupMessage({ groupId, senderId, body }) {
-      const message = { id: `m${++state.seq}`, groupId, senderId, body };
+    async createGroupMessage({ groupId, senderId, body, senderLabel = null }) {
+      const message = { id: `m${++state.seq}`, groupId, senderId, body, senderLabel };
       state.messages.push(message);
       return message;
     },
@@ -93,6 +93,7 @@ describe('RankGroupService', () => {
       assert.ok(group.pinnedMessageId);
     }
     assert.equal(groups.state.messages.length, 4);
+    assert.ok(groups.state.messages.every((m) => m.senderLabel === 'MarketSpase'));
   });
 
   it('moves a member up and back down with their journey level', async () => {

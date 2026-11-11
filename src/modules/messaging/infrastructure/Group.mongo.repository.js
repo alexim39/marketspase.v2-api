@@ -267,8 +267,8 @@ export class MongoGroupStore {
     return doc;
   }
 
-  async createGroupMessage({ groupId, senderId, body, attachments = [] }) {
-    const doc = await GroupMessageModel.create({ groupId, senderId, body, attachments });
+  async createGroupMessage({ groupId, senderId, body, attachments = [], senderLabel = null }) {
+    const doc = await GroupMessageModel.create({ groupId, senderId, body, attachments, senderLabel });
     return shaped(doc.toObject());
   }
 
@@ -346,7 +346,7 @@ export class MongoGroupStore {
         unread: unreads[gid] ?? 0,
         myRole: mem.role ?? 'member',
         muted: !!mem.muted,
-        lastMessage: last ? { ...last, senderName: labels[String(last.senderId)] ?? null } : null,
+        lastMessage: last ? { ...last, senderName: last.senderLabel ?? labels[String(last.senderId)] ?? null } : null,
       };
     }).sort((a, b) => (a.rankGroup ? 0 : 1) - (b.rankGroup ? 0 : 1));
   }
