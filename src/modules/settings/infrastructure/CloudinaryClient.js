@@ -1,10 +1,10 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 /**
- * Cloudinary image store (profile photos).
- * Credentials come from env at construction and are never logged —
- * only the folder/public-id (non-secrets) appear in errors. Uploads go
- * to `folder` with a server-generated public id (never the client
+ * Cloudinary image/video asset store (profile photos, store branding and
+ * product media). Credentials come from env at construction and are never
+ * logged — only the folder/public-id (non-secrets) appear in errors. Uploads
+ * go to `folder` with a server-generated public id (never the client
  * filename). Inject `sdk` in tests.
  */
 export class ImageStore {
@@ -23,6 +23,20 @@ export const publicIdFromUrl = (url) => {
   if (!m) return null;
   const id = m[1].trim();
   return id && !/\s/.test(id) ? id : null;
+};
+
+/**
+ * Cloudinary video poster: insert a first-frame transformation and swap the
+ * extension. Returns the original URL if it is not a video delivery URL.
+ */
+export const videoPosterUrl = (url) => {
+  const value = String(url ?? '').trim();
+  if (!value.includes('/video/upload/')) return '';
+  const transformed = value.replace(
+    '/video/upload/',
+    '/video/upload/so_0,w_1200,h_1200,c_fill,q_auto,f_jpg/',
+  );
+  return transformed.replace(/\.(mp4|webm|mov|avi|mkv|m3u8)(?:[?#].*)?$/i, '.jpg');
 };
 
 export class CloudinaryImageStore extends ImageStore {
@@ -55,7 +69,18 @@ export class CloudinaryImageStore extends ImageStore {
       const done = (error, result) => {
         if (error) return reject(new Error(`${this.label} upload failed: ${error?.message ?? 'unknown error'}`));
         if (!result?.secure_url) return reject(new Error(`${this.label} upload returned no URL`));
-        resolve({ url: result.secure_url, publicId: result.public_id ?? null });
+        const video = (result.resource_type ?? rt) === 'video';
+        const thumbnailUrl = video ? videoPosterUrl(result.secure_url) : result.secure_url;
+        resolve({
+          url: result.secure_url,
+          publicId: result.public_id ?? null,
+          width: Number.isFinite(Number(result.width)) ? Number(result.width) : null,
+          height: Number.isFinite(Number(result.height)) ? Number(result.height) : null,
+          duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : null,
+          format: result.format ?? null,
+          resourceType: result.resource_type ?? rt,
+          thumbnailUrl,
+        });
       };
       const stream = chunked
         ? sdk.uploader.upload_chunked_stream(

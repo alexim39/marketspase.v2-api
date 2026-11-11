@@ -67,9 +67,9 @@ export const errorMiddleware = (err, req, res, _next) => {
   // Multer upload errors (size caps, field limits) — client errors, not 500s.
   if (err?.name === 'MulterError') {
     return res.status(400).json(envelope(req, {
-      message: err.code === 'LIMIT_FILE_SIZE' ? 'Image is too large (max 5MB)' : 'Invalid upload',
+      message: err.code === 'LIMIT_FILE_SIZE' ? 'File is too large for this upload' : 'Invalid upload',
       code: 'VALIDATION_ERROR',
-      fix: 'Choose a smaller supported image and try again.',
+      fix: 'Choose a smaller supported file and try again.',
       statusCode: 400,
     }));
   }

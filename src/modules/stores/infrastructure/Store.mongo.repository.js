@@ -40,20 +40,59 @@ const labelOf = (partner) => (
   [partner?.name, partner?.surname].filter(Boolean).join(' ') || partner?.username || 'Partner'
 );
 
-const publicProduct = (product) => ({
-  id: String(product._id),
-  productId: String(product.productId),
-  name: product.name,
-  image: product.image ?? '',
-  images: product.images ?? [],
-  category: product.category ?? 'Essentials',
-  shortDesc: product.shortDesc ?? '',
-  description: product.description ?? '',
-  retailPrice: Number(product.retailPrice) || 0,
-  stock: Number(product.stock) || 0,
-  soldCount: Number(product.soldCount) || 0,
-  status: product.status,
-});
+const legacyProductMedia = (product = {}) => {
+  const urls = [product.image, ...(product.images ?? [])]
+    .map((url) => String(url ?? '').trim())
+    .filter(Boolean);
+  return [...new Set(urls)].slice(0, 5).map((url, index) => ({
+    type: 'image',
+    url,
+    thumbnailUrl: url,
+    order: index,
+  }));
+};
+
+const mergeCatalogMedia = (listing, product) => {
+  if (!product) return listing;
+  const media = Array.isArray(product.media) && product.media.length > 0
+    ? product.media
+    : listing.media;
+  return {
+    ...listing,
+    media: media ?? [],
+    image: product.img || listing.image,
+    images: (product.gallery?.length ? product.gallery : listing.images) ?? [],
+  };
+};
+
+const publicProduct = (product) => {
+  const media = Array.isArray(product.media) && product.media.length > 0
+    ? product.media.map((item, index) => ({
+      type: item.type === 'video' ? 'video' : 'image',
+      url: item.url ?? '',
+      thumbnailUrl: item.thumbnailUrl ?? (item.type === 'video' ? '' : item.url ?? ''),
+      width: item.width ?? null,
+      height: item.height ?? null,
+      duration: item.duration ?? null,
+      order: Number.isFinite(Number(item.order)) ? Number(item.order) : index,
+    })).sort((a, b) => a.order - b.order)
+    : legacyProductMedia(product);
+  return {
+    id: String(product._id),
+    productId: String(product.productId),
+    name: product.name,
+    image: product.image ?? '',
+    images: product.images ?? [],
+    media,
+    category: product.category ?? 'Essentials',
+    shortDesc: product.shortDesc ?? '',
+    description: product.description ?? '',
+    retailPrice: Number(product.retailPrice) || 0,
+    stock: Number(product.stock) || 0,
+    soldCount: Number(product.soldCount) || 0,
+    status: product.status,
+  };
+};
 
 const publicStore = (store, productCount = 0, categories = []) => ({
   id: String(store._id),
@@ -309,7 +348,7 @@ export class StoreRepository {
 
       const productIds = [...new Set(resaleItems.map((item) => String(item.product)))];
       const products = await ProductModel.find({ _id: { $in: productIds } })
-        .select('name img gallery category shortDesc desc retailPrice price')
+        .select('name img gallery media category shortDesc desc retailPrice price')
         .lean();
       const productMap = new Map(products.map((product) => [String(product._id), product]));
 
@@ -338,6 +377,7 @@ export class StoreRepository {
               name: product?.name ?? 'Product',
               image: product?.img ?? '',
               images: product?.gallery ?? [],
+              media: product?.media ?? [],
               category: product?.category ?? 'Essentials',
               shortDesc: product?.shortDesc ?? '',
               description: product?.desc ?? '',
@@ -469,10 +509,22 @@ export class StoreRepository {
         .lean()
         .catch(() => null),
     ]);
+    const productIds = [...new Set(products.map((product) => String(product.productId)))];
+    const catalogProducts = productIds.length
+      ? await ProductModel.find({ _id: { $in: productIds } })
+        .select('media img gallery status')
+        .lean()
+        .catch(() => [])
+      : [];
+    const catalogMap = new Map(catalogProducts.map((product) => [String(product._id), product]));
+    const visibleProducts = products.filter((product) => {
+      const catalog = catalogMap.get(String(product.productId));
+      return !catalog || !['draft', 'inactive', 'archived'].includes(catalog.status);
+    });
     const publicProps = publicStore(
       store,
-      products.length,
-      [...new Set(products.map((product) => product.category).filter(Boolean))],
+      visibleProducts.length,
+      [...new Set(visibleProducts.map((product) => product.category).filter(Boolean))],
     );
     return {
       store: {
@@ -501,7 +553,9 @@ export class StoreRepository {
           displayEmail: partner.displayEmail ?? '',
         } : null,
       },
-      products: products.map(publicProduct),
+      products: visibleProducts.map((product) => publicProduct(
+        mergeCatalogMedia(product, catalogMap.get(String(product.productId))),
+      )),
     };
   }
 
@@ -537,9 +591,15 @@ export class StoreRepository {
       status: 'published',
     }).lean();
     if (!product) throw new NotFoundException('Product not found');
+    const catalogProduct = product.productId
+      ? await ProductModel.findById(product.productId).select('media img gallery status').lean().catch(() => null)
+      : null;
+    if (catalogProduct && ['draft', 'inactive', 'archived'].includes(catalogProduct.status)) {
+      throw new NotFoundException('Product not found');
+    }
     return {
       store: publicStore(store, 0, []),
-      product: publicProduct(product),
+      product: publicProduct(mergeCatalogMedia(product, catalogProduct)),
     };
   }
 }

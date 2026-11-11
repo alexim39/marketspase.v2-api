@@ -6,6 +6,7 @@ import {
 } from '../../../shared/domain/AppError.js';
 import { domainEvents } from '../../../shared/events/DomainEvents.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
+import { ProductModel } from '../../../apps/product/models/product.model.js';
 import { PartnersModel, runInTransaction } from '../../identity-access/infrastructure/Auth.models.js';
 import { creditPartnerWallet } from '../../billing/application/Deposit.usecases.js';
 import {
@@ -360,6 +361,17 @@ export class StoreOrderRepository {
     }).lean();
     const byId = new Map(listings.map((listing) => [String(listing._id), listing]));
     if (byId.size !== requested.length) {
+      throw new ConflictException('One or more products are no longer available');
+    }
+    const catalogStatuses = await ProductModel.find({
+      _id: { $in: [...byId.values()].map((listing) => listing.productId) },
+    }).select('status').lean().catch(() => []);
+    const hiddenProductIds = new Set(
+      catalogStatuses
+        .filter((product) => ['draft', 'inactive', 'archived'].includes(product.status))
+        .map((product) => String(product._id)),
+    );
+    if ([...byId.values()].some((listing) => hiddenProductIds.has(String(listing.productId)))) {
       throw new ConflictException('One or more products are no longer available');
     }
 

@@ -1,4 +1,5 @@
-import {ProductModel, CartModel} from '../models/product.model.js';
+import { ProductModel, CartModel} from '../models/product.model.js';
+import { randomUUID } from 'node:crypto';
 import { sendEmail } from "../../../services/emailService.js";
 import {TransactionModel} from '../../transaction/models/transaction.model.js';
 import { PartnersModel } from '../../partner/models/partner.model.js';
@@ -19,6 +20,13 @@ import { SearchMissModel } from '../../../modules/search/infrastructure/SearchMi
 import { cleanShipping } from '../domain/Shipping.js';
 import { canBuyResale, cartSaleMode, resalePrices } from '../domain/Resale.js';
 import { aggregateStockRequirements, isStockTracked } from '../domain/Stock.js';
+import {
+  computeProductPricing,
+  normalizePricingMode,
+  validatePublishPricing,
+} from '../domain/ProductPricing.js';
+import { buildImageStore } from '../../../modules/settings/infrastructure/CloudinaryClient.js';
+import { env } from '../../../shared/config/env.js';
 
 const productCommissionPlan = () => (
   process.env.PRODUCT_COMMISSION_PLAN === 'legacy' ? 'legacy' : 'growth'
@@ -248,6 +256,168 @@ const cleanStringList = (value, { maxItems = 8, maxLength = 300 } = {}) => {
     .slice(0, maxItems);
 };
 
+const cleanRate = (value, label, fallback = 0) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > 1) {
+    throw new Error(`${label} must be between 0 and 1`);
+  }
+  return Math.round(number * 10000) / 10000;
+};
+
+const safeMediaUrl = (value, label) => {
+  const url = cleanText(value, 1000);
+  if (!url) throw new Error(`${label} is required`);
+  if (!/^(https?:\/\/|\/)/i.test(url)) {
+    throw new Error(`${label} must be an http(s) URL or a path starting with /`);
+  }
+  return url;
+};
+
+const cleanMediaList = (value) => {
+  if (!Array.isArray(value)) throw new Error('Media must be a list');
+  if (value.length > 5) throw new Error('A product can have at most 5 media items');
+  return value.map((item, index) => {
+    const raw = typeof item === 'string' ? { type: 'image', url: item } : (item ?? {});
+    const type = raw.type === 'video' ? 'video' : 'image';
+    const url = safeMediaUrl(raw.url, 'Media URL');
+    const thumbnailUrl = raw.thumbnailUrl ? safeMediaUrl(raw.thumbnailUrl, 'Media thumbnail') : '';
+    return {
+      type,
+      url,
+      thumbnailUrl: thumbnailUrl || (type === 'video' ? '' : url),
+      publicId: raw.publicId ? cleanText(raw.publicId, 300) : null,
+      width: raw.width === null || raw.width === undefined ? null : cleanNumber(raw.width, 'Media width'),
+      height: raw.height === null || raw.height === undefined ? null : cleanNumber(raw.height, 'Media height'),
+      duration: raw.duration === null || raw.duration === undefined ? null : cleanNumber(raw.duration, 'Media duration'),
+      order: index,
+    };
+  });
+};
+
+const cleanCostBreakdown = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const field = (key, label) => cleanNumber(value[key] ?? 0, label);
+  const manufacturing = field('manufacturing', 'Manufacturing cost');
+  const packaging = field('packaging', 'Packaging cost');
+  const inboundFreight = field('inboundFreight', 'Inbound freight');
+  const duties = field('duties', 'Duties and tariffs');
+  const other = field('other', 'Other landed cost');
+  const lastMileShipping = field('lastMileShipping', 'Last-mile delivery');
+  const handling = field('handling', 'Handling and fulfilment');
+  const acquisitionAllowance = field('acquisitionAllowance', 'Acquisition allowance');
+  const paymentFeeRate = Math.max(cleanRate(value.paymentFeeRate, 'Payment fee rate', 0.015), 0.015);
+  const refundReserveRate = Math.max(cleanRate(value.refundReserveRate, 'Refund reserve rate', 0.03), 0.03);
+  const rankReserveRate = Math.max(cleanRate(value.rankReserveRate, 'Rank reserve rate', 0.015), 0.015);
+  return {
+    manufacturing,
+    packaging,
+    inboundFreight,
+    duties,
+    other,
+    lastMileShipping,
+    handling,
+    acquisitionAllowance,
+    paymentFeeRate,
+    refundReserveRate,
+    rankReserveRate,
+    notes: cleanText(value.notes, 1000),
+    landedCost: Math.round((manufacturing + packaging + inboundFreight + duties + other) * 100) / 100,
+    totalCostPerUnit: Math.round((
+      manufacturing
+      + packaging
+      + inboundFreight
+      + duties
+      + other
+      + lastMileShipping
+      + handling
+      + acquisitionAllowance
+    ) * 100) / 100,
+  };
+};
+
+const mediaToLegacyFields = (media = []) => {
+  const images = media.filter((item) => item.type === 'image').map((item) => item.url);
+  const first = media[0];
+  const cover = first
+    ? (first.type === 'video' ? (first.thumbnailUrl || '') : first.url)
+    : '';
+  return {
+    img: cover || images[0] || '',
+    gallery: images,
+  };
+};
+
+const pricingOverrides = (body = {}) => {
+  const out = {};
+  if (body.targetPlatformContributionPct !== undefined) {
+    out.targetPlatformContributionPct = cleanRate(body.targetPlatformContributionPct, 'Target platform contribution');
+  }
+  if (body.targetPartnerMarginPct !== undefined) {
+    out.targetPartnerMarginPct = cleanRate(body.targetPartnerMarginPct, 'Target partner margin');
+  }
+  return out;
+};
+
+const buildPricingSnapshot = (fields = {}) => computeProductPricing({
+  mode: fields.pricingMode,
+  price: fields.price,
+  partnerPrice: fields.partnerPrice,
+  retailPrice: fields.retailPrice,
+  commissionable: fields.commissionable,
+  mentorBonus: fields.mentorBonus,
+  costBreakdown: fields.costBreakdown,
+  policy: {
+    ...pricingOverrides(fields),
+    ...(fields.costBreakdown?.paymentFeeRate !== undefined ? { paymentFeeRate: fields.costBreakdown.paymentFeeRate } : {}),
+    ...(fields.costBreakdown?.refundReserveRate !== undefined ? { refundReserveRate: fields.costBreakdown.refundReserveRate } : {}),
+    ...(fields.costBreakdown?.rankReserveRate !== undefined ? { rankReserveRate: fields.costBreakdown.rankReserveRate } : {}),
+  },
+});
+
+const mediaForProduct = (product = {}) => {
+  if (Array.isArray(product.media) && product.media.length > 0) return product.media;
+  const legacy = [product.img, ...(product.gallery ?? [])].map((url) => cleanText(url, 1000)).filter(Boolean);
+  return [...new Set(legacy)].slice(0, 5).map((url, index) => ({
+    type: 'image',
+    url,
+    publicId: null,
+    thumbnailUrl: url,
+    width: null,
+    height: null,
+    duration: null,
+    order: index,
+  }));
+};
+
+const PUBLIC_HIDDEN_FIELDS = [
+  'cogs',
+  'shippingCost',
+  'partnerPrice',
+  'retailPrice',
+  'commissionable',
+  'costBreakdown',
+  'pricing',
+  'mentorBonus',
+];
+
+const toPublicProduct = (product, { includeResale = false } = {}) => {
+  if (!product) return product;
+  const media = Array.isArray(product.media)
+    ? product.media.map(({ publicId, ...item }) => item)
+    : [];
+  const result = {
+    ...product,
+    media,
+    resaleEnabled: product.pricingMode !== 'direct' && Number(product.partnerPrice) > 0,
+  };
+  for (const field of PUBLIC_HIDDEN_FIELDS) {
+    if (includeResale && (field === 'partnerPrice' || field === 'retailPrice')) continue;
+    delete result[field];
+  }
+  return result;
+};
+
 const cleanProductFields = (body = {}) => {
   const out = {};
   if (body.name !== undefined) {
@@ -275,18 +445,61 @@ const cleanProductFields = (body = {}) => {
     out.stock = body.stock === null ? null : cleanNumber(body.stock, 'Stock');
   }
   if (body.status !== undefined) {
-    if (!['active', 'inactive', 'archived'].includes(body.status)) {
-      throw new Error('Product status must be active, inactive or archived');
+    if (!['draft', 'active', 'inactive', 'archived'].includes(body.status)) {
+      throw new Error('Product status must be draft, active, inactive or archived');
     }
     out.status = body.status;
   }
   if (body.commissionable !== undefined) out.commissionable = Boolean(body.commissionable);
+  if (body.pricingMode !== undefined) out.pricingMode = normalizePricingMode(body.pricingMode);
+  if (body.mentorBonus !== undefined) out.mentorBonus = cleanNumber(body.mentorBonus, 'Mentor bonus');
+  if (body.targetPlatformContributionPct !== undefined) {
+    out.targetPlatformContributionPct = cleanRate(body.targetPlatformContributionPct, 'Target platform contribution');
+  }
+  if (body.targetPartnerMarginPct !== undefined) {
+    out.targetPartnerMarginPct = cleanRate(body.targetPartnerMarginPct, 'Target partner margin');
+  }
+  if (body.costBreakdown !== undefined) {
+    const breakdown = cleanCostBreakdown(body.costBreakdown);
+    if (breakdown) {
+      out.costBreakdown = breakdown;
+      out.cogs = breakdown.landedCost;
+      out.shippingCost = breakdown.lastMileShipping;
+    }
+  }
+  if (body.media !== undefined) {
+    const media = cleanMediaList(body.media);
+    out.media = media;
+    Object.assign(out, mediaToLegacyFields(media));
+  } else if (body.img !== undefined || body.gallery !== undefined) {
+    // Legacy URL-only editors still work: convert their images into media so
+    // the new galleries and the old fields stay coherent.
+    const legacyImages = [body.img, ...(body.gallery ?? [])]
+      .map((url) => cleanText(url, 1000))
+      .filter(Boolean)
+      .slice(0, 5);
+    if (legacyImages.length > 0) {
+      const media = legacyImages.map((url, index) => ({
+        type: 'image',
+        url,
+        thumbnailUrl: url,
+        publicId: null,
+        width: null,
+        height: null,
+        duration: null,
+        order: index,
+      }));
+      out.media = media;
+      Object.assign(out, mediaToLegacyFields(media));
+    }
+  }
   if (body.featured !== undefined) out.featured = Boolean(body.featured);
   if (body.sortOrder !== undefined) {
     const order = Number(body.sortOrder);
     if (!Number.isFinite(order)) throw new Error('Sort order must be a number');
     out.sortOrder = Math.round(order);
   }
+  if (body.publish !== undefined) out.publish = Boolean(body.publish);
   return out;
 };
 
@@ -294,42 +507,401 @@ const cleanProductFields = (body = {}) => {
  * Admin product catalog (role-gated at the route). Whitelisted fields
  * only; updates never duplicate the row.
  */
+const persistedFields = (fields = {}) => {
+  const {
+    publish,
+    targetPlatformContributionPct,
+    targetPartnerMarginPct,
+    ...rest
+  } = fields;
+  return rest;
+};
+
+const pricingInputFor = (fields = {}, existing = {}) => ({
+  pricingMode: fields.pricingMode ?? existing.pricingMode ?? 'resale',
+  price: fields.price ?? existing.price ?? 0,
+  partnerPrice: fields.partnerPrice ?? existing.partnerPrice ?? 0,
+  retailPrice: fields.retailPrice ?? existing.retailPrice ?? 0,
+  commissionable: fields.commissionable ?? existing.commissionable ?? false,
+  mentorBonus: fields.mentorBonus ?? existing.mentorBonus ?? 0,
+  costBreakdown: fields.costBreakdown ?? existing.costBreakdown ?? null,
+  targetPlatformContributionPct: fields.targetPlatformContributionPct
+    ?? existing.pricing?.targetPlatformContributionPct,
+  targetPartnerMarginPct: fields.targetPartnerMarginPct
+    ?? existing.pricing?.targetPartnerMarginPct,
+});
+
+const pricingForProduct = (fields = {}, existing = {}) => {
+  const input = pricingInputFor(fields, existing);
+  if (!input.costBreakdown) return null;
+  return {
+    ...buildPricingSnapshot(input),
+    mode: normalizePricingMode(input.pricingMode),
+    computedAt: new Date(),
+  };
+};
+
+const mediaCountFor = (fields = {}, existing = {}) => {
+  if (fields.media !== undefined) return Array.isArray(fields.media) ? fields.media.length : 0;
+  if (Array.isArray(existing.media) && existing.media.length > 0) return existing.media.length;
+  return mediaForProduct(existing).length;
+};
+
+const assertPublishable = (fields = {}, existing = {}, { requireCosts = true } = {}) => {
+  const reasons = [];
+  if (mediaCountFor(fields, existing) < 1) {
+    reasons.push('Add at least one image or video before publishing.');
+  }
+  if (mediaCountFor(fields, existing) > 5) {
+    reasons.push('A product can have at most 5 images or videos.');
+  }
+  const pricing = fields.pricing ?? pricingForProduct(fields, existing);
+  if (requireCosts && !(fields.costBreakdown ?? existing.costBreakdown)) {
+    reasons.push('Complete the cost breakdown before publishing.');
+  }
+  if (!pricing) {
+    reasons.push('Pricing has not been calculated. Add costs and set the selling price.');
+  } else {
+    const check = validatePublishPricing(pricing);
+    if (!check.ok) reasons.push(...check.reasons);
+  }
+  if (reasons.length > 0) {
+    throw new AppError(
+      reasons[0],
+      400,
+      'PRODUCT_NOT_PUBLISHABLE',
+      { reasons },
+      'Adjust the product cost or price until the pricing check passes.',
+    );
+  }
+};
+
+export const previewProductPricing = async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const result = computeProductPricing({
+      mode: body.pricingMode ?? body.mode,
+      price: body.price,
+      partnerPrice: body.partnerPrice,
+      retailPrice: body.retailPrice,
+      commissionable: body.commissionable !== false,
+      mentorBonus: body.mentorBonus ?? 0,
+      costBreakdown: cleanCostBreakdown(body.costBreakdown) ?? {},
+      policy: pricingOverrides(body),
+    });
+    res.status(200).json({ message: 'Pricing preview', data: result, success: true });
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Unable to calculate pricing', success: false });
+  }
+};
+
 export const adminCreateProduct = async (req, res) => {
   try {
     const fields = cleanProductFields(req.body ?? {});
-    if (!fields.name || fields.price === undefined) {
+    if (!fields.name) {
+      return res.status(400).json({ message: 'Product name is required', success: false });
+    }
+    const requestedStatus = fields.publish === true ? 'active' : (fields.status ?? 'draft');
+    if (requestedStatus !== 'draft' && fields.price === undefined) {
       return res.status(400).json({ message: 'Product name and price are required', success: false });
     }
-    const product = await ProductModel.create(fields);
+
+    const pricing = pricingForProduct(fields, {});
+    fields.status = requestedStatus;
+    if (pricing) fields.pricing = pricing;
+    if (requestedStatus === 'active') {
+      assertPublishable({ ...fields, pricing }, {});
+      fields.publishedAt = new Date();
+    }
+
+    const product = await ProductModel.create(persistedFields(fields));
     void recordAudit({
       actorId: req.auth?.partnerId, action: 'product.create',
       targetType: 'product', targetId: String(product._id),
-      detail: { name: product.name, price: product.price },
+      detail: {
+        name: product.name,
+        price: product.price,
+        status: product.status,
+        pricingStatus: product.pricing?.status ?? null,
+      },
     });
     res.status(200).json({ message: 'Product created successfully!', data: product, success: true });
   } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        success: false,
+      });
+    }
     res.status(400).json({ message: error.message || 'Error creating product', success: false });
   }
 };
 
 export const adminUpdateProduct = async (req, res) => {
   try {
+    const existing = await ProductModel.findById(req.params.id).lean();
+    if (!existing) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
     const fields = cleanProductFields(req.body ?? {});
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ message: 'Nothing to update', success: false });
     }
-    const product = await ProductModel.findByIdAndUpdate(req.params.id, { $set: fields }, { new: true }).lean();
+
+    const targetStatus = fields.publish === true ? 'active' : (fields.status ?? existing.status);
+    if (fields.publish === true) fields.status = 'active';
+    const merged = { ...existing, ...fields };
+    const pricing = pricingForProduct(fields, existing);
+    if (pricing) fields.pricing = pricing;
+
+    if (targetStatus === 'active') {
+      if (fields.publish === true || existing.status !== 'active') {
+        assertPublishable({ ...merged, pricing }, existing, {
+          requireCosts: fields.publish === true || Boolean(merged.costBreakdown),
+        });
+      } else if (merged.costBreakdown) {
+        // Editing an already-active product with a cost breakdown keeps the
+        // profitability gate in force.
+        assertPublishable({ ...merged, pricing }, existing);
+      }
+      if (existing.status !== 'active') fields.publishedAt = new Date();
+    }
+
+    const removedAssets = [];
+    if (fields.media !== undefined) {
+      const previous = Array.isArray(existing.media) ? existing.media : [];
+      const nextIds = new Set(fields.media.map((item) => item.publicId).filter(Boolean));
+      for (const item of previous) {
+        if (item.publicId && !nextIds.has(item.publicId)) {
+          removedAssets.push({
+            publicId: item.publicId,
+            resourceType: item.type === 'video' ? 'video' : 'image',
+          });
+        }
+      }
+    }
+
+    const updated = await ProductModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: persistedFields(fields) },
+      { new: true },
+    ).lean();
+    if (!updated) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
+
+    if (removedAssets.length > 0) {
+      const mediaStore = buildImageStore({
+        ...(env.cloudinary ?? {}),
+        folder: process.env.CLOUDINARY_PRODUCT_FOLDER || 'marketspase-products',
+        label: 'Product media',
+      });
+      await Promise.all(removedAssets.map((asset) => (
+        mediaStore.destroy(asset.publicId, { resourceType: asset.resourceType }).catch(() => null)
+      )));
+    }
+
+    void recordAudit({
+      actorId: req.auth?.partnerId, action: 'product.update',
+      targetType: 'product', targetId: String(updated._id),
+      detail: {
+        fields: Object.keys(fields),
+        status: updated.status,
+        pricingStatus: updated.pricing?.status ?? null,
+        platformContribution: updated.pricing?.platformContribution ?? null,
+      },
+    });
+    res.status(200).json({ message: 'Product updated successfully!', data: updated, success: true });
+  } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        success: false,
+      });
+    }
+    res.status(400).json({ message: error.message || 'Error updating product', success: false });
+  }
+};
+
+/** Explicit publish action used by the wizard and the product table. */
+export const publishProduct = async (req, res) => {
+  try {
+    const existing = await ProductModel.findById(req.params.id).lean();
+    if (!existing) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
+    const pricing = pricingForProduct({}, existing);
+    assertPublishable({ ...existing, pricing }, existing);
+    const updated = await ProductModel.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'active',
+          pricing,
+          publishedAt: existing.publishedAt ?? new Date(),
+        },
+      },
+      { new: true },
+    ).lean();
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'product.publish',
+      targetType: 'product',
+      targetId: String(updated._id),
+      detail: {
+        pricingStatus: pricing?.status ?? null,
+        platformContribution: pricing?.platformContribution ?? null,
+      },
+    });
+    res.status(200).json({ message: 'Product published', data: updated, success: true });
+  } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        success: false,
+      });
+    }
+    res.status(400).json({ message: error.message || 'Unable to publish product', success: false });
+  }
+};
+
+const productMediaStore = () => buildImageStore({
+  ...(env.cloudinary ?? {}),
+  folder: process.env.CLOUDINARY_PRODUCT_FOLDER || 'marketspase-products',
+  label: 'Product media',
+});
+
+const syncProductMediaLegacy = (product) => {
+  const media = Array.isArray(product.media) ? product.media : [];
+  const legacy = mediaToLegacyFields(media);
+  product.img = legacy.img;
+  product.gallery = legacy.gallery;
+};
+
+export const uploadProductMedia = async (req, res) => {
+  const product = await ProductModel.findById(req.params.id);
+  let stored = null;
+  try {
     if (!product) {
       return res.status(404).json({ message: 'Product not found', success: false });
     }
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'product.update',
-      targetType: 'product', targetId: String(product._id),
-      detail: fields,
+    if (!req.file?.buffer) {
+      return res.status(400).json({ message: 'Choose an image or video to upload', success: false });
+    }
+    const current = mediaForProduct(product.toObject());
+    if (current.length >= 5) {
+      return res.status(400).json({ message: 'A product can have at most 5 media items', success: false });
+    }
+    const type = String(req.file.mimetype ?? '').startsWith('video/') ? 'video' : 'image';
+    if (type === 'image' && req.file.size > 8 * 1024 * 1024) {
+      return res.status(400).json({ message: 'Images must be 8 MB or smaller', success: false });
+    }
+    const mediaStore = productMediaStore();
+    stored = await mediaStore.upload(req.file.buffer, {
+      resourceType: type,
+      publicId: `product-${product._id}-${Date.now()}-${randomUUID().slice(0, 8)}`,
     });
-    res.status(200).json({ message: 'Product updated successfully!', data: product, success: true });
+    const media = {
+      type,
+      url: stored.url,
+      publicId: stored.publicId,
+      thumbnailUrl: stored.thumbnailUrl || (type === 'image' ? stored.url : ''),
+      width: stored.width ?? null,
+      height: stored.height ?? null,
+      duration: stored.duration ?? null,
+      order: current.length,
+    };
+    if (!Array.isArray(product.media)) product.media = [];
+    if (product.media.length === 0) {
+      // Preserve legacy img/gallery URLs when the first real upload happens.
+      product.media.push(...mediaForProduct(product.toObject()).map((item, index) => ({
+        ...item,
+        order: index,
+      })));
+      media.order = product.media.length;
+    }
+    product.media.push(media);
+    syncProductMediaLegacy(product);
+    await product.save();
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'product.media.add',
+      targetType: 'product',
+      targetId: String(product._id),
+      detail: { type, publicId: stored.publicId, count: product.media.length },
+    });
+    const saved = product.media[product.media.length - 1];
+    return res.status(200).json({
+      message: `${type === 'video' ? 'Video' : 'Image'} uploaded`,
+      data: {
+        id: String(saved._id),
+        type: saved.type,
+        url: saved.url,
+        publicId: saved.publicId,
+        thumbnailUrl: saved.thumbnailUrl,
+        width: saved.width,
+        height: saved.height,
+        duration: saved.duration,
+        order: saved.order,
+      },
+      success: true,
+    });
   } catch (error) {
-    res.status(400).json({ message: error.message || 'Error updating product', success: false });
+    if (stored?.publicId) {
+      await productMediaStore().destroy(stored.publicId, { resourceType: stored.resourceType }).catch(() => null);
+    }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message, code: error.code, success: false });
+    }
+    return res.status(400).json({ message: error.message || 'Unable to upload media', success: false });
+  }
+};
+
+export const deleteProductMedia = async (req, res) => {
+  try {
+    const product = await ProductModel.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found', success: false });
+    }
+    const media = Array.isArray(product.media) ? product.media : [];
+    const item = media.id?.(req.params.mediaId)
+      ?? media.find((entry) => String(entry.publicId) === String(req.params.mediaId));
+    if (!item) {
+      return res.status(404).json({ message: 'Media item not found', success: false });
+    }
+    if (product.status === 'active' && media.length <= 1) {
+      return res.status(400).json({
+        message: 'An active product must keep at least one image or video',
+        success: false,
+      });
+    }
+    const publicId = item.publicId;
+    const resourceType = item.type === 'video' ? 'video' : 'image';
+    item.deleteOne();
+    syncProductMediaLegacy(product);
+    await product.save();
+    if (publicId) {
+      await productMediaStore().destroy(publicId, { resourceType }).catch(() => null);
+    }
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'product.media.remove',
+      targetType: 'product',
+      targetId: String(product._id),
+      detail: { publicId, resourceType },
+    });
+    return res.status(200).json({ message: 'Media removed', data: { id: req.params.mediaId }, success: true });
+  } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message, code: error.code, success: false });
+    }
+    return res.status(400).json({ message: error.message || 'Unable to remove media', success: false });
   }
 };
 
@@ -341,7 +913,7 @@ export const getAllProducts = async (req, res) => {
       const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
       const skip = Math.max(Number(req.query.skip) || 0, 0);
       const q = cleanText(req.query.q, 120);
-      const filter = { status: { $nin: ['inactive', 'archived'] } };
+      const filter = { status: { $nin: ['draft', 'inactive', 'archived'] } };
       if (q) {
         const regex = new RegExp(escapeRegex(q), 'i');
         filter.$or = [
@@ -356,7 +928,7 @@ export const getAllProducts = async (req, res) => {
       // in the member/partner catalog.
       const [products, total] = await Promise.all([
         ProductModel.find(filter)
-          .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
+          .select('-cogs -shippingCost -retailPrice -commissionable -costBreakdown -pricing -mentorBonus')
           .sort({ sortOrder: 1, createdAt: -1 })
           .skip(skip)
           .limit(limit)
@@ -375,7 +947,7 @@ export const getAllProducts = async (req, res) => {
       res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       res.status(200).json({
         message: 'Products retrieved successfully!',
-        data: products,
+        data: products.map(toPublicProduct),
         meta: {
           q: q || null,
           count: products.length,
@@ -442,16 +1014,17 @@ export const listResaleProducts = async (req, res) => {
     }
 
     const products = await ProductModel.find({
-      status: 'active',
+      status: { $nin: ['draft', 'inactive', 'archived'] },
       partnerPrice: { $gt: 0 },
+      pricingMode: { $ne: 'direct' },
     })
-      .select('name img category shortDesc price partnerPrice retailPrice stock featured sortOrder')
+      .select('name img gallery media category shortDesc price partnerPrice retailPrice stock featured sortOrder')
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean();
 
     res.status(200).json({
       message: 'Resale products retrieved successfully!',
-      data: products,
+      data: products.map((product) => toPublicProduct(product, { includeResale: true })),
       success: true,
     });
   } catch (error) {
@@ -472,9 +1045,9 @@ export const getProductById = async (req, res) => {
     }
     const product = await ProductModel.findOne({
       _id: id,
-      status: { $nin: ['inactive', 'archived'] },
+      status: { $nin: ['draft', 'inactive', 'archived'] },
     })
-      .select('-cogs -shippingCost -partnerPrice -retailPrice -commissionable')
+      .select('-cogs -shippingCost -retailPrice -commissionable -costBreakdown -pricing -mentorBonus')
       .lean();
     if (!product) {
       return res.status(404).json({ message: 'Product not found', success: false });
@@ -482,7 +1055,7 @@ export const getProductById = async (req, res) => {
     res.set('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
     res.status(200).json({
       message: 'Product retrieved successfully!',
-      data: product,
+      data: toPublicProduct(product),
       success: true,
     });
   } catch (error) {
@@ -549,7 +1122,7 @@ export const Savecart = async (req, res) => {
     for (const productData of products) {  
       const product = await ProductModel.findOne({
         _id: productData._id,
-        status: { $nin: ['inactive', 'archived'] },
+        status: { $nin: ['draft', 'inactive', 'archived'] },
       });
       if (!product) {  
         return res.status(400).json({

@@ -13,9 +13,31 @@ import {
     listOrdersForAdmin,
     decideOrder,
     adminCreateProduct,
-    adminUpdateProduct
+    adminUpdateProduct,
+    previewProductPricing,
+    publishProduct,
+    uploadProductMedia,
+    deleteProductMedia,
 } from '../controllers/product.controller.js'
+import { productMediaUpload } from './ProductMedia.upload.js';
 const ProductRouter = express.Router();
+
+const money = z.coerce.number().min(0).max(100000000);
+const rate = z.coerce.number().min(0).max(1);
+const costBreakdown = z.object({
+  manufacturing: money.optional(),
+  packaging: money.optional(),
+  inboundFreight: money.optional(),
+  duties: money.optional(),
+  other: money.optional(),
+  lastMileShipping: money.optional(),
+  handling: money.optional(),
+  acquisitionAllowance: money.optional(),
+  paymentFeeRate: rate.optional(),
+  refundReserveRate: rate.optional(),
+  rankReserveRate: rate.optional(),
+  notes: z.string().trim().max(1000).optional(),
+}).partial().optional();
 
 const productFields = {
   sku: z.string().trim().max(80).optional(),
@@ -30,8 +52,15 @@ const productFields = {
   partnerPrice: z.coerce.number().min(0).max(100000000).optional(),
   retailPrice: z.coerce.number().min(0).max(100000000).optional(),
   stock: z.union([z.coerce.number().min(0), z.null()]).optional(),
-  status: z.enum(['active', 'inactive', 'archived']).optional(),
+  status: z.enum(['draft', 'active', 'inactive', 'archived']).optional(),
   commissionable: z.boolean().optional(),
+  pricingMode: z.enum(['resale', 'direct', 'both']).optional(),
+  mentorBonus: z.coerce.number().min(0).max(10000000).optional(),
+  targetPlatformContributionPct: rate.optional(),
+  targetPartnerMarginPct: rate.optional(),
+  publish: z.boolean().optional(),
+  media: z.array(z.any()).max(5).optional(),
+  costBreakdown,
   featured: z.boolean().optional(),
   sortOrder: z.coerce.number().min(0).max(10000).optional(),
   benefits: z.array(z.string().trim().max(200)).max(30).optional(),
@@ -39,8 +68,11 @@ const productFields = {
   deliveryNote: z.string().trim().max(2000).optional(),
   desc: z.string().trim().max(8000).optional(),
 };
-const LegacyProductCreate = z.object(productFields);
-const LegacyProductUpdate = z.object({
+const AdminProductCreate = z.object({
+  ...productFields,
+  price: productFields.price.optional(),
+});
+const AdminProductUpdate = z.object({
   ...productFields,
   name: productFields.name.optional(),
   price: productFields.price.optional(),
@@ -49,7 +81,14 @@ const LegacyProductUpdate = z.object({
 // Get all campaigns createdBy
 ProductRouter.get('/getAll', getAllProducts);
 // Update product (legacy PUT kept for admins; no unguarded writes)
-ProductRouter.put('/:id', requireAuth, requireRole('admin'), validateBodyInPlace(LegacyProductUpdate), adminUpdateProduct);
+ProductRouter.put('/:id', requireAuth, requireRole('admin'), validateBodyInPlace(AdminProductUpdate), adminUpdateProduct);
+// Pricing preview (no writes)
+ProductRouter.post('/pricing/preview', requireAuth, requireRole('admin'), previewProductPricing);
+// Admin media upload / removal
+ProductRouter.post('/:id/media', requireAuth, requireRole('admin'), productMediaUpload.single('file'), uploadProductMedia);
+ProductRouter.delete('/:id/media/:mediaId', requireAuth, requireRole('admin'), deleteProductMedia);
+// Explicit publish gate (revalidates costs, margin and media)
+ProductRouter.post('/:id/publish', requireAuth, requireRole('admin'), publishProduct);
 // purchase transaction on cart
 ProductRouter.post('/cart', requireAuth, Savecart);
 //getAllOrderBy
@@ -62,8 +101,8 @@ ProductRouter.get('/admin/list', requireAuth, requireRole('admin'), listProducts
 // Partner-only resale catalog
 ProductRouter.get('/resale/catalog', requireAuth, listResaleProducts);
 // Admin product catalog (role-gated; updates are whitelisted)
-ProductRouter.post('/', requireAuth, requireRole('admin'), validateBodyInPlace(LegacyProductCreate), adminCreateProduct);
-ProductRouter.patch('/:id', requireAuth, requireRole('admin'), validateBodyInPlace(LegacyProductUpdate), adminUpdateProduct);
+ProductRouter.post('/', requireAuth, requireRole('admin'), validateBodyInPlace(AdminProductCreate), adminCreateProduct);
+ProductRouter.patch('/:id', requireAuth, requireRole('admin'), validateBodyInPlace(AdminProductUpdate), adminUpdateProduct);
 // One product (full product page) — after every literal GET path
 ProductRouter.get('/:id', getProductById);
 

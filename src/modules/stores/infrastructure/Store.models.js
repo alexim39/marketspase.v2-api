@@ -77,6 +77,7 @@ const storeProductSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     image: { type: String, default: '', trim: true },
     images: { type: [String], default: [] },
+    media: { type: [mongoose.Schema.Types.Mixed], default: [] },
     category: { type: String, default: 'Essentials', trim: true },
     shortDesc: { type: String, default: '', trim: true },
     description: { type: String, default: '', trim: true },

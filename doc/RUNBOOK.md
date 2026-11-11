@@ -372,6 +372,16 @@ idempotent and every execution writes an `ora.action.execute` audit event.
 - **Personal lead page:** every partner shares `/lead/<username>` (store app).
   Submissions create a `Prospect` with source `Personal Page` in that partner's
   pipeline. The public store remains `/<username>` and is a separate share link.
+- **Product publishing gate:** admin product create/update lives in the admin
+  app wizard. A product with a cost breakdown is priced by
+  `src/apps/product/domain/ProductPricing.js`; publishing is rejected unless
+  media count is 1–5, platform contribution clears the minimum floor
+  (`PRODUCT_MIN_PLATFORM_CONTRIBUTION_PCT` and
+  `PRODUCT_MIN_PLATFORM_CONTRIBUTION_AMOUNT`), and partner margin clears
+  `PRODUCT_MIN_PARTNER_MARGIN_PCT` for resale products. Target values and the
+  current `pricing` snapshot are stored on the product. Media uploads use
+  Cloudinary `resource_type` image/video with 8 MB image and 50 MB video
+  limits; video posters are derived from the first frame.
 - **Commission rank auto-sync:** journey promotions and demotions mirror into
   `commissionRank` through `progression.promoted` / `progression.demoted`; the
   hourly compensation reconcile repairs drift. Run `npm run migrate:rank-sync`
