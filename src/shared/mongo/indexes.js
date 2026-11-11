@@ -164,6 +164,13 @@ export const INDEXES = [
   { collection: 'store_escrow_ledger', keys: { partnerId: 1, createdAt: -1 }, options: {} },
   { collection: 'platform_settings', keys: { key: 1 }, options: { unique: true } },
   { collection: 'chatgroups', keys: { rankGroup: 1 }, options: { unique: true, sparse: true } },
+  { collection: 'weekly_videos', keys: { status: 1, weekStart: -1 }, options: {} },
+  { collection: 'weekly_videos', keys: { status: 1, publishAt: 1 }, options: {} },
+  { collection: 'weekly_videos', keys: { weekStart: 1, status: 1 }, options: {} },
+  { collection: 'weekly_video_progress', keys: { videoId: 1, partnerId: 1 }, options: { unique: true } },
+  { collection: 'weekly_video_progress', keys: { partnerId: 1, completedAt: -1 }, options: {} },
+  { collection: 'weekly_video_comments', keys: { videoId: 1, partnerId: 1 }, options: { unique: true } },
+  { collection: 'weekly_video_comments', keys: { videoId: 1, status: 1, createdAt: -1 }, options: {} },
 ];
 
 /**

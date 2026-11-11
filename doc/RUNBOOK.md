@@ -382,6 +382,15 @@ idempotent and every execution writes an `ora.action.execute` audit event.
   current `pricing` snapshot are stored on the product. Media uploads use
   Cloudinary `resource_type` image/video with 8 MB image and 50 MB video
   limits; video posters are derived from the first frame.
+- **Weekly video:** `weekly_videos` stores the YouTube ID, title,
+  description, Monday week start, duration and publish state. The platform
+  player has no seek bar; heartbeats credit only actual playback, cap forward
+  jumps, pause on hidden tabs and require `WEEKLY_VIDEO_COMPLETION_PERCENT`
+  (default 90) before a reflection is accepted. Reflections are one per member
+  per video and are hidden from other members until completion. The
+  `weekly-video-due` job publishes scheduled videos and sends one keyed in-app
+  notification per non-suspended recipient. Set `WEEKLY_VIDEO_NOTIFY_CAP` for
+  the fan-out bound. No video files are stored by MarketSpase.
 - **Commission rank auto-sync:** journey promotions and demotions mirror into
   `commissionRank` through `progression.promoted` / `progression.demoted`; the
   hourly compensation reconcile repairs drift. Run `npm run migrate:rank-sync`

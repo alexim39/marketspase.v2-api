@@ -53,6 +53,7 @@ import AdminStoreRouter from './src/modules/stores/interface/AdminStore.routes.j
 import SubscriptionsRouter from './src/modules/subscriptions/index.js';
 import { buildAdminBonusRouter, buildBonusRouter } from './src/modules/bonuses/interface/Bonus.routes.js';
 import { buildAdminTutorialRouter, buildTutorialRouter } from './src/modules/tutorials/interface/Tutorial.routes.js';
+import { buildAdminWeeklyVideoRouter, buildWeeklyVideoRouter } from './src/modules/weekly-video/interface/WeeklyVideo.routes.js';
 import JobHealthRouter from './src/jobs/JobHealth.routes.js';
 import RecycleBinRouter from './src/modules/recycle-bin/interface/RecycleBin.routes.js';
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
@@ -199,6 +200,8 @@ app.use('/v1/admin/jobs', JobHealthRouter);
 app.use('/v1/admin/recycle-bin', RecycleBinRouter);
 app.use('/v1/admin/broadcast', BroadcastRouter);
 app.use('/v1/community', CommunityRouter);
+app.use('/v1/weekly-videos', buildWeeklyVideoRouter());
+app.use('/v1/admin/weekly-videos', buildAdminWeeklyVideoRouter());
 app.use('/v1/marketing', MarketingRouter);
 app.use('/v1/events', EventsRouter);
 app.use('/v1/ora', OraRouter);
