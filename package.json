@@ -15,6 +15,7 @@
     "smoke:store:seed": "node scripts/seed-store-e2e.js",
     "seed:ipo": "node scripts/seed-ipo-course.js",
     "seed:courses": "node scripts/seed-remaining-courses.js",
+    "seed:activation": "node scripts/seed-activation-and-h2os.js",
     "restore:ipo": "node scripts/restore-ipo-course.js",
     "restore:courses": "node scripts/restore-remaining-courses.js",
     "settle:pending-withdrawals": "node scripts/settle-pending-manual-withdrawals.js",
