@@ -1,8 +1,17 @@
 # IPO course snapshot
 
-This folder preserves the exact **Initial Planning Orientation (IPO)** training records from the `marketspaseV2` database.
+This folder preserves the exact **Initial Planning Orientation (IPO)**, **Quick Start Guide (QSG)**, **Standard Method of Operation (SMO)** and **Leadership Development** training records from the `marketspaseV2` database.
+
+## Files
+
+- `ipo-course.snapshot.json` — exact IPO course and four lessons.
+- `remaining-courses.snapshot.json` — exact QSG, SMO and Leadership courses with ten lessons.
+- Matching `.sha256` files — integrity checks.
+- `README.md` — this document.
 
 ## What is preserved
+
+### IPO
 
 - Course ID: `6af43d2a78d4a0509fd40a0f`
 - Course title: **Initial Planning Orientation (IPO)**
@@ -16,30 +25,40 @@ This folder preserves the exact **Initial Planning Orientation (IPO)** training 
 - All **17 quiz questions**, options and correct-answer indexes
 - Original created/updated timestamps and `__v` metadata
 
-Snapshot file: `ipo-course.snapshot.json`  
-Integrity checksum: `ipo-course.snapshot.sha256`
+### QSG, SMO and Leadership
+
+- Three published courses, ten published lessons and **46 quiz questions** in total.
+- Original course and lesson IDs.
+- All notes, takeaways, transcripts, YouTube IDs, thumbnails and durations.
+- All quiz options and correct-answer indexes.
+- Original timestamps and metadata.
 
 ## Restore after the database is wiped
 
 From `api/`:
 
 ```bash
-# Check what will be restored — no writes
+# IPO only — check first, then apply
 npm run restore:ipo
-
-# Restore the exact records
-# macOS/Linux
 APPLY=1 npm run restore:ipo
 
-# Windows PowerShell
-$env:APPLY="1"; npm run restore:ipo; Remove-Item Env:APPLY
+# QSG, SMO and Leadership — check first, then apply
+npm run restore:courses
+APPLY=1 npm run restore:courses
 ```
 
-The script uses the raw MongoDB driver, preserves the original ids and timestamps, and is idempotent.
+On Windows PowerShell:
+
+```powershell
+$env:APPLY="1"; npm run restore:ipo; Remove-Item Env:APPLY
+$env:APPLY="1"; npm run restore:courses; Remove-Item Env:APPLY
+```
+
+The restore scripts use the raw MongoDB driver, preserve the original ids and timestamps, and are idempotent.
 
 ## Important notes
 
-- The snapshot contains quiz answer keys. Keep the repository private.
-- The original admin id is stored in `createdBy` / `updatedBy` as part of the exact record. If the admin account is recreated with a different id after the wipe, the course still works normally; those metadata references will just point to the old id.
-- The restore script only restores this IPO course and its lessons. It does not restore partners, progress, certificates, transactions or other collections.
-- `seed-ipo-course.js` remains a content-only seed utility. Use `restore:ipo` when exact reproduction is required.
+- The snapshots contain quiz answer keys. Keep the repository private.
+- The original admin id is stored in `createdBy` / `updatedBy` as part of the exact records. If the admin account is recreated with a different id after a wipe, the courses still work normally; those metadata references will point to the old id.
+- The restore scripts only restore training courses and lessons. They do not restore partners, progress, certificates, transactions or other collections.
+- `seed-ipo-course.js` and `seed-remaining-courses.js` are content seed utilities. Use the `restore:*` commands when exact reproduction is required.
