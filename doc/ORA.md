@@ -56,7 +56,6 @@ Open-page cards do not need approval.
 | `learn.progress` | `/dashboard/progress` |
 | `learn.goals` | `/dashboard/goals` |
 | `learn.courses` | `/dashboard/training/courses` |
-| `learn.library` | `/dashboard/training/library` |
 | `learn.tutorials` | `/dashboard/training/tutorials` |
 | `learn.analytics` | `/dashboard/training/analytics` |
 | `learn.coach` | `/dashboard/training/coach` |
