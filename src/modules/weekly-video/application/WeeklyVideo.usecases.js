@@ -500,7 +500,7 @@ export class ListWeeklyVideoCommentsUseCase {
     this.repo = repo;
   }
 
-  async execute({ partnerId, id, limit = 50, skip = 0 }) {
+  async execute({ partnerId, id, limit = 20, skip = 0, cursor = null }) {
     const video = await this.repo.findPublishedById(id);
     if (!video) throw new NotFoundException('Weekly video not found');
     const progress = await this.repo.getProgress(id, partnerId);
@@ -511,16 +511,20 @@ export class ListWeeklyVideoCommentsUseCase {
         count,
         total: count,
         items: [],
+        hasMore: false,
+        nextCursor: null,
         message: `Watch at least ${completionPercent()}% to unlock the reflections.`,
       };
     }
-    const data = await this.repo.listComments(id, { limit, skip, includeHidden: false });
+    const data = await this.repo.listComments(id, { limit, skip, cursor, includeHidden: false });
     const authors = await this.repo.authorLabels(data.rows.map((row) => String(row.partnerId)));
     return {
       unlocked: true,
       count,
       total: data.total,
       items: data.rows.map((row) => withAuthor(row, authors)),
+      hasMore: data.hasMore === true,
+      nextCursor: data.nextCursor ?? null,
     };
   }
 }

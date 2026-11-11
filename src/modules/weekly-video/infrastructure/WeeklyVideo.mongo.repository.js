@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
-import { weekEndFor, weekLabel } from '../domain/WeeklyVideo.domain.js';
+import { weekEndFor, weekLabel, decodeCommentCursor, encodeCommentCursor } from '../domain/WeeklyVideo.domain.js';
 import {
   WeeklyVideoCommentModel,
   WeeklyVideoModel,
@@ -280,16 +280,40 @@ export class MongoWeeklyVideoRepository {
     return shapeComment(row);
   }
 
-  async listComments(videoId, { limit = 50, skip = 0, includeHidden = false } = {}) {
+  async listComments(videoId, { limit = 50, skip = 0, cursor = null, includeHidden = false } = {}) {
     const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const offset = Math.max(Number(skip) || 0, 0);
-    const filter = { videoId };
-    if (!includeHidden) filter.status = 'visible';
+    const baseFilter = { videoId };
+    if (!includeHidden) baseFilter.status = 'visible';
+    const decoded = cursor ? decodeCommentCursor(cursor) : null;
+    const pageFilter = decoded
+      ? {
+        ...baseFilter,
+        $or: [
+          { createdAt: { $lt: decoded.createdAt } },
+          { createdAt: decoded.createdAt, _id: { $lt: decoded.id } },
+        ],
+      }
+      : baseFilter;
+
+    const query = WeeklyVideoCommentModel.find(pageFilter).sort({ createdAt: -1, _id: -1 });
+    if (!decoded) query.skip(offset);
     const [rows, total] = await Promise.all([
-      WeeklyVideoCommentModel.find(filter).sort({ createdAt: -1 }).skip(offset).limit(size).lean(),
-      WeeklyVideoCommentModel.countDocuments(filter),
+      query.limit(size + 1).lean(),
+      WeeklyVideoCommentModel.countDocuments(baseFilter),
     ]);
-    return { rows: rows.map(shapeComment), total };
+    const hasMore = rows.length > size;
+    const page = hasMore ? rows.slice(0, size) : rows;
+    const shaped = page.map(shapeComment);
+    const last = shaped[shaped.length - 1];
+    return {
+      rows: shaped,
+      total,
+      hasMore,
+      nextCursor: hasMore && last
+        ? encodeCommentCursor({ createdAt: last.createdAt, id: last.id })
+        : null,
+    };
   }
 
   async countComments(videoId, { visibleOnly = true } = {}) {

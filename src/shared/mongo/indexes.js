@@ -171,6 +171,7 @@ export const INDEXES = [
   { collection: 'weekly_video_progress', keys: { partnerId: 1, completedAt: -1 }, options: {} },
   { collection: 'weekly_video_comments', keys: { videoId: 1, partnerId: 1 }, options: { unique: true } },
   { collection: 'weekly_video_comments', keys: { videoId: 1, status: 1, createdAt: -1 }, options: {} },
+  { collection: 'weekly_video_comments', keys: { videoId: 1, status: 1, createdAt: -1, _id: -1 }, options: {} },
 ];
 
 /**

@@ -199,6 +199,7 @@ describe('weekly video use cases', () => {
     });
     assert.equal(lockedResult.unlocked, false);
     assert.equal(lockedResult.items.length, 0);
+    assert.equal(lockedResult.hasMore, false);
 
     const unlocked = new ListWeeklyVideoCommentsUseCase({
       repo: fakeRepo({ getProgress: async () => ({ completed: true }) }),
@@ -209,6 +210,33 @@ describe('weekly video use cases', () => {
     });
     assert.equal(unlockedResult.unlocked, true);
     assert.equal(unlockedResult.items[0].author.name, 'Ada');
+    assert.equal(unlockedResult.hasMore, false);
+
+    const paged = new ListWeeklyVideoCommentsUseCase({
+      repo: fakeRepo({
+        getProgress: async () => ({ completed: true }),
+        listComments: async () => ({
+          rows: [{
+            id: 'comment-1',
+            videoId: '507f1f77bcf86cd799439011',
+            partnerId: '507f1f77bcf86cd799439012',
+            body: 'I learned to focus on the next best action.',
+            status: 'visible',
+          }],
+          total: 60,
+          hasMore: true,
+          nextCursor: 'cursor-page-2',
+        }),
+      }),
+    });
+    const pagedResult = await paged.execute({
+      partnerId: 'p1',
+      id: '507f1f77bcf86cd799439011',
+      limit: 20,
+    });
+    assert.equal(pagedResult.total, 60);
+    assert.equal(pagedResult.hasMore, true);
+    assert.equal(pagedResult.nextCursor, 'cursor-page-2');
 
     const blocked = new SubmitWeeklyVideoReflectionUseCase({
       repo: fakeRepo({ getRawProgress: async () => ({ completedAt: null }) }),

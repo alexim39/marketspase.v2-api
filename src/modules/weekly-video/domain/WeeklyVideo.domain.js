@@ -227,3 +227,30 @@ export const normalizeCommentBody = (value) => {
   if (body.length > 1000) throw new ValidationException('Reflection must be 1000 characters or fewer');
   return body;
 };
+
+/** Stable cursor for the newest-first reflection list. */
+export const encodeCommentCursor = ({ createdAt, id } = {}) => {
+  const date = new Date(createdAt);
+  const value = String(id ?? '');
+  if (Number.isNaN(date.getTime()) || !/^[a-fA-F0-9]{24}$/.test(value)) {
+    throw new ValidationException('Invalid comment cursor');
+  }
+  return Buffer.from(`${date.toISOString()}|${value}`, 'utf8').toString('base64url');
+};
+
+export const decodeCommentCursor = (value) => {
+  if (!value) return null;
+  try {
+    const decoded = Buffer.from(String(value), 'base64url').toString('utf8');
+    const separator = decoded.indexOf('|');
+    if (separator < 0) throw new Error('missing separator');
+    const createdAt = new Date(decoded.slice(0, separator));
+    const id = decoded.slice(separator + 1);
+    if (Number.isNaN(createdAt.getTime()) || !/^[a-fA-F0-9]{24}$/.test(id)) {
+      throw new Error('invalid cursor');
+    }
+    return { createdAt, id };
+  } catch {
+    throw new ValidationException('Invalid comments cursor');
+  }
+};

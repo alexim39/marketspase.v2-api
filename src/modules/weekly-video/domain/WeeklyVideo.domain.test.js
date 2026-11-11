@@ -4,6 +4,8 @@ import {
   applyHeartbeat,
   computeEngagement,
   currentWeekStart,
+  decodeCommentCursor,
+  encodeCommentCursor,
   normalizeCommentBody,
   normalizeWeekStart,
   weekEndFor,
@@ -171,5 +173,16 @@ describe('weekly video domain', () => {
     assert.equal(normalizeCommentBody('  I learned   to focus on the next best action.  '), 'I learned to focus on the next best action.');
     assert.throws(() => normalizeCommentBody('too short'), /20 characters/);
     assert.throws(() => normalizeCommentBody('x'.repeat(1001)), /1000 characters/);
+  });
+
+  it('round-trips the reflection cursor used for huge threads', () => {
+    const cursor = encodeCommentCursor({
+      createdAt: '2026-11-10T10:00:00.000Z',
+      id: '507f1f77bcf86cd799439012',
+    });
+    const decoded = decodeCommentCursor(cursor);
+    assert.equal(decoded.createdAt.toISOString(), '2026-11-10T10:00:00.000Z');
+    assert.equal(decoded.id, '507f1f77bcf86cd799439012');
+    assert.throws(() => decodeCommentCursor('not-a-cursor'), /Invalid comments cursor/);
   });
 });

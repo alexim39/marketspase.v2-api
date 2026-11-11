@@ -108,6 +108,7 @@ const weeklyVideoCommentSchema = new mongoose.Schema(
 
 weeklyVideoCommentSchema.index({ videoId: 1, partnerId: 1 }, { unique: true });
 weeklyVideoCommentSchema.index({ videoId: 1, status: 1, createdAt: -1 });
+weeklyVideoCommentSchema.index({ videoId: 1, status: 1, createdAt: -1, _id: -1 });
 
 export const WeeklyVideoModel =
   mongoose.models.WeeklyVideo

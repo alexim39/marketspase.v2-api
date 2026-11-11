@@ -387,8 +387,9 @@ idempotent and every execution writes an `ora.action.execute` audit event.
   player has no seek bar; heartbeats credit only actual playback, cap forward
   jumps, pause on hidden tabs and require `WEEKLY_VIDEO_COMPLETION_PERCENT`
   (default 90) before a reflection is accepted. Reflections are one per member
-  per video and are hidden from other members until completion. The
-  `weekly-video-due` job publishes scheduled videos and sends one keyed in-app
+  per video and are hidden from other members until completion. Reflection
+  lists are cursor-paginated (createdAt + id) so large cohorts load a page at
+  a time. The `weekly-video-due` job publishes scheduled videos and sends one keyed in-app
   notification per non-suspended recipient. Set `WEEKLY_VIDEO_NOTIFY_CAP` for
   the fan-out bound. No video files are stored by MarketSpase.
 - **Commission rank auto-sync:** journey promotions and demotions mirror into

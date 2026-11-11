@@ -35,6 +35,7 @@ const CommentIdParam = z.object({ commentId: objectId });
 const ListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   skip: z.coerce.number().int().min(0).optional().default(0),
+  cursor: z.string().trim().max(200).optional(),
 });
 const CreateSchema = z.object({
   youtubeUrl: z.string().trim().min(5).max(300),
@@ -106,6 +107,7 @@ export const buildWeeklyVideoRouter = (deps = {}) => {
       id: params.id,
       limit: q.limit,
       skip: q.skip,
+      cursor: q.cursor,
     });
     return sendSuccess(res, { message: data.unlocked ? 'Reflections retrieved' : 'Reflections are locked', data });
   }));
