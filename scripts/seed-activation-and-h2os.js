@@ -29,7 +29,7 @@ const H2OS = {
 
 The 320ml bottle uses a double-sided platinum-titanium electrode and proton exchange membrane to produce hydrogen-rich water. Choose the 5-minute mode for a 4000 PPB+ session or the 10-minute mode for 8000 PPB+. The OLED touch display makes operation simple, while the pressure-relief valve, draining vent and food-grade Tritan body support safe, everyday use.
 
-H2Os Luxe is available in a selection of premium finishes and is designed for home, office and travel. It is a genuine MarketSpase product backed by partner resale support and nationwide delivery.
+Hydrogen-rich water is popular in wellness routines for its antioxidant potential, hydration support and post-workout recovery. H2Os Luxe makes that ritual portable, whether you are at home, in the office or travelling. It is available in a selection of premium finishes and is a genuine MarketSpase product backed by partner resale support and nationwide delivery.
 
 Hydrogen water is a wellness product, not a medicine. This bottle is not a medical device and is not intended to diagnose, treat, cure or prevent any disease.`,
   benefits: [
@@ -39,6 +39,7 @@ Hydrogen water is a wellness product, not a medicine. This bottle is not a medic
     'OLED touch display with simple one-button operation',
     'Pressure-relief valve and draining vent for safer operation',
     'Food-grade materials and easy-connect bottle design',
+    'Built for daily wellness, hydration and post-workout routines',
     'Available in a range of premium colours',
     'Genuine MarketSpase product with partner resale support',
   ],
