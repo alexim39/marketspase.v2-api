@@ -323,6 +323,10 @@ idempotent and every execution writes an `ora.action.execute` audit event.
 - Double-spend protection is enforced inside Mongo transactions with
   conditional balance updates. If a transaction aborts, no ledger row is
   written.
+- Saved payout accounts are opt-in, owner-scoped records in
+  `saved_payout_accounts`. Account numbers are sealed at rest; the saved record
+  only prefills the dialog and never bypasses Paystack account resolution when
+  a withdrawal is submitted. No migration or seed is required.
 - Check `auditlogs` for `ora.action.execute`, withdrawal, refund and admin
   balance events with before/after balances.
 - If a provider callback is delayed, reconcile with

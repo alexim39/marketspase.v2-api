@@ -15,6 +15,16 @@ export const makeBillingController = (uc) => ({
     res.status(200).json({ message: 'Banks retrieved successfully', data, success: true });
   }),
 
+  getSavedPayoutAccount: asyncHandler(async (req, res) => {
+    const data = await uc.getSavedPayoutAccount.execute({ partnerId: req.auth?.partnerId });
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({
+      message: data.saved ? 'Saved payout account retrieved' : 'No saved payout account',
+      data,
+      success: true,
+    });
+  }),
+
   createWithdrawal: asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await uc.createWithdrawal.execute({
@@ -23,6 +33,7 @@ export const makeBillingController = (uc) => ({
       bankName: body?.bankName,
       accountNumber: body?.accountNumber,
       amountNgn: body?.amountNgn,
+      saveAccount: body?.saveAccount,
     });
     const balanceBefore = data.balance === null || data.balance === undefined
       ? null
@@ -40,6 +51,7 @@ export const makeBillingController = (uc) => ({
         payoutMode: data.payoutMode,
         bank: data.bank,
         accountLast4: String(data.accountNumber ?? '').slice(-4),
+        saveAccount: body?.saveAccount ?? null,
         requestId: req.id,
       },
     });

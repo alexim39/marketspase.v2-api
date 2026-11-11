@@ -9,6 +9,8 @@ import { idempotency } from '../../../shared/http/idempotency.js';
 import { makeBillingController } from './Billing.controller.js';
 import { ResolveAccountUseCase, ListBanksUseCase } from '../application/Commission.queries.js';
 import { CreateWithdrawalUseCase, MIN_WITHDRAWAL_NGN, MAX_WITHDRAWAL_NGN } from '../application/Withdrawal.usecases.js';
+import { GetSavedPayoutAccountUseCase } from '../application/SavedPayoutAccount.usecases.js';
+import { MongoSavedPayoutAccountRepository } from '../infrastructure/SavedPayoutAccount.mongo.repository.js';
 import { PaystackClient } from '../infrastructure/PaystackClient.js';
 import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
 
@@ -21,21 +23,29 @@ const WithdrawalSchema = z.object({
   bankName: z.string().trim().max(120).optional(),
   accountNumber: z.string().trim().regex(/^\d{10}$/, 'Invalid account number'),
   amountNgn: z.number().min(MIN_WITHDRAWAL_NGN).max(MAX_WITHDRAWAL_NGN),
+  saveAccount: z.boolean().optional(),
 });
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildBillingRouter = (deps = {}) => {
   const paystack = deps.paystack ?? new PaystackClient({ http: deps.http });
   const autoPayout = deps.autoPayout ?? process.env.PAYSTACK_AUTO_PAYOUT !== 'false';
+  const savedAccounts = deps.savedAccounts ?? new MongoSavedPayoutAccountRepository();
 
   const c = makeBillingController({
     resolveAccount: new ResolveAccountUseCase({ http: deps.http ?? axios }),
     listBanks: new ListBanksUseCase({ http: deps.http ?? axios }),
-    createWithdrawal: new CreateWithdrawalUseCase({ paystack, notifier: notifyPayoutOutcome, autoPayout }),
+    getSavedPayoutAccount: new GetSavedPayoutAccountUseCase({ savedAccounts }),
+    createWithdrawal: new CreateWithdrawalUseCase({
+      paystack,
+      notifier: notifyPayoutOutcome,
+      autoPayout,
+      savedAccounts,
+    }),
   });
 
   const router = express.Router();
-  router.use(requireAuth);
+  router.use(deps.auth ?? requireAuth);
   const withdrawalLimit = rateLimit({
     name: 'billing-withdrawal',
     windowMs: 3600000,
@@ -53,6 +63,8 @@ export const buildBillingRouter = (deps = {}) => {
   router.get('/resolve-account', validate({ query: ResolveQuery }), c.resolveAccount);
   // Bank directory — proxied so the browser never calls Paystack directly.
   router.get('/banks', c.listBanks);
+  // Owner-scoped saved destination for the withdrawal dialog.
+  router.get('/withdrawal-account', c.getSavedPayoutAccount);
   // Withdrawal request — account name is re-resolved server-side.
   router.post('/withdrawals', withdrawalLimit, withdrawalHourLimit, validate({ body: WithdrawalSchema }), idempotency(), c.createWithdrawal);
   return router;

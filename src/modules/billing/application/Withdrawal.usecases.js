@@ -1,5 +1,6 @@
 ﻿import { ConflictException, ValidationException } from '../../../shared/domain/AppError.js';
 import { seal } from '../../../shared/security/fieldCrypto.js';
+import { logger } from '../../../shared/observability/logger.js';
 import { PartnersModel, TransactionModel, runInTransaction } from '../infrastructure/Billing.models.js';
 import { markWithdrawalPaid, refundWithdrawal } from './PaystackPayout.usecases.js';
 
@@ -19,12 +20,13 @@ const newWithdrawalReference = () =>
  * `autoPayout: false` keeps the older manual admin-review flow.
  */
 export class CreateWithdrawalUseCase {
-  constructor({ partners, transactions, paystack, notifier = null, autoPayout = true } = {}) {
+  constructor({ partners, transactions, paystack, notifier = null, autoPayout = true, savedAccounts = null } = {}) {
     this.partners = partners ?? PartnersModel;
     this.transactions = transactions ?? TransactionModel;
     this.paystack = paystack;
     this.notifier = notifier;
     this.autoPayout = autoPayout !== false;
+    this.savedAccounts = savedAccounts;
   }
 
   async notify(payload) {
@@ -32,7 +34,33 @@ export class CreateWithdrawalUseCase {
     await this.notifier(payload).catch(() => null);
   }
 
-  async execute({ partnerId, bankCode, bankName, accountNumber, amountNgn }) {
+  /**
+   * Saving a payout preference is a convenience, never part of the money
+   * movement. A database failure here must not fail a created withdrawal.
+   */
+  async persistSavedAccount({ partnerId, saveAccount, bankCode, bankName, accountName, accountNumber }) {
+    if (!this.savedAccounts || saveAccount === undefined || saveAccount === null) return;
+    try {
+      if (saveAccount === true) {
+        await this.savedAccounts.upsert(partnerId, {
+          bankCode,
+          bankName,
+          accountName,
+          accountNumber,
+        });
+      } else if (saveAccount === false) {
+        await this.savedAccounts.remove(partnerId);
+      }
+    } catch (error) {
+      logger.warn('saved_payout_account_persist_failed', {
+        partnerId: String(partnerId),
+        saveAccount,
+        error: error?.message ?? String(error),
+      });
+    }
+  }
+
+  async execute({ partnerId, bankCode, bankName, accountNumber, amountNgn, saveAccount }) {
     if (!this.paystack?.enabled) {
       throw new ValidationException('Withdrawals are not available right now');
     }
@@ -141,12 +169,21 @@ export class CreateWithdrawalUseCase {
       accountNumber: account,
       accountName: resolved.accountName,
     };
+    const persistPreference = () => this.persistSavedAccount({
+      partnerId,
+      saveAccount,
+      bankCode: bank,
+      bankName: bankLabel,
+      accountName: resolved.accountName,
+      accountNumber: account,
+    });
 
     if (!this.autoPayout) {
       await this.notify({
         partnerId, amountNgn: amount, reference, outcome: 'pending', payoutMode: 'manual',
         bank: bankLabel, accountName: resolved.accountName,
       });
+      await persistPreference();
       return { ...result, status: 'Pending', payoutMode: 'manual', transferStatus: null, transferCode: null };
     }
 
@@ -203,6 +240,7 @@ export class CreateWithdrawalUseCase {
         partnerId, amountNgn: amount, reference, outcome: 'paid', payoutMode: 'automatic',
         bank: bankLabel, accountName: resolved.accountName,
       });
+      await persistPreference();
       return {
         ...result,
         status: 'Paid',
@@ -260,6 +298,7 @@ export class CreateWithdrawalUseCase {
         throw new ValidationException('Payout failed — your wallet was refunded.');
       }
       if (current) {
+        await persistPreference();
         return {
           ...result,
           status: current.status,
@@ -273,6 +312,7 @@ export class CreateWithdrawalUseCase {
       partnerId, amountNgn: amount, reference, outcome: 'pending', payoutMode: 'automatic',
       bank: bankLabel, accountName: resolved.accountName,
     });
+    await persistPreference();
     return {
       ...result,
       status: 'Pending',
