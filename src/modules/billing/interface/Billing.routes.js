@@ -29,7 +29,10 @@ const WithdrawalSchema = z.object({
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildBillingRouter = (deps = {}) => {
   const paystack = deps.paystack ?? new PaystackClient({ http: deps.http });
-  const autoPayout = deps.autoPayout ?? process.env.PAYSTACK_AUTO_PAYOUT !== 'false';
+  // Member withdrawals are automatic-only. `deps.autoPayout` remains a test
+  // seam, but production no longer reads an environment kill switch that can
+  // silently strand a debited withdrawal in a manual review state.
+  const autoPayout = deps.autoPayout ?? true;
   const savedAccounts = deps.savedAccounts ?? new MongoSavedPayoutAccountRepository();
 
   const c = makeBillingController({
