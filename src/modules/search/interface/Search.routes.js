@@ -7,6 +7,7 @@ import { GetGlobalSearchUseCase } from '../application/Search.usecases.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
+import { MongoTrainingStore } from '../../training/infrastructure/Training.mongo.repository.js';
 
 const SearchQuery = z.object({
   q: z.string().trim().min(2).max(80),
@@ -18,6 +19,7 @@ export const buildSearchRouter = (deps = {}) => {
     network: deps.network ?? new MongoNetworkRepository(),
     prospects: deps.prospects ?? new MongoProspectRepository(),
     community: deps.community ?? new MongoCommunityStore(),
+    training: deps.training ?? new MongoTrainingStore(),
   });
 
   const router = express.Router();

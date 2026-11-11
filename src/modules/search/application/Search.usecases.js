@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { ValidationException } from '../../../shared/domain/AppError.js';
 import { collectDownlineIds } from '../../network/infrastructure/Network.mongo.repository.js';
-import { COURSES } from '../../training/domain/Training.catalog.js';
 import { SearchMissModel } from '../infrastructure/SearchMiss.mongo.model.js';
 
 const distance = (a, b) => {
@@ -26,9 +25,9 @@ const distance = (a, b) => {
   return row[t.length];
 };
 
-const fuzzyCourses = (query, limit = 3) => {
+const fuzzyCourses = (courses, query, limit = 3) => {
   const needle = String(query ?? '').toLowerCase();
-  return COURSES
+  return courses
     .map((course) => ({
       course,
       score: Math.min(
@@ -54,17 +53,18 @@ const fuzzyCourses = (query, limit = 3) => {
  * course fallback. Zero-result queries are logged for content planning.
  */
 export class GetGlobalSearchUseCase {
-  /** @param {{network, prospects, community}} deps */
-  constructor({ network, prospects, community }) {
-    Object.assign(this, { network, prospects, community });
+  /** @param {{network, prospects, community, training}} deps */
+  constructor({ network, prospects, community, training = null }) {
+    Object.assign(this, { network, prospects, community, training });
   }
 
   async execute({ partnerId, q }) {
     const query = String(q ?? '').trim().slice(0, 80);
     if (query.length < 2) throw new ValidationException('Type at least 2 characters to search');
     const safe = (promise, fallback) => Promise.resolve(promise).then((v) => v ?? fallback, () => fallback);
-    const [{ ids: downline }] = await Promise.all([
+    const [{ ids: downline }, publishedCourses] = await Promise.all([
       collectDownlineIds(this.network, partnerId).catch(() => ({ ids: [] })),
+      safe(this.training?.listPublishedCourses?.(), []),
     ]);
     const authors = [String(partnerId), ...downline.slice(0, 2000).map(String)];
 
@@ -74,12 +74,11 @@ export class GetGlobalSearchUseCase {
         safe(this.prospects?.findByPartnerId?.(partnerId, { limit: 5, q: needle }).then((r) => r?.items ?? []), []),
         safe(this.community?.searchPosts?.({ authorIds: authors, q: needle, limit: 5 }), []),
       ]);
-      const courses = COURSES.filter(
-        (c) => c.title.toLowerCase().includes(needle.toLowerCase())
-          || (c.tagline ?? '').toLowerCase().includes(needle.toLowerCase()),
-      )
+      const courses = publishedCourses
+        .filter((course) => course.title.toLowerCase().includes(needle.toLowerCase())
+          || (course.tagline ?? '').toLowerCase().includes(needle.toLowerCase()))
         .slice(0, 5)
-        .map((c) => ({ id: c.id, title: c.title, tagline: c.tagline }));
+        .map((course) => ({ id: course.id, title: course.title, tagline: course.tagline }));
       return { members, prospects, posts, courses };
     };
 
@@ -96,7 +95,7 @@ export class GetGlobalSearchUseCase {
     }
 
     if (total() === 0) {
-      const courses = fuzzyCourses(query);
+      const courses = fuzzyCourses(publishedCourses, query);
       if (courses.length > 0) {
         result = { ...result, courses };
         fallback = 'course_fuzzy';

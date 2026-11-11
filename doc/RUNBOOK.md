@@ -358,6 +358,12 @@ idempotent and every execution writes an `ora.action.execute` audit event.
   `placementCampaignId`; system/campaign allocations never qualify a sponsor.
   G8 request letters, office/full-time attestations, DTC-account counts,
   maintenance and nomination approvals are retired.
+- **Training Academy is admin-authored:** courses and lessons live in
+  `training_courses` / `training_lessons`; the old static catalogue, media
+  overrides and quiz overrides are gone. A course may award one optional rank
+  milestone or act as an elective. Publishing requires at least one published
+  YouTube lesson. Verified watch gates every quiz at 90%, and the first course
+  a member completes for a milestone records it.
 - **Legacy campaign lead allocation is removed.** Ad campaigns no longer buy
   pool leads at ₦300 with daily/total caps, and no campaign-allocation job or
   ledger runs. Historical `campaigns` records and `/campaign` read/refund

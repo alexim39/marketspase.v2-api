@@ -172,6 +172,14 @@ export const INDEXES = [
   { collection: 'weekly_video_comments', keys: { videoId: 1, partnerId: 1 }, options: { unique: true } },
   { collection: 'weekly_video_comments', keys: { videoId: 1, status: 1, createdAt: -1 }, options: {} },
   { collection: 'weekly_video_comments', keys: { videoId: 1, status: 1, createdAt: -1, _id: -1 }, options: {} },
+  { collection: 'training_courses', keys: { status: 1, sortOrder: 1, createdAt: 1 }, options: {} },
+  { collection: 'training_courses', keys: { milestone: 1, status: 1 }, options: {} },
+  { collection: 'training_courses', keys: { title: 'text', tagline: 'text', description: 'text' }, options: {} },
+  { collection: 'training_lessons', keys: { courseId: 1, status: 1, sortOrder: 1, createdAt: 1 }, options: {} },
+  { collection: 'training_lessons', keys: { courseId: 1, sortOrder: 1 }, options: {} },
+  { collection: 'training_lessons', keys: { title: 'text', summary: 'text', body: 'text' }, options: {} },
+  { collection: 'training_progress', keys: { partnerId: 1, courseId: 1 }, options: { unique: true } },
+  { collection: 'training_progress', keys: { courseId: 1 }, options: {} },
 ];
 
 /**

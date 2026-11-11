@@ -4,135 +4,264 @@ import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
-import { MongoTrainingStore } from '../../training/infrastructure/Training.mongo.repository.js';
+import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { recordAudit } from '../../audit/index.js';
-import { COURSES } from '../../training/domain/Training.catalog.js';
+import { TRAINING_MILESTONES, TRAINING_STATUSES } from '../domain/Training.domain.js';
+import {
+  ArchiveCourseUseCase,
+  CreateCourseUseCase,
+  CreateLessonUseCase,
+  DeleteLessonUseCase,
+  GetAdminCourseUseCase,
+  ListAdminCoursesUseCase,
+  ReorderCoursesUseCase,
+  ReorderLessonsUseCase,
+  UpdateCourseUseCase,
+  UpdateLessonUseCase,
+} from '../application/Training.admin.usecases.js';
+import { MongoTrainingStore } from '../infrastructure/Training.mongo.repository.js';
 
-const slug = z.string().trim().min(1).max(64);
+const idLike = z.string().trim().min(1).max(64);
+const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
+const CourseParam = z.object({ courseId: idLike });
+const LessonParam = z.object({ courseId: idLike, lessonId: idLike });
+const StatusSchema = z.enum(TRAINING_STATUSES);
+const MilestoneSchema = z.preprocess(
+  (value) => (value === '' || value === 'none' ? null : value),
+  z.enum(TRAINING_MILESTONES).nullable().optional(),
+);
 
 const QuizQuestionSchema = z.object({
   q: z.string().trim().min(3).max(500),
   options: z.array(z.string().trim().min(1).max(200)).min(2).max(6),
-  answer: z.number().int().min(0),
-}).refine((o) => o.answer < o.options.length, { message: 'Answer index out of range', path: ['answer'] });
-
-const QuizSchema = z.array(QuizQuestionSchema).min(1).max(15);
-
-// Media override values: https URLs (e.g. Cloudinary) or site-relative
-// paths (e.g. /courses/ipo/lesson.mp4 for public/ files). Binaries never
-// flow through this API — hosting stays wherever the team puts the file.
-const MediaUrl = z.string().trim().max(500).refine(
-  (v) => v === '' || /^https?:\/\/.+/.test(v) || /^\/[A-Za-z0-9_\-./]+$/.test(v),
-  { message: 'Must be an https URL or a site path like /courses/ipo/lesson.mp4' },
-);
-
-export const MediaSchema = z.object({
-  videoUrl: MediaUrl.nullable().optional(),
-  posterUrl: MediaUrl.nullable().optional(),
-  captionsUrl: MediaUrl.nullable().optional(),
-  transcript: z.string().trim().max(8000).nullable().optional(),
-  durationSec: z.number().int().min(0).max(86400).nullable().optional(),
-  body: z.string().trim().max(20000).nullable().optional(),
-  takeaways: z.array(z.string().trim().min(1).max(200)).max(10).nullable().optional(),
+  answer: z.number().int().min(0).max(5),
+}).refine((question) => question.answer < question.options.length, {
+  message: 'Answer index out of range',
+  path: ['answer'],
 });
 
-/** Manual wiring — explicit for onboarding; pass fakes in tests. */
+const QuizSchema = z.array(QuizQuestionSchema).max(15);
+
+const CourseSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  tagline: z.string().trim().max(200).optional().default(''),
+  description: z.string().max(5000).optional().default(''),
+  milestone: MilestoneSchema,
+  coverUrl: z.string().trim().max(700).nullable().optional(),
+  status: StatusSchema.optional(),
+});
+
+const CoursePatchSchema = z.object({
+  title: z.string().trim().min(3).max(120).optional(),
+  tagline: z.string().trim().max(200).optional(),
+  description: z.string().max(5000).optional(),
+  milestone: MilestoneSchema,
+  coverUrl: z.string().trim().max(700).nullable().optional(),
+  status: StatusSchema.optional(),
+}).refine((body) => Object.keys(body).length > 0, { message: 'Nothing to update' });
+
+const LessonSchema = z.object({
+  title: z.string().trim().min(3).max(140),
+  summary: z.string().max(500).optional().default(''),
+  body: z.string().max(50000).optional().default(''),
+  takeaways: z.array(z.string().trim().min(1).max(240)).max(12).optional().default([]),
+  transcript: z.string().max(30000).optional().default(''),
+  youtubeUrl: z.string().trim().max(300).nullable().optional(),
+  durationSec: z.coerce.number().int().min(0).max(43200).optional().default(0),
+  quiz: QuizSchema.optional().default([]),
+  status: StatusSchema.optional(),
+});
+
+const LessonPatchSchema = z.object({
+  title: z.string().trim().min(3).max(140).optional(),
+  summary: z.string().max(500).optional(),
+  body: z.string().max(50000).optional(),
+  takeaways: z.array(z.string().trim().min(1).max(240)).max(12).optional(),
+  transcript: z.string().max(30000).optional(),
+  youtubeUrl: z.string().trim().max(300).nullable().optional(),
+  durationSec: z.preprocess(
+    (value) => (value === '' || value === null ? 0 : value),
+    z.coerce.number().int().min(0).max(43200).optional(),
+  ),
+  quiz: QuizSchema.optional(),
+  status: StatusSchema.optional(),
+}).refine((body) => Object.keys(body).length > 0, { message: 'Nothing to update' });
+
+const OrderSchema = z.object({
+  ids: z.array(objectId).min(1).max(500),
+});
+
+/** Admin Training Studio — course/lesson authoring and publishing. */
 export const buildAdminTrainingRouter = (deps = {}) => {
   const training = deps.training ?? new MongoTrainingStore();
+  const audit = deps.audit ?? recordAudit;
+
+  const list = new ListAdminCoursesUseCase({ training });
+  const detail = new GetAdminCourseUseCase({ training });
+  const createCourse = new CreateCourseUseCase({ training });
+  const updateCourse = new UpdateCourseUseCase({ training });
+  const archiveCourse = new ArchiveCourseUseCase({ training });
+  const reorderCourses = new ReorderCoursesUseCase({ training });
+  const createLesson = new CreateLessonUseCase({ training });
+  const updateLesson = new UpdateLessonUseCase({ training });
+  const deleteLesson = new DeleteLessonUseCase({ training });
+  const reorderLessons = new ReorderLessonsUseCase({ training });
 
   const router = express.Router();
-  router.use(requireAuth, requireRole('admin'));
+  router.use(deps.auth ?? requireAuth, deps.admin ?? requireRole('admin'));
 
-  router.get('/quizzes', asyncHandler(async (_req, res) => {
-    const data = await training.listQuizzes();
-    res.status(200).json({ message: 'Quizzes retrieved successfully', data, success: true });
+  router.get('/courses', asyncHandler(async (_req, res) => {
+    const data = await list.execute();
+    return sendSuccess(res, { message: 'Training courses retrieved successfully', data });
   }));
 
-  router.get('/catalog', asyncHandler(async (_req, res) => {
-    const media = await training.listMedia?.().catch(() => []) ?? [];
-    const byLesson = new Map(media.map((m) => [`${m.courseId}:${m.lessonId}`, m]));
-    const data = COURSES.map((c) => ({
-      id: c.id,
-      title: c.title,
-      lessons: c.lessons.map((l) => {
-        const override = byLesson.get(`${c.id}:${l.id}`);
-        return {
-          id: l.id,
-          title: l.title,
-          quizCount: l.quiz?.length ?? 0,
-          mediaOverridden: !!override,
-          // Effective values learners see (override wins, catalog fallback).
-          videoUrl: override?.videoUrl || l.videoUrl || null,
-          posterUrl: override?.posterUrl || l.posterUrl || null,
-          captionsUrl: override?.captionsUrl || l.captionsUrl || null,
-          hasTranscript: !!((override?.transcript || l.transcript) ?? null),
-          durationSec: override?.durationSec ?? l.durationSec ?? null,
-          body: override?.body || l.body || '',
-          takeaways: (Array.isArray(override?.takeaways) && override.takeaways.length > 0)
-            ? override.takeaways
-            : (l.takeaways ?? []),
-          bodyOverridden: !!(override?.body),
-        };
-      }),
-    }));
-    res.status(200).json({ message: 'Catalog retrieved successfully', data, success: true });
+  router.post('/courses', validate({ body: CourseSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await createCourse.execute({ adminId: req.auth?.partnerId, input: body });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.course.create',
+      targetType: 'course',
+      targetId: data.id,
+      detail: { title: data.title, milestone: data.milestone, status: data.status },
+    });
+    return sendSuccess(res, { statusCode: 201, message: 'Course created as a draft', data });
   }));
 
-  router.put('/courses/:courseId/lessons/:lessonId/quiz', validate({ params: z.object({ courseId: slug, lessonId: slug }), body: QuizSchema }), asyncHandler(async (req, res) => {
+  router.put('/courses/order', validate({ body: OrderSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await reorderCourses.execute({ ids: body.ids });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.course.order',
+      targetType: 'course',
+      targetId: 'order',
+      detail: { count: data.length },
+    });
+    return sendSuccess(res, { message: 'Course order updated', data });
+  }));
+
+  router.get('/courses/:courseId', validate({ params: CourseParam }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await detail.execute({ courseId: params.courseId });
+    return sendSuccess(res, { message: 'Course retrieved successfully', data });
+  }));
+
+  router.patch('/courses/:courseId', validate({ params: CourseParam, body: CoursePatchSchema }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
     const body = req.validated?.body ?? req.body;
-    // Validate lesson exists (catalog is the source of truth for ids).
-    const course = COURSES.find((c) => c.id === params.courseId);
-    if (!course) return res.status(404).json({ message: 'Unknown course', success: false });
-    if (!course.lessons.some((l) => l.id === params.lessonId)) {
-      return res.status(404).json({ message: 'Unknown lesson', success: false });
-    }
-    const data = await training.upsertQuiz(params.courseId, params.lessonId, body);
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'training.quiz.save',
-      targetType: 'lesson', targetId: `${params.courseId}:${params.lessonId}`,
-      detail: { questions: body.length },
+    const data = await updateCourse.execute({
+      courseId: params.courseId,
+      adminId: req.auth?.partnerId,
+      input: body,
     });
-    res.status(200).json({ message: 'Quiz saved successfully', data, success: true });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: body.status ? 'training.course.status' : 'training.course.update',
+      targetType: 'course',
+      targetId: params.courseId,
+      detail: {
+        status: data.status,
+        milestone: data.milestone,
+        ...(body.milestone !== undefined ? { milestoneChanged: true } : {}),
+      },
+    });
+    return sendSuccess(res, { message: 'Course updated successfully', data });
   }));
 
-  router.get('/media', asyncHandler(async (_req, res) => {
-    const data = await training.listMedia();
-    res.status(200).json({ message: 'Media overrides retrieved successfully', data, success: true });
-  }));
-
-  router.put('/courses/:courseId/lessons/:lessonId/media', validate({ params: z.object({ courseId: slug, lessonId: slug }), body: MediaSchema }), asyncHandler(async (req, res) => {
+  router.patch('/courses/:courseId/status', validate({ params: CourseParam, body: z.object({ status: StatusSchema }) }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
     const body = req.validated?.body ?? req.body;
-    const course = COURSES.find((c) => c.id === params.courseId);
-    if (!course) return res.status(404).json({ message: 'Unknown course', success: false });
-    if (!course.lessons.some((l) => l.id === params.lessonId)) {
-      return res.status(404).json({ message: 'Unknown lesson', success: false });
-    }
-    const data = await training.upsertMedia(params.courseId, params.lessonId, body, req.auth?.partnerId);
-    void recordAudit({
-      actorId: req.auth?.partnerId, action: 'training.media.save',
-      targetType: 'lesson', targetId: `${params.courseId}:${params.lessonId}`,
-      detail: { videoUrl: body.videoUrl ?? null },
+    const data = await updateCourse.execute({
+      courseId: params.courseId,
+      adminId: req.auth?.partnerId,
+      input: { status: body.status },
     });
-    res.status(200).json({ message: 'Media saved successfully', data, success: true });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.course.status',
+      targetType: 'course',
+      targetId: params.courseId,
+      detail: { status: data.status },
+    });
+    return sendSuccess(res, { message: `Course marked ${data.status}`, data });
   }));
 
-  router.delete('/courses/:courseId/lessons/:lessonId/media', validate({ params: z.object({ courseId: slug, lessonId: slug }) }), asyncHandler(async (req, res) => {
+  router.delete('/courses/:courseId', validate({ params: CourseParam }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
-    const course = COURSES.find((c) => c.id === params.courseId);
-    if (!course) return res.status(404).json({ message: 'Unknown course', success: false });
-    if (!course.lessons.some((l) => l.id === params.lessonId)) {
-      return res.status(404).json({ message: 'Unknown lesson', success: false });
-    }
-    const data = await training.deleteMedia(params.courseId, params.lessonId);
-    if (data?.reverted) {
-      void recordAudit({
-        actorId: req.auth?.partnerId, action: 'training.media.revert',
-        targetType: 'lesson', targetId: `${params.courseId}:${params.lessonId}`,
-      });
-    }
-    res.status(200).json({ message: 'Media reverted to catalog', data, success: true });
+    const data = await archiveCourse.execute({ courseId: params.courseId, adminId: req.auth?.partnerId });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.course.archive',
+      targetType: 'course',
+      targetId: params.courseId,
+      detail: { title: data.title },
+    });
+    return sendSuccess(res, { message: 'Course archived', data });
+  }));
+
+  router.post('/courses/:courseId/lessons', validate({ params: CourseParam, body: LessonSchema }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const body = req.validated?.body ?? req.body;
+    const data = await createLesson.execute({
+      courseId: params.courseId,
+      adminId: req.auth?.partnerId,
+      input: body,
+    });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.lesson.create',
+      targetType: 'lesson',
+      targetId: data.id,
+      detail: { courseId: params.courseId, title: data.title, status: data.status },
+    });
+    return sendSuccess(res, { statusCode: 201, message: 'Lesson created', data });
+  }));
+
+  router.put('/courses/:courseId/lessons/order', validate({ params: CourseParam, body: OrderSchema }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const body = req.validated?.body ?? req.body;
+    const data = await reorderLessons.execute({ courseId: params.courseId, ids: body.ids });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.lesson.order',
+      targetType: 'course',
+      targetId: params.courseId,
+      detail: { count: data.length },
+    });
+    return sendSuccess(res, { message: 'Lesson order updated', data });
+  }));
+
+  router.patch('/courses/:courseId/lessons/:lessonId', validate({ params: LessonParam, body: LessonPatchSchema }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const body = req.validated?.body ?? req.body;
+    const data = await updateLesson.execute({
+      courseId: params.courseId,
+      lessonId: params.lessonId,
+      adminId: req.auth?.partnerId,
+      input: body,
+    });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: body.status ? 'training.lesson.status' : 'training.lesson.update',
+      targetType: 'lesson',
+      targetId: params.lessonId,
+      detail: { courseId: params.courseId, status: data.status },
+    });
+    return sendSuccess(res, { message: 'Lesson updated successfully', data });
+  }));
+
+  router.delete('/courses/:courseId/lessons/:lessonId', validate({ params: LessonParam }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await deleteLesson.execute({ courseId: params.courseId, lessonId: params.lessonId });
+    void audit({
+      actorId: req.auth?.partnerId,
+      action: 'training.lesson.delete',
+      targetType: 'lesson',
+      targetId: params.lessonId,
+      detail: { courseId: params.courseId },
+    });
+    return sendSuccess(res, { message: 'Lesson deleted', data });
   }));
 
   return router;

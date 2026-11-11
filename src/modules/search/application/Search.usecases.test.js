@@ -4,6 +4,11 @@ import { GetGlobalSearchUseCase } from './Search.usecases.js';
 
 const deps = (over = {}) => ({
   network: {},
+  training: {
+    listPublishedCourses: async () => [
+      { id: 'c1', title: 'IPO Foundations', tagline: 'Start strong' },
+    ],
+  },
   prospects: {
     findByPartnerId: async (pid, { q } = {}) => ({
       items: [{ id: 'pr1', prospectName: 'Adaeze', prospectSurname: '', status: { stage: 'New' } }]
