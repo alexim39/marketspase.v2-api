@@ -4,6 +4,7 @@ import { ValidationException } from '../../../shared/domain/AppError.js';
 export const NOTIFICATION_CATEGORIES = [
   'daily', 'prospect', 'progression', 'promotion', 'team', 'goals',
   'training', 'community', 'recognition', 'commission', 'marketing', 'system',
+  'birthday',
 ];
 
 export const CATEGORY_LABELS = {
@@ -19,6 +20,7 @@ export const CATEGORY_LABELS = {
   commission: 'Commissions',
   marketing: 'Marketing',
   system: 'System',
+  birthday: 'Birthday',
 };
 
 export const NOTIFICATION_PRIORITIES = ['critical', 'high', 'medium', 'low'];
@@ -54,10 +56,18 @@ export const createNotificationEntity = (input) => {
 };
 
 const DEFAULT_CHANNELS = { inApp: true, email: false, sms: false, push: false };
+const CATEGORY_CHANNEL_DEFAULTS = {
+  // A birthday greeting is a personal relationship message. Keep email on by
+  // default, but let the member switch either channel off in preferences.
+  birthday: { inApp: true, email: true, sms: false, push: false },
+};
 
 /** Full preference matrix with per-category channel flags. */
 export const defaultPreferences = () => ({
-  channels: Object.fromEntries(NOTIFICATION_CATEGORIES.map((c) => [c, { ...DEFAULT_CHANNELS }])),
+  channels: Object.fromEntries(NOTIFICATION_CATEGORIES.map((category) => [
+    category,
+    { ...(CATEGORY_CHANNEL_DEFAULTS[category] ?? DEFAULT_CHANNELS) },
+  ])),
   emailDigest: 'immediate',
 });
 

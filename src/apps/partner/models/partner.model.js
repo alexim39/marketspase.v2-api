@@ -184,6 +184,12 @@ const partnersSchema = mongoose.Schema(
     dobDay: {
       type: Number, min: 1, max: 31,
     },
+    // One birthday greeting per channel per calendar year. The job stores the
+    // year only after a successful send so a failed email can still retry.
+    birthdayGreetingYear: { type: Number, default: null },
+    birthdayGreetingSentAt: { type: Date, default: null },
+    birthdayEmailYear: { type: Number, default: null },
+    birthdayEmailSentAt: { type: Date, default: null },
     balance: {
       type: Number,
       default: 0,
