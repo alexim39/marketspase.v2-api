@@ -180,9 +180,9 @@ The method is deliberately boring. Boring is easier to repeat, easier to teach a
       },
       {
         title: 'Qualification, maintenance and compliance',
-        summary: 'Keep the account qualified, understand the ledger and communicate without income promises. Video: compliance interview.',
-        youtubeId: 'b8PssE8m7cs',
-        durationSec: 903,
+        summary: 'Keep the account qualified, understand the ledger and communicate without income promises. Video: WFDSA Global Code of Ethics.',
+        youtubeId: 'HzqTXFeTAN8',
+        durationSec: 365,
         body: `A network-marketing business has rules, and those rules protect customers, partners and the company. Qualification and maintenance keep your account active and your team-side rewards intact. Check the requirements in the app and never let a month slip silently. One missed requirement can interrupt the compounding you have worked to build.
 
 Understand your ledger. Pending money is not paid money. A released entry is payable; a refund or reversal can claw an entry back. Review the ledger weekly and keep the order references. If something looks wrong, ask support with the reference instead of guessing or posting accusations.
@@ -197,7 +197,7 @@ When in doubt, stop and ask before you post. A missed sale is recoverable; a fal
           'Ask before posting anything that sounds like a promise.',
         ],
         transcript:
-          'Video summary (not verbatim) — a compliance interview covering the ethical and legal risks in network marketing, including earnings claims, product representations and professional conduct. The lesson applies those principles to MarketSpase qualification, ledger reviews, approved materials and member communication.',
+          'Video summary (not verbatim) — the WFDSA 2021 World Congress session on the Global Code of Ethics. It explains the industry-wide standards for ethical conduct, consumer protection and responsible communication across markets. The lesson applies those principles to MarketSpase qualification, ledger reviews, approved materials and member communication.',
         quiz: [
           { q: 'What does a Pending ledger entry mean?', options: ['Money is already paid', 'The entry is not yet released', 'The order was cancelled'], answer: 1 },
           { q: 'What can a refund or reversal do?', options: ['Claw a commission back', 'Double the commission', 'Create a rank promotion'], answer: 0 },
