@@ -118,9 +118,7 @@ export class TeamJoinFanoutUseCase {
         title: referral ? `${name} joined your team` : `${name} was added to your team`,
         body: `${name} ${placement}. Welcome them today and help them take the first step.`,
         icon: 'person_add',
-        link: referral
-          ? '/dashboard/mentorship/partners/my-partners'
-          : '/dashboard/network/tree',
+        link: '/dashboard/team/handoffs',
         key,
       };
 

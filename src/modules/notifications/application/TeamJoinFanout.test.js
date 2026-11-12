@@ -69,7 +69,7 @@ describe('TeamJoinFanoutUseCase', () => {
     assert.equal(call.item.category, 'team');
     assert.equal(call.item.priority, 'high');
     assert.equal(call.item.key, 'team-join:referral:member-1');
-    assert.equal(call.item.link, '/dashboard/mentorship/partners/my-partners');
+    assert.equal(call.item.link, '/dashboard/team/handoffs');
     assert.match(call.item.title, /joined your team/i);
     assert.match(call.item.body, /Bola Ade/);
     assert.match(call.email.subject, /joined your team/i);
@@ -110,7 +110,7 @@ describe('TeamJoinFanoutUseCase', () => {
     assert.equal(result.status, 'notified');
     const call = delivery.calls[0];
     assert.equal(call.item.key, 'team-join:allocation:allocation-1');
-    assert.equal(call.item.link, '/dashboard/network/tree');
+    assert.equal(call.item.link, '/dashboard/team/handoffs');
     assert.match(call.item.title, /added to your team/i);
     assert.match(call.item.body, /Lagos Growth/);
     assert.match(call.email.subject, /allocated to your team/i);

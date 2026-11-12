@@ -57,6 +57,12 @@ const activationOrderSchema = new mongoose.Schema(
     paymentReference: { type: String, required: true, trim: true },
     idempotencyKey: { type: String, default: undefined, trim: true },
     activatedAt: { type: Date, required: true },
+    mentorContactPreference: {
+      type: String,
+      enum: ['in_app', 'email', 'whatsapp', 'phone', 'prefer_not_now'],
+      default: 'in_app',
+    },
+    mentorContactConsentAt: { type: Date, default: null },
     fulfilledAt: { type: Date, default: null },
     fulfilledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', default: null },
     refundedAt: { type: Date, default: null },

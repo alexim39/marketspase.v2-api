@@ -126,6 +126,13 @@ const partnersSchema = mongoose.Schema(
     kycSubmittedAt: { type: Date, default: null },
     kycVerifiedAt: { type: Date, default: null },
     activatedAt: { type: Date, default: null },
+    mentorContactPreference: {
+      type: String,
+      enum: ['in_app', 'email', 'whatsapp', 'phone', 'prefer_not_now'],
+      default: 'in_app',
+    },
+    mentorContactConsentAt: { type: Date, default: null },
+    mentorContactPreferenceUpdatedAt: { type: Date, default: null },
     activationOrderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ActivationOrder',

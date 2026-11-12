@@ -126,6 +126,34 @@ describe('onboarding routes', () => {
     assert.equal(result.body.data.queue.position, 1);
     assert.equal(seenOrderInput.idempotencyKey, 'idem-key-123');
     assert.equal(seenOrderInput.shipping.fullName, 'Ada Obi');
+    assert.equal(seenOrderInput.mentorContactPreference, 'in_app');
+    assert.equal(seenOrderInput.mentorContactConsent, false);
+  });
+
+  it('passes the chosen mentor contact preference through activation', async () => {
+    const result = await post('/v1/onboarding/orders', {
+      productId,
+      shipping,
+      idempotencyKey: 'idem-key-456',
+      mentorContactPreference: 'whatsapp',
+      mentorContactConsent: true,
+    });
+
+    assert.equal(result.status, 201);
+    assert.equal(seenOrderInput.mentorContactPreference, 'whatsapp');
+    assert.equal(seenOrderInput.mentorContactConsent, true);
+  });
+
+  it('rejects an unsupported mentor contact preference before the use case', async () => {
+    seenOrderInput = null;
+    const result = await post('/v1/onboarding/orders', {
+      productId,
+      shipping,
+      mentorContactPreference: 'fax',
+    });
+
+    assert.equal(result.status, 400);
+    assert.equal(seenOrderInput, null);
   });
 
   it('returns 200 instead of duplicating a replayed order', async () => {

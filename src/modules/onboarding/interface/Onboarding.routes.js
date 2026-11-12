@@ -78,6 +78,8 @@ export const buildOnboardingRouter = (deps = {}) => {
       productId: body.productId,
       shipping: body.shipping,
       idempotencyKey: body.idempotencyKey ?? headerIdempotencyKey(req),
+      mentorContactPreference: body.mentorContactPreference,
+      mentorContactConsent: body.mentorContactConsent,
     });
     return sendSuccess(res, {
       message: data.repeated ? 'Activation order already exists' : 'Partner account activated',

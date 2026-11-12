@@ -23,9 +23,19 @@ export const SubmitKycSchema = z.object({
   idNumber: z.string().trim().regex(/^[A-Za-z0-9-]{6,30}$/, 'Enter a valid ID number').optional(),
 });
 
+export const MENTOR_CONTACT_PREFERENCES = [
+  'in_app',
+  'email',
+  'whatsapp',
+  'phone',
+  'prefer_not_now',
+];
+
 export const CreateActivationOrderSchema = z.object({
   productId: id,
   shipping: shippingSchema,
+  mentorContactPreference: z.enum(MENTOR_CONTACT_PREFERENCES).default('in_app'),
+  mentorContactConsent: z.boolean().optional().default(false),
   idempotencyKey: z.string().trim().min(8).max(100).optional(),
 });
 

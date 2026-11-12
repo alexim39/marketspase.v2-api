@@ -21,7 +21,7 @@ import {
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus suspendedAt activatedAt createdAt emailVerified address partnerOf systemOwned';
+const partnerProjection = 'name surname username email phone balance accountState kycStatus suspendedAt activatedAt createdAt emailVerified address partnerOf systemOwned mentorContactPreference mentorContactConsentAt mentorContactPreferenceUpdatedAt';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;
@@ -39,6 +39,9 @@ export const partnerSummary = (partner) => {
     activatedAt: partner.activatedAt ?? null,
     createdAt: partner.createdAt ?? null,
     emailVerified: partner.emailVerified !== false,
+    mentorContactPreference: partner.mentorContactPreference ?? 'in_app',
+    mentorContactConsentAt: partner.mentorContactConsentAt ?? null,
+    mentorContactPreferenceUpdatedAt: partner.mentorContactPreferenceUpdatedAt ?? null,
     address: partner.address ? {
       street: partner.address.street ?? '',
       city: partner.address.city ?? '',
@@ -60,6 +63,8 @@ export const publicOrder = (order) => {
     status: order.status,
     shipping: order.shipping,
     paymentMethod: order.paymentMethod,
+    mentorContactPreference: order.mentorContactPreference ?? 'in_app',
+    mentorContactConsentAt: order.mentorContactConsentAt ?? null,
     activatedAt: order.activatedAt,
     fulfilledAt: order.fulfilledAt ?? null,
     refundedAt: order.refundedAt ?? null,
@@ -217,7 +222,14 @@ export class MongoOnboardingRepository {
     });
   }
 
-  async createOrder({ partnerId, productId, shipping, idempotencyKey }) {
+  async createOrder({
+    partnerId,
+    productId,
+    shipping,
+    idempotencyKey,
+    mentorContactPreference = 'in_app',
+    mentorContactConsent = false,
+  }) {
     const now = new Date();
 
     const existingByIdempotency = async (session) => {
@@ -249,6 +261,23 @@ export class MongoOnboardingRepository {
         if (partner.accountState !== 'member') {
           throw new ConflictException('Your account is already an activated partner');
         }
+
+        const allowedPreferences = ['in_app', 'email', 'whatsapp', 'phone', 'prefer_not_now'];
+        const preference = allowedPreferences.includes(mentorContactPreference)
+          ? mentorContactPreference
+          : 'in_app';
+        const needsConsent = ['email', 'whatsapp', 'phone'].includes(preference);
+        if (needsConsent && mentorContactConsent !== true) {
+          throw new ValidationException('Agree to share your chosen contact channel with your mentor');
+        }
+        if (preference === 'email' && !partner.email) {
+          throw new ValidationException('Add an email address before choosing email');
+        }
+        if (['whatsapp', 'phone'].includes(preference) && !partner.phone) {
+          throw new ValidationException('Add a phone number before choosing WhatsApp or phone');
+        }
+        const mentorContactConsentAt = needsConsent ? now : null;
+
         const kycStatus = partner.kycStatus ?? 'not_started';
         const capabilities = partnerCapabilities(partner);
         if (kycStatus === 'rejected') {
@@ -293,6 +322,8 @@ export class MongoOnboardingRepository {
             paymentMethod: 'Wallet',
             paymentReference: number,
             idempotencyKey: idempotencyKey || undefined,
+            mentorContactPreference: preference,
+            mentorContactConsentAt,
             activatedAt: now,
           }],
           opts(session),
@@ -311,6 +342,9 @@ export class MongoOnboardingRepository {
               activatedAt: now,
               activationOrderId: order._id,
               ...(partner.partnerOf ? { systemOwned: false } : {}),
+              mentorContactPreference: preference,
+              mentorContactConsentAt,
+              mentorContactPreferenceUpdatedAt: now,
               address: {
                 street: shipping.street,
                 city: shipping.city,

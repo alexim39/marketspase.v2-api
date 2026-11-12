@@ -27,6 +27,7 @@ export const JobRunModel =
 export const EXPECTED_EVERY_MIN = {
   'growth-campaign-allocation': 26,
   'mentor-bonus': 90,
+  'mentor-handoff-reminders': 90,
   'compensation-reconcile': 90,
   'payout-reconcile': 45,
   'store-order-expiry': 30,

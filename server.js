@@ -60,6 +60,8 @@ import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
 import { subscribeTeamJoinFanout } from './src/modules/notifications/application/TeamJoinFanout.js';
 import { subscribeMentorBonusFanout } from './src/modules/notifications/application/MentorBonusFanout.js';
+import { buildMentorHandoffRouter, MongoMentorHandoffRepository, subscribeMentorHandoffFanout } from './src/modules/mentor-handoff/index.js';
+import { PartnersModel } from './src/modules/identity-access/infrastructure/Auth.models.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
@@ -194,6 +196,7 @@ app.use('/v1/dashboard', DashboardRouter);
 app.use('/v1/exports', ExportsRouter);
 app.use('/v1/messages', MessagingRouter);
 app.use('/v1/messages', buildGroupRouter({ rankGroups: rankGroupService }));
+app.use('/v1/mentor-handoffs', buildMentorHandoffRouter());
 app.use('/v1/progression', ProgressionRouter);
 app.use('/v1/training', TrainingRouter);
 app.use('/v1/admin/training', AdminTrainingRouter);
@@ -246,6 +249,12 @@ app.use(errorMiddleware);
     outbox: lifecycleOutbox,
   });
   const lifecyclePartners = new MongoPartnerRepository();
+  const mentorHandoffs = new MongoMentorHandoffRepository();
+  subscribeMentorHandoffFanout({
+    events: domainEvents,
+    handoffs: mentorHandoffs,
+    partners: PartnersModel,
+  });
   subscribeActivation({
     events: domainEvents,
     stored: lifecycleStore,

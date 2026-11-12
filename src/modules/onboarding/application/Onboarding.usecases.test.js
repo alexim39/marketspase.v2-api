@@ -81,6 +81,63 @@ describe('activation order use case', () => {
 
     assert.equal(result.order.orderNumber, 'MSA-TEST-1');
   });
+
+  it('snapshots the activation contact preference onto the event', async () => {
+    const emitted = [];
+    const received = [];
+    const useCase = new CreateActivationOrderUseCase({
+      repo: {
+        createOrder: async (input) => {
+          received.push(input);
+          return {
+            order: {
+              ...order,
+              mentorContactPreference: 'email',
+              mentorContactConsentAt: new Date('2026-11-03T10:00:00Z'),
+            },
+            queue: null,
+            repeated: false,
+          };
+        },
+      },
+      events: { emit: async (name, payload) => emitted.push({ name, payload }) },
+    });
+
+    await useCase.execute({
+      partnerId: 'partner-1',
+      productId: 'product-1',
+      shipping: {},
+      mentorContactPreference: 'email',
+      mentorContactConsent: true,
+    });
+
+    assert.equal(received[0].mentorContactPreference, 'email');
+    assert.equal(received[0].mentorContactConsent, true);
+    assert.equal(emitted[0].payload.mentorContactPreference, 'email');
+    assert.ok(emitted[0].payload.mentorContactConsentAt instanceof Date);
+  });
+
+  it('defaults the activation preference to in-app chat', async () => {
+    const received = [];
+    const useCase = new CreateActivationOrderUseCase({
+      repo: {
+        createOrder: async (input) => {
+          received.push(input);
+          return { order, queue: null, repeated: true };
+        },
+      },
+      events: { emit: async () => null },
+    });
+
+    await useCase.execute({
+      partnerId: 'partner-1',
+      productId: 'product-1',
+      shipping: {},
+    });
+
+    assert.equal(received[0].mentorContactPreference, 'in_app');
+    assert.equal(received[0].mentorContactConsent, false);
+  });
 });
 
 describe('activation refund use case', () => {
@@ -178,6 +235,32 @@ describe('onboarding input validation', () => {
       idNumber: '12345678901',
     });
     assert.equal(parsed.idType, 'nin');
+  });
+
+  it('validates the activation contact preference and consent', () => {
+    const shipping = {
+      fullName: 'Ada Obi',
+      phone: '+2348012345678',
+      street: '12 Market Road',
+      city: 'Lagos',
+      state: 'Lagos',
+    };
+    const base = { productId: '507f1f77bcf86cd799439011', shipping };
+
+    const parsed = CreateActivationOrderSchema.parse({
+      ...base,
+      mentorContactPreference: 'whatsapp',
+      mentorContactConsent: true,
+    });
+    assert.equal(parsed.mentorContactPreference, 'whatsapp');
+    assert.equal(parsed.mentorContactConsent, true);
+
+    assert.equal(CreateActivationOrderSchema.parse(base).mentorContactPreference, 'in_app');
+    assert.equal(CreateActivationOrderSchema.parse(base).mentorContactConsent, false);
+    assert.throws(() => CreateActivationOrderSchema.parse({
+      ...base,
+      mentorContactPreference: 'carrier-pigeon',
+    }));
   });
 
   it('accepts a real product id and rejects a loose reference', () => {

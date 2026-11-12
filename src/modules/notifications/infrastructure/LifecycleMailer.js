@@ -127,7 +127,7 @@ export const buildRecruitAlert = ({ memberName, uplineName, source = 'referral',
       'Walk them through the IPO course and their first prospect list.',
       'Check their profile is complete so they are reachable.',
     ])}
-    <p><a href="${appLink('/dashboard/mentorship/partners/my-partners')}">View your partners</a></p>
+    <p><a href="${appLink('/dashboard/team/handoffs')}">Open the new-member task</a></p>
     ${footer('You get this because someone joined your team.')}
   `,
   };

@@ -46,12 +46,21 @@ export class CreateActivationOrderUseCase {
     this.events = events;
   }
 
-  async execute({ partnerId, productId, shipping, idempotencyKey }) {
+  async execute({
+    partnerId,
+    productId,
+    shipping,
+    idempotencyKey,
+    mentorContactPreference = 'in_app',
+    mentorContactConsent = false,
+  }) {
     const result = await this.repo.createOrder({
       partnerId,
       productId,
       shipping,
       idempotencyKey,
+      mentorContactPreference,
+      mentorContactConsent,
     });
 
     if (!result.repeated) {
@@ -63,6 +72,8 @@ export class CreateActivationOrderUseCase {
         amount: result.order.amount,
         currency: result.order.currency,
         grossMargin: Number(result.grossMargin) || 0,
+        mentorContactPreference: result.order.mentorContactPreference ?? mentorContactPreference,
+        mentorContactConsentAt: result.order.mentorContactConsentAt ?? null,
         activatedAt: result.order.activatedAt,
       }).catch(() => null);
     }
