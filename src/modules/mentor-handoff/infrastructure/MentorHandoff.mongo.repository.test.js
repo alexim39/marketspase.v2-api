@@ -16,6 +16,7 @@ const patch = (target, key, value) => {
 
 const tree = (rows) => ({
   sort() { return this; },
+  skip() { return this; },
   limit() { return this; },
   select() { return this; },
   async lean() { return rows; },
@@ -86,6 +87,44 @@ describe('MongoMentorHandoffRepository atomic updates', () => {
     assert.deepEqual(captured.joinedAt.$lte, new Date(now.getTime() - (24 * 60 * 60 * 1000)));
   });
 
+  it('paginates the mentor task list and reports the filtered total', async () => {
+    let captured = null;
+    let countFilter = null;
+    patch(MentorHandoffModel, 'find', (filter) => {
+      captured = { filter };
+      return {
+        sort() { return this; },
+        skip(value) { captured.skip = value; return this; },
+        limit(value) { captured.limit = value; return this; },
+        async lean() { return []; },
+      };
+    });
+    patch(MentorHandoffModel, 'countDocuments', async (filter) => {
+      countFilter = filter;
+      return 42;
+    });
+
+    const repo = new MongoMentorHandoffRepository();
+    const result = await repo.listForMentor(mentorId, {
+      status: 'pending',
+      page: 2,
+      limit: 20,
+    });
+
+    assert.deepEqual(captured.filter, { mentorId, status: 'pending' });
+    assert.deepEqual(countFilter, { mentorId, status: 'pending' });
+    assert.equal(captured.skip, 20);
+    assert.equal(captured.limit, 20);
+    assert.deepEqual(result.data, []);
+    assert.deepEqual(result.meta, {
+      page: 2,
+      limit: 20,
+      total: 42,
+      pages: 3,
+      hasMore: true,
+    });
+  });
+
   it('updates the partner preference and every matching task together', async () => {
     let partnerUpdate = null;
     let taskUpdate = null;
@@ -126,6 +165,7 @@ describe('MongoMentorHandoffRepository atomic updates', () => {
       username: 'bola',
       email: 'bola@example.com',
       phone: '08030000002',
+      profileImage: 'https://cdn.example.com/bola.jpg',
       accountState: 'member',
     };
     patch(MentorHandoffModel, 'findOne', () => ({ lean: async () => task }));
@@ -141,6 +181,7 @@ describe('MongoMentorHandoffRepository atomic updates', () => {
     assert.equal(shaped.contact.phone, undefined);
     assert.equal(shaped.member.email, undefined);
     assert.equal(shaped.member.phone, undefined);
+    assert.equal(shaped.member.profileImage, 'https://cdn.example.com/bola.jpg');
     assert.equal(shaped.canContact, true);
   });
 

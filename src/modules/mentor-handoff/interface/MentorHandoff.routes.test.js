@@ -9,7 +9,7 @@ const mentorId = 'a'.repeat(24);
 const memberId = 'b'.repeat(24);
 const handoffId = 'c'.repeat(24);
 
-const seen = { send: [], preference: [] };
+const seen = { send: [], preference: [], list: [] };
 const task = {
   id: handoffId,
   partnerId: memberId,
@@ -29,7 +29,19 @@ app.use('/v1/mentor-handoffs', buildMentorHandoffRouter({
     next();
   },
   list: {
-    execute: async (ownerId, query) => [{ ...task, mentorId: ownerId, status: query.status ?? 'pending' }],
+    execute: async (ownerId, query) => {
+      seen.list.push({ ownerId, query });
+      return {
+        data: [{ ...task, mentorId: ownerId, status: query.status ?? 'pending' }],
+        meta: {
+          page: query.page ?? 1,
+          limit: query.limit ?? 20,
+          total: 1,
+          pages: 1,
+          hasMore: false,
+        },
+      };
+    },
   },
   templates: {
     execute: () => [
@@ -90,13 +102,27 @@ const request = async (path, { method = 'GET', body } = {}) => {
 };
 
 describe('mentor handoff routes', () => {
-  it('lists this mentor’s tasks with an optional status filter', async () => {
-    const result = await request('/v1/mentor-handoffs?status=pending');
+  it('lists this mentor’s tasks with pagination and an optional status filter', async () => {
+    const result = await request('/v1/mentor-handoffs?status=pending&page=2&limit=10');
 
     assert.equal(result.status, 200);
     assert.equal(result.body.data.length, 1);
     assert.equal(result.body.data[0].mentorId, mentorId);
     assert.equal(result.body.data[0].status, 'pending');
+    assert.equal(result.body.meta.page, 2);
+    assert.equal(result.body.meta.limit, 10);
+    assert.equal(result.body.meta.total, 1);
+    assert.equal(result.body.meta.hasMore, false);
+    assert.equal(seen.list.at(-1).query.page, 2);
+    assert.equal(seen.list.at(-1).query.limit, 10);
+  });
+
+  it('keeps the legacy window when no pagination params are sent', async () => {
+    const result = await request('/v1/mentor-handoffs');
+
+    assert.equal(result.status, 200);
+    assert.equal(seen.list.at(-1).query.page, 1);
+    assert.equal(seen.list.at(-1).query.limit, 200);
   });
 
   it('serves the approved template catalogue', async () => {

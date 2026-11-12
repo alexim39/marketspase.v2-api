@@ -54,6 +54,7 @@ const mentorHandoffSchema = new mongoose.Schema(
 );
 
 mentorHandoffSchema.index({ mentorId: 1, status: 1, joinedAt: -1 });
+mentorHandoffSchema.index({ mentorId: 1, joinedAt: -1 });
 mentorHandoffSchema.index({ status: 1, joinedAt: 1 });
 
 export const MentorHandoffModel =

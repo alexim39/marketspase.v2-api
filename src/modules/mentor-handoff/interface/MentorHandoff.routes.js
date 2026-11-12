@@ -22,6 +22,8 @@ const id = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 
 const ListQuery = z.object({
   status: z.enum(['pending', 'contacted', 'closed']).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
 });
 
 const SendBody = z.object({
@@ -60,8 +62,16 @@ export const buildMentorHandoffRouter = (deps = {}) => {
   router.use(auth);
 
   router.get('/', validate({ query: ListQuery }), asyncHandler(async (req, res) => {
-    const data = await list.execute(req.auth.partnerId, req.validated?.query ?? req.query);
-    return sendSuccess(res, { data });
+    const query = req.validated?.query ?? req.query;
+    // Unpaginated callers (older clients) keep the previous 200-row window;
+    // the paginated UI always sends page/limit.
+    const paged = query.page !== undefined || query.limit !== undefined;
+    const result = await list.execute(req.auth.partnerId, {
+      status: query.status,
+      page: query.page ?? 1,
+      limit: paged ? (query.limit ?? 20) : 200,
+    });
+    return sendSuccess(res, { data: result.data, meta: result.meta });
   }));
 
   router.get('/templates', asyncHandler(async (_req, res) => {

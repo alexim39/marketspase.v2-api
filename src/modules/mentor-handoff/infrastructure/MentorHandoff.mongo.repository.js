@@ -40,6 +40,7 @@ const shaped = (task, member) => ({
     id: String(member._id),
     name: displayName(member),
     username: member.username ?? '',
+    profileImage: member.profileImage ?? null,
     accountState: member.accountState ?? 'member',
     activatedAt: member.activatedAt ?? null,
   } : null,
@@ -80,26 +81,42 @@ export class MongoMentorHandoffRepository {
     ).lean();
   }
 
-  async listForMentor(mentorId, { status = null } = {}) {
+  async listForMentor(mentorId, { status = null, page = 1, limit = 20 } = {}) {
+    const current = Math.max(Number(page) || 1, 1);
+    const size = Math.min(Math.max(Number(limit) || 20, 1), 200);
     const filter = { mentorId };
     if (status) filter.status = status;
-    const tasks = await MentorHandoffModel.find(filter)
-      .sort({ joinedAt: -1 })
-      .limit(200)
-      .lean();
-    if (tasks.length === 0) return [];
+    const [tasks, total] = await Promise.all([
+      MentorHandoffModel.find(filter)
+        .sort({ joinedAt: -1 })
+        .skip((current - 1) * size)
+        .limit(size)
+        .lean(),
+      MentorHandoffModel.countDocuments(filter),
+    ]);
+    const meta = {
+      page: current,
+      limit: size,
+      total,
+      pages: Math.max(Math.ceil(total / size), 1),
+      hasMore: current * size < total,
+    };
+    if (tasks.length === 0) return { data: [], meta };
     const members = await PartnersModel.find({
       _id: { $in: tasks.map((task) => task.partnerId) },
-    }).select('name surname username email phone accountState activatedAt').lean();
+    }).select('name surname username email phone profileImage accountState activatedAt').lean();
     const byId = new Map(members.map((member) => [String(member._id), member]));
-    return tasks.map((task) => shaped(task, byId.get(String(task.partnerId))));
+    return {
+      data: tasks.map((task) => shaped(task, byId.get(String(task.partnerId)))),
+      meta,
+    };
   }
 
   async findForMentor(id, mentorId) {
     const task = await MentorHandoffModel.findOne({ _id: id, mentorId }).lean();
     if (!task) return null;
     const member = await PartnersModel.findById(task.partnerId)
-      .select('name surname username email phone accountState activatedAt')
+      .select('name surname username email phone profileImage accountState activatedAt')
       .lean();
     return shaped(task, member);
   }
