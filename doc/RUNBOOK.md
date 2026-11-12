@@ -416,6 +416,16 @@ idempotent and every execution writes an `ora.action.execute` audit event.
   row stays `scheduled` and the hourly :15 sweep retries. `MENTOR_BONUS_DAYS`
   is retired and ignored; existing rows with a future `dueAt` still wait for
   that date.
+- Mentor handoff: signup, campaign allocation and admin override create one
+  `mentor_handoffs` task per member. Activation snapshots
+  `mentorContactPreference` / `mentorContactConsentAt` on both the partner and
+  the activation order. Mentors send only the five approved intros via
+  `POST /v1/mentor-handoffs/:id/send` (Chat + email + SMS);
+  `prefer_not_now` blocks the send and hides email/phone. The
+  `mentor-handoff-reminders` job runs hourly at :25 and follows
+  24h → 48h → day 7 → upline/admin escalation. SMS is reported as not
+  delivered unless `SMS_PROVIDER` is enabled and `SMS_HTTP_URL` is configured;
+  the task still records the Chat and email receipts.
 
 ### 4.9 PII encryption
 
@@ -463,6 +473,8 @@ Weekly:
 After every deploy:
 
 - `/health` is `ok`.
+- `GET /v1/mentor-handoffs` without a session returns `401`, not `404`
+  (the mentor handoff router is mounted).
 - `JOBS_NEVER_RAN` clears within one cadence.
 - A test Ora chat returns a reply and at least one approval card; approve an
   `open_page` action (free) rather than a live SMS.
