@@ -43,10 +43,12 @@ circuit breaker is open.
    - `PAYSTACKTOKEN` and the matching public key
    - `BULKSMS_API_TOKEN` and `BULKSMS_SENDER_ID=marketspase`
    - `SMS_PROVIDER=http`
-3. A database backup/snapshot exists for any release that changes PII storage.
-4. `npm test` passes locally if the change touches a money path, the outbox,
+3. The Paystack dashboard webhook points at
+   `https://marketspasev2api-p3jkxlvy.back4.app/v1/billing/paystack/webhook`.
+4. A database backup/snapshot exists for any release that changes PII storage.
+5. `npm test` passes locally if the change touches a money path, the outbox,
    Ora actions, or encryption.
-5. For the single-upline release, `npm run migrate:upline` against production
+6. For the single-upline release, `npm run migrate:upline` against production
    reports **0 placement-only** and **0 mismatched** accounts.
 
 ### Deploy order
