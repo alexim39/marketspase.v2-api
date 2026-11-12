@@ -49,7 +49,7 @@
       "tagline": "Build leaders who can run the method without you in the room.",
       "description": "Leadership is a pipeline, not a title. Learn to develop independent leaders, run a cell that duplicates, and hand over responsibility so the business scales beyond your personal hours. Complete all three lessons and pass each quiz. Your Leadership rank training is recorded automatically.",
       "milestone": "leadership",
-      "coverUrl": "https://i.ytimg.com/vi/7IER5614cSI/hqdefault.jpg",
+      "coverUrl": "https://i.ytimg.com/vi/Kl0rmx7aa0w/hqdefault.jpg",
       "status": "published",
       "sortOrder": 3,
       "publishedAt": "2026-11-11T12:45:41.958Z",
@@ -57,7 +57,7 @@
       "createdBy": "6ae8907e307c5244570bd820",
       "updatedBy": "6ae8907e307c5244570bd820",
       "createdAt": "2026-11-11T12:45:46.933Z",
-      "updatedAt": "2026-11-11T12:47:24.036Z",
+      "updatedAt": "2026-11-12T11:50:58.793Z",
       "__v": 0
     }
   ],
@@ -534,7 +534,7 @@
       "_id": "6af4637bf415ced903cfbf7a",
       "courseId": "6af4637af415ced903cfbf75",
       "title": "Raising leaders, not followers",
-      "summary": "A leadership pipeline with goals, calendars and weekly coaching. Video: Eric Worre.",
+      "summary": "Build leaders through goals, calendars and coaching—not dependence. Video: Michael Bungay Stanier on taming the advice monster.",
       "body": "You do not promote people by wishing it. You develop them until promotion becomes obvious. Leadership is a pipeline: identify potential, give them a goal, help them build a calendar, coach the skill and give them responsibility.\n\nEvery emerging leader should have four things: a written goal, a calendar that reflects the goal, a weekly review with you and a skill they are currently practising. Without a calendar, the goal is a wish. Without a review, the calendar drifts. Without a skill plan, activity becomes random.\n\nDo not solve every problem for them. Ask questions that build judgement: what did you observe, what did you try, what will you change next? Let them lead a small project before you hand over a room. Give responsibility with a clear boundary and a review date.\n\nMeasure yourself by leaders raised, not by how busy you are. A team that needs you for every decision has a leader who is doing too much. Build the bench deliberately.",
       "takeaways": [
         "Leadership is a pipeline, not a single promotion event.",
@@ -542,11 +542,11 @@
         "Build judgement with questions before handing over responsibility.",
         "Measure leaders raised, not personal busyness."
       ],
-      "transcript": "Video summary (not verbatim) — Eric Worre teaches leadership principles for network marketing, including developing people, setting standards and building independence. The lesson converts them into a MarketSpase leadership pipeline with goals, calendars, weekly one-to-ones and progressive responsibility.",
-      "youtubeId": "7IER5614cSI",
-      "youtubeUrl": "https://www.youtube.com/watch?v=7IER5614cSI",
-      "thumbnailUrl": "https://i.ytimg.com/vi/7IER5614cSI/hqdefault.jpg",
-      "durationSec": 827,
+      "transcript": "Video summary (not verbatim) — Michael Bungay Stanier explains how the habit of giving advice can solve the wrong problem, disempower people and make the leader a bottleneck. He introduces the three advice-monster personas—Tell it, Save it and Control it—and three coaching questions: What’s the real challenge here for you? And what else? What do you want? The lesson applies those questions to the MarketSpase leadership pipeline: goals, calendars, weekly reviews and progressive responsibility.",
+      "youtubeId": "Kl0rmx7aa0w",
+      "youtubeUrl": "https://www.youtube.com/watch?v=Kl0rmx7aa0w",
+      "thumbnailUrl": "https://i.ytimg.com/vi/Kl0rmx7aa0w/hqdefault.jpg",
+      "durationSec": 870,
       "quiz": [
         {
           "q": "What should every emerging leader have?",
@@ -599,7 +599,7 @@
       "createdBy": "6ae8907e307c5244570bd820",
       "updatedBy": "6ae8907e307c5244570bd820",
       "createdAt": "2026-11-11T12:45:47.352Z",
-      "updatedAt": "2026-11-11T12:47:24.422Z",
+      "updatedAt": "2026-11-12T11:49:39.578Z",
       "__v": 0
     },
     {

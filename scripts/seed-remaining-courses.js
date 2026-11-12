@@ -243,13 +243,13 @@ Document the method so it survives your mood and your absence. The standard only
       'Leadership is a pipeline, not a title. Learn to develop independent leaders, run a cell that duplicates, and hand over responsibility so the business scales beyond your personal hours. Complete all three lessons and pass each quiz. Your Leadership rank training is recorded automatically.',
     milestone: 'leadership',
     sortOrder: 3,
-    coverUrl: 'https://i.ytimg.com/vi/7IER5614cSI/hqdefault.jpg',
+    coverUrl: 'https://i.ytimg.com/vi/Kl0rmx7aa0w/hqdefault.jpg',
     lessons: [
       {
         title: 'Raising leaders, not followers',
-        summary: 'A leadership pipeline with goals, calendars and weekly coaching. Video: Eric Worre.',
-        youtubeId: '7IER5614cSI',
-        durationSec: 827,
+        summary: 'Build leaders through goals, calendars and coaching—not dependence. Video: Michael Bungay Stanier on taming the advice monster.',
+        youtubeId: 'Kl0rmx7aa0w',
+        durationSec: 870,
         body: `You do not promote people by wishing it. You develop them until promotion becomes obvious. Leadership is a pipeline: identify potential, give them a goal, help them build a calendar, coach the skill and give them responsibility.
 
 Every emerging leader should have four things: a written goal, a calendar that reflects the goal, a weekly review with you and a skill they are currently practising. Without a calendar, the goal is a wish. Without a review, the calendar drifts. Without a skill plan, activity becomes random.
@@ -264,7 +264,7 @@ Measure yourself by leaders raised, not by how busy you are. A team that needs y
           'Measure leaders raised, not personal busyness.',
         ],
         transcript:
-          'Video summary (not verbatim) — Eric Worre teaches leadership principles for network marketing, including developing people, setting standards and building independence. The lesson converts them into a MarketSpase leadership pipeline with goals, calendars, weekly one-to-ones and progressive responsibility.',
+          'Video summary (not verbatim) — Michael Bungay Stanier explains how the habit of giving advice can solve the wrong problem, disempower people and make the leader a bottleneck. He introduces the three advice-monster personas—Tell it, Save it and Control it—and three coaching questions: What’s the real challenge here for you? And what else? What do you want? The lesson applies those questions to the MarketSpase leadership pipeline: goals, calendars, weekly reviews and progressive responsibility.',
         quiz: [
           { q: 'What should every emerging leader have?', options: ['A goal, calendar, weekly review and skill plan', 'Only a title', 'A secret method'], answer: 0 },
           { q: 'Why is a calendar important?', options: ['It turns a goal into scheduled action', 'It replaces training', 'It guarantees income'], answer: 0 },
