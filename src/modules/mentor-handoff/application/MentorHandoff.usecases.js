@@ -130,7 +130,14 @@ export class SendMentorHandoffIntroUseCase {
       templateKey: template.key,
       channels,
     });
-    return { handoff: updated, templateKey: template.key, channels };
+    const shaped = this.handoffs.findForMentor
+      ? await this.handoffs.findForMentor(handoffId, mentorId).catch(() => null)
+      : null;
+    return {
+      handoff: shaped ? { ...shaped, ...updated } : updated,
+      templateKey: template.key,
+      channels,
+    };
   }
 }
 
@@ -143,7 +150,10 @@ export class MarkMentorHandoffContactedUseCase {
     if (!isValidId(handoffId)) throw new ValidationException('Invalid handoff');
     const updated = await this.handoffs.markContacted(handoffId, mentorId, note);
     if (!updated) throw new NotFoundException('Mentor task not found');
-    return updated;
+    const shaped = this.handoffs.findForMentor
+      ? await this.handoffs.findForMentor(handoffId, mentorId).catch(() => null)
+      : null;
+    return shaped ? { ...shaped, ...updated } : updated;
   }
 }
 

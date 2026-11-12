@@ -72,6 +72,13 @@ export class MentorHandoffReminderUseCase {
             ? `You have contacted ${memberName}. Keep the onboarding moving and check their progress.`
             : `${memberName} has not been contacted yet. Send an approved welcome message today.`;
         } else if (age >= DAY_MS && !task.reminder24At) {
+          if (task.firstContactAt) {
+            // The mentor already reached out; stamp the welcome nudge so it
+            // does not send a stale "send a welcome" message.
+            await this.handoffs.markReminder(task._id, 'reminder24At', now);
+            result.skipped += 1;
+            continue;
+          }
           field = 'reminder24At';
           title = '24-hour mentor reminder';
           detail = `Send ${memberName} a welcome message and help them take the first step.`;

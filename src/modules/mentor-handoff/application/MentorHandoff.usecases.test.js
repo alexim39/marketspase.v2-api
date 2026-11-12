@@ -141,6 +141,8 @@ describe('mentor handoff playbook', () => {
     assert.equal(calls.recorded.length, 1);
     assert.equal(calls.recorded[0].input.templateKey, 'welcome_first_step');
     assert.equal(result.handoff.status, 'contacted');
+    assert.equal(result.handoff.id, handoffId);
+    assert.equal(result.handoff.member.name, 'Bola Ade');
   });
 
   it('never sends to a member who chose prefer_not_now', async () => {

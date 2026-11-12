@@ -120,8 +120,26 @@ describe('MentorHandoffReminderUseCase', () => {
     assert.deepEqual(handoffs.marks, [{ id: handoffId, field: 'reminder24At', at: NOW }]);
   });
 
-  it('sends the 48-hour reminder and calls out missing contact', async () => {
+  it('skips the 24-hour welcome nudge when the mentor already reached out', async () => {
     const handoffs = makeHandoffs([makeTask({
+      firstContactAt: new Date(NOW.getTime() - HOUR),
+    })]);
+    const delivery = makeDelivery();
+    const useCase = new MentorHandoffReminderUseCase({
+      handoffs,
+      delivery,
+      partners: makePartners(),
+    });
+
+    const result = await useCase.run(NOW);
+
+    assert.equal(result.skipped, 1);
+    assert.equal(result.reminders, 0);
+    assert.equal(delivery.calls.length, 0);
+    assert.deepEqual(handoffs.marks, [{ id: handoffId, field: 'reminder24At', at: NOW }]);
+  });
+
+  it('sends the 48-hour reminder and calls out missing contact', async () => {    const handoffs = makeHandoffs([makeTask({
       joinedAt: new Date(NOW.getTime() - (49 * HOUR)),
       reminder24At: new Date(NOW.getTime() - DAY),
     })]);
