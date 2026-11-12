@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ConflictException } from '../../../shared/domain/AppError.js';
-import { AllocatePartnersUseCase } from './Campaign.usecases.js';
+import { AllocatePartnersUseCase, OverrideAllocationUseCase } from './Campaign.usecases.js';
 
 const now = new Date('2026-11-03T12:00:00Z');
 const enteredAt = new Date('2026-10-19T12:00:00Z');
@@ -37,6 +37,7 @@ const allocationResult = () => ({
   allocation: { id: 'allocation-1' },
   campaign: {
     id: 'campaign-1',
+    name: 'Lagos growth',
     status: 'Active',
     budget: { total: 100000, spent: 550, refunded: 0, remaining: 99450 },
     capacity: { total: 1, allocated: 1, remaining: 0, maxPerWeek: 2 },
@@ -75,6 +76,8 @@ describe('AllocatePartnersUseCase', () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].name, 'partner.allocated');
     assert.equal(events[0].payload.allocatedBy, 'admin-1');
+    assert.equal(events[0].payload.allocationId, 'allocation-1');
+    assert.equal(events[0].payload.campaignName, 'Lagos growth');
   });
 
   it('never allocates an owner into their own campaign', async () => {
@@ -122,4 +125,34 @@ describe('AllocatePartnersUseCase', () => {
     assert.equal(result.skipped.races, 1);
   });
 
+  it('emits owner, allocation and campaign details on a manual override', async () => {
+    const events = [];
+    const useCase = new OverrideAllocationUseCase({
+      repo: {
+        overrideAllocation: async () => ({
+          allocation: {
+            id: 'allocation-9',
+            owner: { id: 'owner-9' },
+            campaign: { id: 'campaign-9', name: 'Lagos growth' },
+          },
+          campaign: { id: 'campaign-9', name: 'Lagos growth' },
+          partner: { id: 'partner-9' },
+        }),
+      },
+      events: { emit: async (name, payload) => events.push({ name, payload }) },
+    });
+
+    await useCase.execute({
+      campaignId: 'campaign-9',
+      partnerId: 'partner-9',
+      actorId: 'admin-1',
+      reason: 'Manual fit',
+    });
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].name, 'campaign.allocation.overridden');
+    assert.equal(events[0].payload.ownerId, 'owner-9');
+    assert.equal(events[0].payload.allocationId, 'allocation-9');
+    assert.equal(events[0].payload.campaignName, 'Lagos growth');
+  });
 });

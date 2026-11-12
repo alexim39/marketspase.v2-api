@@ -109,11 +109,18 @@ export const buildWelcome = ({ memberName }) => ({
   `,
 });
 
-export const buildRecruitAlert = ({ memberName, uplineName }) => ({
-  subject: `${memberName} just joined your team — here is what to do next`,
-  html: `
+export const buildRecruitAlert = ({ memberName, uplineName, source = 'referral', campaignName = '' }) => {
+  const referral = source === 'referral';
+  const placement = referral
+    ? 'just signed up with the referral code you recorded'
+    : `was allocated to your team${campaignName ? ` from the campaign <strong>${escapeHtml(campaignName)}</strong>` : ''}`;
+  return {
+    subject: referral
+      ? `${memberName} just joined your team — here is what to do next`
+      : `${memberName} was allocated to your team — here is what to do next`,
+    html: `
     <p>Hi ${escapeHtml(uplineName)},</p>
-    <p>Great news — <strong>${escapeHtml(memberName)}</strong> just signed up with the referral code you recorded. New recruits activate fastest in their first 48 hours:</p>
+    <p>Great news — <strong>${escapeHtml(memberName)}</strong> ${placement}. New ${referral ? 'recruits' : 'partners'} activate fastest in their first 48 hours:</p>
     ${steps([
       `Call ${memberName} today — welcome them personally and answer first questions.`,
       'Schedule their onboarding session this week.',
@@ -123,7 +130,8 @@ export const buildRecruitAlert = ({ memberName, uplineName }) => ({
     <p><a href="${appLink('/dashboard/mentorship/partners/my-partners')}">View your partners</a></p>
     ${footer('You get this because someone joined your team.')}
   `,
-});
+  };
+};
 
 export const buildPromotionMember = ({ memberName, toLabel }) => ({
   subject: `Congratulations — you reached ${toLabel}!`,

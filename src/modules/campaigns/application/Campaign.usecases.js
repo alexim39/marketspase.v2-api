@@ -174,6 +174,9 @@ export class OverrideAllocationUseCase {
     await this.events.emit('campaign.allocation.overridden', {
       campaignId,
       partnerId,
+      ownerId: result.allocation?.owner?.id ?? null,
+      allocationId: result.allocation?.id ?? null,
+      campaignName: result.allocation?.campaign?.name ?? result.campaign?.name ?? null,
       actorId: String(actorId),
       reason,
     }).catch(() => null);
@@ -293,7 +296,9 @@ export class AllocatePartnersUseCase {
         await this.events.emit('partner.allocated', {
           partnerId: result.partner.id,
           campaignId: result.campaign.id,
+          campaignName: result.campaign?.name ?? null,
           ownerId: String(best.entry.campaign.ownerId),
+          allocationId: result.allocation?.id ?? null,
           allocatedBy: actorId ? String(actorId) : null,
           score: best.scored.total,
         }).catch(() => null);

@@ -58,6 +58,7 @@ import JobHealthRouter from './src/jobs/JobHealth.routes.js';
 import RecycleBinRouter from './src/modules/recycle-bin/interface/RecycleBin.routes.js';
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
+import { subscribeTeamJoinFanout } from './src/modules/notifications/application/TeamJoinFanout.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
@@ -248,6 +249,12 @@ app.use(errorMiddleware);
     events: domainEvents,
     stored: lifecycleStore,
     notify: new NotifyUseCase({ stored: lifecycleStore }),
+    delivery: lifecycleDelivery,
+    partners: lifecyclePartners,
+  });
+  subscribeTeamJoinFanout({
+    events: domainEvents,
+    stored: lifecycleStore,
     delivery: lifecycleDelivery,
     partners: lifecyclePartners,
   });
