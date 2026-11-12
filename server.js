@@ -59,6 +59,7 @@ import RecycleBinRouter from './src/modules/recycle-bin/interface/RecycleBin.rou
 import { ensureSeedBonus } from './src/modules/bonuses/index.js';
 import { subscribeActivation } from './src/modules/activation/index.js';
 import { subscribeTeamJoinFanout } from './src/modules/notifications/application/TeamJoinFanout.js';
+import { subscribeMentorBonusFanout } from './src/modules/notifications/application/MentorBonusFanout.js';
 import { subscribePromotionFanout } from './src/modules/notifications/application/PromotionFanout.js';
 import { subscribeGoalFanout } from './src/modules/notifications/application/GoalFanout.js';
 import { subscribeProspectWorkedFanout } from './src/modules/notifications/application/ProspectWorkedFanout.js';
@@ -253,6 +254,12 @@ app.use(errorMiddleware);
     partners: lifecyclePartners,
   });
   subscribeTeamJoinFanout({
+    events: domainEvents,
+    stored: lifecycleStore,
+    delivery: lifecycleDelivery,
+    partners: lifecyclePartners,
+  });
+  subscribeMentorBonusFanout({
     events: domainEvents,
     stored: lifecycleStore,
     delivery: lifecycleDelivery,

@@ -133,6 +133,31 @@ export const buildRecruitAlert = ({ memberName, uplineName, source = 'referral',
   };
 };
 
+export const buildMentorBonusCredited = ({
+  mentorName,
+  memberName = '',
+  amount,
+  balanceAfter = null,
+}) => {
+  const amountLabel = Number(amount || 0).toLocaleString('en-NG');
+  const balanceLabel = Number(balanceAfter || 0).toLocaleString('en-NG');
+  const hasBalance = balanceAfter !== null && balanceAfter !== undefined && Number.isFinite(Number(balanceAfter));
+  const reason = String(memberName ?? '').trim()
+    ? `because <strong>${escapeHtml(memberName)}</strong> activated in your team`
+    : 'because a new partner activated in your team';
+
+  return {
+    subject: `₦${amountLabel} mentor/coach bonus credited to your wallet`,
+    html: `
+    <p>Hi ${escapeHtml(mentorName)},</p>
+    <p>Your wallet has been credited with a <strong>₦${amountLabel}</strong> mentor/coach bonus ${reason}.</p>
+    ${hasBalance ? `<p>New wallet balance: <strong>₦${balanceLabel}</strong>.</p>` : ''}
+    <p><a href="${appLink('/dashboard/wallet/history')}">View wallet history</a></p>
+    ${footer('You get this because a new partner activated in your team.')}
+  `,
+  };
+};
+
 export const buildPromotionMember = ({ memberName, toLabel }) => ({
   subject: `Congratulations — you reached ${toLabel}!`,
   html: `

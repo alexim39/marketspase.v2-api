@@ -29,8 +29,10 @@ import {
   rateForLevel,
 } from '../domain/Compensation.plan.js';
 import { rankFromJourneyLevel, shouldAutoSyncRank } from '../domain/Compensation.rank.js';
+import { COMPENSATION_EVENTS } from '../domain/CompensationEvents.js';
 import { recordAudit } from '../../audit/index.js';
 import { summarizeProductMargins, productCommissionShares } from '../domain/ProductCommission.js';
+import { domainEvents } from '../../../shared/events/DomainEvents.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
@@ -1377,7 +1379,7 @@ export class MongoCompensationRepository {
       return { status: 'held' };
     }
 
-    return runInTransaction(async (session) => {
+    const outcome = await runInTransaction(async (session) => {
       const reference = `MB-${bonus._id}`;
       const claimed = await MentorBonusModel.findOneAndUpdate(
         { _id: bonus._id, status: 'scheduled' },
@@ -1415,8 +1417,30 @@ export class MongoCompensationRepository {
         }],
         opts(session),
       );
-      return { status: 'paid' };
+      return {
+        status: 'paid',
+        bonusId: String(bonus._id),
+        mentorId: String(bonus.mentorId),
+        activationPartnerId: bonus.activationPartnerId ? String(bonus.activationPartnerId) : null,
+        orderId: bonus.orderId ? String(bonus.orderId) : null,
+        amount: Number(bonus.amount) || 0,
+        balanceBefore,
+        balanceAfter,
+      };
     });
+
+    if (outcome.status === 'paid') {
+      await domainEvents.emit(COMPENSATION_EVENTS.MENTOR_BONUS_PAID, {
+        bonusId: outcome.bonusId,
+        mentorId: outcome.mentorId,
+        activationPartnerId: outcome.activationPartnerId,
+        orderId: outcome.orderId,
+        amount: outcome.amount,
+        balanceBefore: outcome.balanceBefore,
+        balanceAfter: outcome.balanceAfter,
+      }).catch(() => null);
+    }
+    return outcome;
   }
 
   async clawbackEarner({ earnerId, amount, reference, note, session, now }) {
