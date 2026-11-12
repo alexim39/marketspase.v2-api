@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ConflictException } from '../../../shared/domain/AppError.js';
-import { AllocatePartnersUseCase, OverrideAllocationUseCase } from './Campaign.usecases.js';
+import { AllocatePartnersUseCase, CreateGrowthCampaignUseCase, OverrideAllocationUseCase } from './Campaign.usecases.js';
 
 const now = new Date('2026-11-03T12:00:00Z');
 const enteredAt = new Date('2026-10-19T12:00:00Z');
@@ -154,5 +154,66 @@ describe('AllocatePartnersUseCase', () => {
     assert.equal(events[0].payload.ownerId, 'owner-9');
     assert.equal(events[0].payload.allocationId, 'allocation-9');
     assert.equal(events[0].payload.campaignName, 'Lagos growth');
+  });
+});
+
+describe('CreateGrowthCampaignUseCase', () => {
+  const input = { name: 'Lagos growth', budgetAmount: 50000, capacityTotal: 2 };
+
+  it('auto-activates a funded campaign and emits the activation fact', async () => {
+    const received = [];
+    const events = [];
+    const useCase = new CreateGrowthCampaignUseCase({
+      repo: {
+        createCampaign: async (args) => {
+          received.push(args);
+          return { id: 'campaign-1', status: 'Active' };
+        },
+      },
+      events: { emit: async (name, payload) => events.push({ name, payload }) },
+      autoActivate: true,
+    });
+
+    const result = await useCase.execute('owner-1', input);
+
+    assert.equal(result.status, 'Active');
+    assert.equal(received[0].autoActivate, true);
+    assert.equal(received[0].ownerId, 'owner-1');
+    assert.deepEqual(received[0].input, input);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].name, 'campaign.activated');
+    assert.equal(events[0].payload.campaignId, 'campaign-1');
+    assert.equal(events[0].payload.ownerId, 'owner-1');
+    assert.equal(events[0].payload.activatedBy, 'system:auto');
+  });
+
+  it('leaves the campaign pending when auto-activation is disabled', async () => {
+    const events = [];
+    const useCase = new CreateGrowthCampaignUseCase({
+      repo: {
+        createCampaign: async () => ({ id: 'campaign-1', status: 'Pending' }),
+      },
+      events: { emit: async (name, payload) => events.push({ name, payload }) },
+      autoActivate: false,
+    });
+
+    const result = await useCase.execute('owner-1', input);
+
+    assert.equal(result.status, 'Pending');
+    assert.equal(events.length, 0);
+  });
+
+  it('never lets an activation-event failure break a funded campaign', async () => {
+    const useCase = new CreateGrowthCampaignUseCase({
+      repo: {
+        createCampaign: async () => ({ id: 'campaign-1', status: 'Active' }),
+      },
+      events: { emit: async () => { throw new Error('subscriber down'); } },
+      autoActivate: true,
+    });
+
+    const result = await useCase.execute('owner-1', input);
+
+    assert.equal(result.status, 'Active');
   });
 });

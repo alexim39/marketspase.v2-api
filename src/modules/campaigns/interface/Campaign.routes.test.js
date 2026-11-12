@@ -27,7 +27,7 @@ app.use('/v1/campaigns', buildCampaignRouter({
   create: {
     execute: async (_ownerId, input) => {
       createdInput = input;
-      return { id: campaignId, name: input.name, status: 'Pending', budget: { total: input.budgetAmount } };
+      return { id: campaignId, name: input.name, status: 'Active', budget: { total: input.budgetAmount } };
     },
   },
   cancel: { execute: async () => ({ id: campaignId, status: 'Cancelled' }) },
@@ -151,7 +151,8 @@ describe('growth campaign partner routes', () => {
     const result = await post('/v1/campaigns', payload);
 
     assert.equal(result.status, 201);
-    assert.equal(result.body.data.status, 'Pending');
+    assert.equal(result.body.data.status, 'Active');
+    assert.match(result.body.message, /funded and activated/i);
     assert.equal(createdInput.budgetAmount, 50000);
     assert.deepEqual(createdInput.targetStates, ['Lagos']);
   });

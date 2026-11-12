@@ -184,7 +184,7 @@ export class MongoCampaignRepository {
     return campaignDto(campaign);
   }
 
-  async createCampaign({ ownerId, input, now = new Date() }) {
+  async createCampaign({ ownerId, input, autoActivate = true, now = new Date() }) {
     const total = Number(input.budgetAmount);
     if (!Number.isFinite(total) || total < MIN_CAMPAIGN_BUDGET_NGN) {
       throw new ValidationException(`Minimum campaign budget is NGN ${MIN_CAMPAIGN_BUDGET_NGN.toLocaleString()} for ${MIN_PROSPECTS} prospects`);
@@ -211,6 +211,8 @@ export class MongoCampaignRepository {
     const endAt = input.endAt ? new Date(input.endAt) : null;
     if (endAt && Number.isNaN(endAt.getTime())) throw new ValidationException('Invalid end date');
     if (endAt && endAt <= startAt) throw new ValidationException('End date must be after the start date');
+    if (endAt && endAt <= now) throw new ValidationException('End date must be in the future');
+    const status = autoActivate ? 'Active' : 'Pending';
 
     const owner = await this.findPartner(ownerId);
     await this.assertOwnerEligible(owner);
@@ -242,7 +244,8 @@ export class MongoCampaignRepository {
           name: input.name,
           category: input.category ?? '',
           brief: input.brief ?? '',
-          status: 'Pending',
+          status,
+          ...(autoActivate ? { activatedAt: now, activatedBy: ownerId, pausedAt: null } : {}),
           budget: { total, spent: 0, refunded: 0 },
           flight: { startAt, endAt },
           capacity: {

@@ -5,6 +5,7 @@ import { idempotency } from '../../../shared/http/idempotency.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { sendSuccess } from '../../../shared/http/sendSuccess.js';
+import { env } from '../../../shared/config/env.js';
 import { recordAudit } from '../../audit/index.js';
 import { MongoCampaignRepository } from '../infrastructure/Campaign.mongo.repository.js';
 import {
@@ -44,7 +45,11 @@ import {
 
 export const buildCampaignRouter = (deps = {}) => {
   const repo = deps.repo ?? new MongoCampaignRepository();
-  const create = deps.create ?? new CreateGrowthCampaignUseCase({ repo, events: deps.events });
+  const create = deps.create ?? new CreateGrowthCampaignUseCase({
+    repo,
+    events: deps.events,
+    autoActivate: deps.autoActivate ?? env.campaigns.autoActivate,
+  });
   const listMine = deps.listMine ?? new ListMyGrowthCampaignsUseCase({ repo });
   const getMine = deps.getMine ?? new GetMyGrowthCampaignUseCase({ repo });
   const cancel = deps.cancel ?? new CancelGrowthCampaignUseCase({ repo, events: deps.events });
@@ -74,8 +79,15 @@ export const buildCampaignRouter = (deps = {}) => {
 
   router.post('/', validate({ body: CreateGrowthCampaignSchema }), idempotency(), asyncHandler(async (req, res) => {
     const data = await create.execute(req.auth.partnerId, req.validated.body);
+    auditCampaign(req, data.id, {
+      from: 'funding',
+      to: data.status,
+      by: data.status === 'Active' ? 'owner-auto' : 'owner',
+    });
     return sendSuccess(res, {
-      message: 'Campaign funded and submitted for review',
+      message: data.status === 'Active'
+        ? 'Campaign funded and activated'
+        : 'Campaign funded and submitted for review',
       data,
       statusCode: 201,
     });

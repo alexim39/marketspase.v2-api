@@ -27,6 +27,17 @@ export const env = {
     };
   },
   /**
+   * Growth campaign activation. Partner-created campaigns go live as soon as
+   * funding clears unless CAMPAIGN_AUTO_ACTIVATE is explicitly disabled.
+   */
+  get campaigns() {
+    return {
+      autoActivate: !['false', '0', 'no'].includes(
+        String(process.env.CAMPAIGN_AUTO_ACTIVATE ?? 'true').toLowerCase(),
+      ),
+    };
+  },
+  /**
    * Ora AI assistant (DeepSeek, OpenAI-compatible). The key lives ONLY in
    * env — never in code, logs or the frontend. Empty key = chat endpoints
    * answer 503 with a clear message instead of failing obscurely.

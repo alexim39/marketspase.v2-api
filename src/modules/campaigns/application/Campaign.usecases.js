@@ -5,12 +5,26 @@ import {
 } from '../domain/Campaign.allocation.js';
 
 export class CreateGrowthCampaignUseCase {
-  constructor({ repo }) {
+  constructor({ repo, events = domainEvents, autoActivate = true }) {
     this.repo = repo;
+    this.events = events;
+    this.autoActivate = autoActivate;
   }
 
-  execute(ownerId, input) {
-    return this.repo.createCampaign({ ownerId, input });
+  async execute(ownerId, input) {
+    const campaign = await this.repo.createCampaign({
+      ownerId,
+      input,
+      autoActivate: this.autoActivate,
+    });
+    if (campaign.status === 'Active') {
+      await this.events.emit('campaign.activated', {
+        campaignId: campaign.id,
+        ownerId: String(ownerId),
+        activatedBy: 'system:auto',
+      }).catch(() => null);
+    }
+    return campaign;
   }
 }
 
