@@ -152,4 +152,14 @@ export class MongoOrderReader {
     ]);
     return rows[0]?.active ?? 0;
   }
+
+  /** Recruits placed anywhere in an explicit downline set, in-window. */
+  async recruitsForBetween(partnerIds, start, end) {
+    if (partnerIds.length === 0) return 0;
+    return PartnersModel.countDocuments({
+      partnerOf: { $in: partnerIds },
+      placementCampaignId: null,
+      createdAt: { $gte: start, $lte: end },
+    });
+  }
 }

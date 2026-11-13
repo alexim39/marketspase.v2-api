@@ -11,6 +11,7 @@ import { MongoGoalStore } from '../infrastructure/Goals.mongo.repository.js';
 import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
+import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import { RecognitionUseCases } from '../../community/application/Community.usecases.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
@@ -52,15 +53,16 @@ export const buildGoalsRouter = (deps = {}) => {
   const orders = deps.orders ?? new MongoOrderReader();
   const prospects = deps.prospects ?? new MongoProspectRepository();
   const network = deps.network ?? new MongoNetworkRepository();
+  const progress = deps.progress ?? new MongoProgressionStore();
 
   const create = new CreateGoalUseCase({ goals });
-  const list = new ListGoalsUseCase({ goals, orders, prospects, network });
+  const list = new ListGoalsUseCase({ goals, orders, prospects, network, progress });
   const update = new UpdateGoalUseCase({ goals });
   const remove = new DeleteGoalUseCase({ goals });
   const trends = new GetTrendsUseCase({ orders });
   const community = deps.community ?? new MongoCommunityStore();
   const celebrate = deps.celebrate ?? new CelebrateGoalUseCase({
-    goals, orders, prospects, network, community,
+    goals, orders, prospects, network, community, progress,
     recognition: deps.recognition ?? new RecognitionUseCases({ community }),
   });
 

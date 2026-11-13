@@ -113,6 +113,15 @@ export class MongoProspectRepository {
     });
   }
 
+  /** Prospects followed up within a goal window (any logged communication). */
+  async countTouchedBetween(partnerId, start, end) {
+    return ProspectModel.countDocuments({
+      partnerId,
+      deletedAt: null,
+      communications: { $elemMatch: { date: { $gte: start, $lte: end } } },
+    });
+  }
+
   /**
    * Cohort funnel: prospects created in-window grouped by current stage.
    * Documents without a stage overlay (legacy) count as 'New'.

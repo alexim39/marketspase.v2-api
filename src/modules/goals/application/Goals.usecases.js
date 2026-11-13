@@ -9,18 +9,58 @@ const assertOwner = (doc, requesterId, what = 'Goal') => {
   return doc;
 };
 
+/** Count training stamps confirmed inside the goal window. */
+async function confirmedTraining(progress, partnerIds, start, end) {
+  if (!progress?.listConfirmationStats) return 0;
+  try {
+    const rows = await progress.listConfirmationStats(partnerIds, ['ipo', 'qsg', 'smo']);
+    let total = 0;
+    for (const row of rows ?? []) {
+      for (const key of ['ipo', 'qsg', 'smo']) {
+        const at = row?.[key]?.confirmedAt;
+        if (!at) continue;
+        const when = new Date(at).getTime();
+        if (when >= start.getTime() && when <= end.getTime()) total += 1;
+      }
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
 /** Resolve the live numerator for a goal kind (no cached counters). */
-async function currentValue(kind, partnerId, start, end, { orders, prospects, network }) {
+async function currentValue(kind, partnerId, start, end, { orders, prospects, network, progress }) {
   switch (kind) {
     case 'sales':
       return (await orders.volumeBetween(partnerId, start, end)).total;
+    case 'sales_orders':
+      return (await orders.volumeBetween(partnerId, start, end)).orders;
     case 'recruitment':
       return orders.recruitsBetween(partnerId, start, end);
     case 'conversion':
       return prospects.countConverted(partnerId, start, end);
+    case 'new_prospects':
+      return prospects.countCreated(partnerId, start, end);
+    case 'follow_ups':
+      return prospects.countTouchedBetween(partnerId, start, end);
+    case 'training':
+      return confirmedTraining(progress, [partnerId], start, end);
     case 'team_volume': {
       const { ids } = await collectDownlineIds(network, partnerId);
       return (await orders.volumeForBetween(ids, start, end)).total;
+    }
+    case 'team_orders': {
+      const { ids } = await collectDownlineIds(network, partnerId);
+      return (await orders.volumeForBetween(ids, start, end)).orders;
+    }
+    case 'active_team': {
+      const { ids } = await collectDownlineIds(network, partnerId);
+      return orders.activeMemberCount(ids, start, end);
+    }
+    case 'team_recruitment': {
+      const { ids } = await collectDownlineIds(network, partnerId);
+      return orders.recruitsForBetween(ids, start, end);
     }
     default:
       return 0;
@@ -39,9 +79,9 @@ export class CreateGoalUseCase {
 }
 
 export class ListGoalsUseCase {
-  /** @param {{goals, orders, prospects, network}} deps */
-  constructor({ goals, orders, prospects, network }) {
-    Object.assign(this, { goals, orders, prospects, network });
+  /** @param {{goals, orders, prospects, network, progress?}} deps */
+  constructor({ goals, orders, prospects, network, progress = null }) {
+    Object.assign(this, { goals, orders, prospects, network, progress });
   }
 
   async execute({ partnerId, now = new Date() }) {
@@ -83,9 +123,9 @@ export class DeleteGoalUseCase {
 }
 
 export class CelebrateGoalUseCase {
-  /** @param {{goals, orders, prospects, network, community, recognition}} deps */
-  constructor({ goals, orders, prospects, network, community, recognition }) {
-    Object.assign(this, { goals, orders, prospects, network, community, recognition });
+  /** @param {{goals, orders, prospects, network, community, recognition, progress?}} deps */
+  constructor({ goals, orders, prospects, network, community, recognition, progress = null }) {
+    Object.assign(this, { goals, orders, prospects, network, community, recognition, progress });
   }
 
   async execute({ requesterId, goalId, now = new Date() }) {
