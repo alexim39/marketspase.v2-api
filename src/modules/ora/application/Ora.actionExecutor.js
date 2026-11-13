@@ -4,6 +4,9 @@ import { UpdateProspectStatusUseCase } from '../../crm/application/Prospect.comm
 import { LogCommunicationUseCase } from '../../crm/application/Prospect.communications.js';
 import { SaveOraPlanUseCase } from './Ora.plan.usecases.js';
 import { MongoOraPlanStore } from '../infrastructure/Ora.mongo.repository.js';
+import { buildSmsSender } from '../../notifications/infrastructure/SmsSender.js';
+import { sendEmail } from '../../../services/emailService.js';
+import { env } from '../../../shared/config/env.js';
 
 const STAGES = ['New', 'Contacted', 'Interested', 'In Negotiation', 'Converted', 'Closed'];
 const asDate = (value, field) => {
@@ -22,11 +25,15 @@ export class OraActionExecutor {
     logCommunication,
     updateStatus,
     savePlan,
+    mail = sendEmail,
+    sms = null,
   } = {}) {
     this.prospects = prospects ?? new MongoProspectRepository();
     this.logCommunication = logCommunication ?? new LogCommunicationUseCase({ prospects: this.prospects });
     this.updateStatus = updateStatus ?? new UpdateProspectStatusUseCase({ prospects: this.prospects });
     this.savePlan = savePlan ?? new SaveOraPlanUseCase({ plans: new MongoOraPlanStore() });
+    this.mail = mail;
+    this.sms = sms ?? buildSmsSender(env.sms);
   }
 
   async prospectFor(partnerId, prospectId) {
@@ -85,6 +92,67 @@ export class OraActionExecutor {
           type: 'advance_stage',
           prospectId: String(updated?.id ?? updated?._id ?? payload.prospectId),
           stage,
+        };
+      }
+      case 'send_followup': {
+        const prospect = await this.prospectFor(partnerId, payload.prospectId);
+        this.requireOpenPipeline(prospect);
+        if (prospect.consentToContact !== true) {
+          throw new ForbiddenException('This prospect has not consented to contact.');
+        }
+        const phone = String(prospect.prospectPhone ?? '').trim();
+        const email = String(prospect.prospectEmail ?? '').trim();
+        const requested = payload.channel === 'email' ? 'email' : payload.channel === 'sms' ? 'sms' : null;
+        const channel = requested === 'email' && email
+          ? 'email'
+          : requested === 'sms' && phone
+            ? 'sms'
+            : phone
+              ? 'sms'
+              : email
+                ? 'email'
+                : null;
+        if (!channel) throw new ValidationException('This prospect has no usable phone number or email.');
+        const body = String(payload.body ?? '').trim().slice(0, 2000);
+        if (body.length < 3) throw new ValidationException('Message body is required.');
+        const subject = String(payload.subject ?? 'Following up').trim().slice(0, 120) || 'Following up';
+        const recentlySent = (prospect.communications ?? []).some((row) => {
+          if (!String(row?.description ?? '').startsWith('Ora-approved')) return false;
+          const at = new Date(row?.date ?? 0).getTime();
+          return Number.isFinite(at) && Date.now() - at < 6 * 3600000;
+        });
+        if (recentlySent) {
+          throw new ValidationException('A message was sent to this prospect in the last 6 hours. Give them time to reply.');
+        }
+
+        if (channel === 'sms') {
+          const sent = await this.sms.send({
+            to: phone,
+            title: 'MarketSpase follow-up',
+            body,
+          });
+          if (sent?.logged) throw new ValidationException('SMS is not configured — ask support to enable it before sending.');
+        } else {
+          const sent = await this.mail(email, subject, body, { plain: true });
+          if (!sent?.sent) throw new ValidationException(sent?.error || 'Email could not be sent.');
+        }
+
+        await this.logCommunication.execute({
+          prospectId: String(prospect.id ?? prospect._id),
+          type: channel === 'email' ? 'email' : 'text',
+          interestLevel: 'warm',
+          description: `Ora-approved ${channel} follow-up: ${body}`.slice(0, 5000),
+          followUpAction: 'Await reply',
+          createdBy: String(partnerId),
+          createdByName: 'Ora',
+        });
+        return {
+          type: 'send_followup',
+          prospectId: String(prospect.id ?? prospect._id),
+          channel,
+          subject,
+          body,
+          sent: true,
         };
       }
       case 'save_daily_plan': {

@@ -41,12 +41,25 @@ const draftFor = (proposal, opportunity, reply = '') => {
       const items = planDraftFromReply(reply);
       return { ...(opportunity.payload ?? {}), ...(items.length > 0 ? { items } : {}) };
     }
+    if (opportunity.type === 'send_followup') {
+      return {
+        ...(opportunity.payload ?? {}),
+        ...(proposal?.subject ? { subject: String(proposal.subject).slice(0, 120) } : {}),
+      };
+    }
     return opportunity.payload ?? {};
   }
   if (opportunity.type === 'save_daily_plan') {
     const parsed = parsePlanDraft(draft);
     const items = parsed.length > 0 ? parsed : planDraftFromReply(reply);
     return { ...(opportunity.payload ?? {}), ...(items.length > 0 ? { items } : {}) };
+  }
+  if (opportunity.type === 'send_followup') {
+    return {
+      ...(opportunity.payload ?? {}),
+      body: draft.slice(0, 2000),
+      ...(proposal?.subject ? { subject: String(proposal.subject).slice(0, 120) } : {}),
+    };
   }
   return opportunity.payload ?? {};
 };
@@ -59,6 +72,14 @@ const fallbackProposals = (message, snapshot) => {
   const text = String(message ?? '').toLowerCase();
   const opportunities = snapshot?.opportunities ?? [];
   if (/pipeline|prospect|lead|follow.?up|\bcall\b|remind/.test(text)) {
+    const message = opportunities.find((o) => o.type === 'send_followup');
+    if (message) {
+      return [{
+        opportunityId: message.id,
+        label: 'Draft follow-up',
+        summary: 'Review the message before approving it',
+      }];
+    }
     const review = opportunities.find((o) => o.capabilityKey === 'pipeline.followups');
     if (review) return [{ capability: review.capabilityKey, label: 'Open follow-ups' }];
   }

@@ -67,12 +67,56 @@ export const buildOraOpportunities = ({
     return true;
   };
 
+  /**
+   * A consenting prospect can receive an approved message. The executor
+   * re-checks ownership, consent and contact details before sending.
+   */
+  const pushMessage = (prospectId, reason) => {
+    const id = String(prospectId ?? '');
+    if (!id || seenProspects.has(id)) return false;
+    const prospect = byId.get(id);
+    if (!prospect || prospect.consentToContact !== true) return false;
+    const stage = prospect.status?.stage;
+    if (stage === 'Closed' || stage === 'Converted' || prospect.status?.status === 'Closed') return false;
+    const phone = String(prospect.prospectPhone ?? '').trim();
+    const email = String(prospect.prospectEmail ?? '').trim();
+    if (!phone && !email) return false;
+    const name = `${prospect.prospectName ?? ''} ${prospect.prospectSurname ?? ''}`.trim() || 'this prospect';
+    const firstName = name.split(/\s+/)[0] || name;
+    seenProspects.add(id);
+
+    opportunities.push({
+      id: `opp:message:${id}`,
+      type: 'send_followup',
+      area: 'Pipeline',
+      title: `Send ${name} a follow-up`,
+      reason,
+      page: '/dashboard/prospects/pipeline',
+      capabilityKey: 'pipeline.followups',
+      prospectId: id,
+      prospectName: name,
+      requiresApproval: true,
+      payload: {
+        prospectId: id,
+        prospectName: name,
+        channel: phone ? 'sms' : 'email',
+        subject: `Following up with ${name}`,
+        body: `Hi ${firstName}, just checking in to see how things are going. Is there a good time this week to connect?`,
+      },
+      summary: phone ? 'SMS draft ready for your approval' : 'Email draft ready for your approval',
+    });
+    return true;
+  };
+
   const buckets = bucketFollowUps(items, now);
+  let messageQueued = false;
   for (const entry of [...buckets.overdue, ...buckets.today].slice(0, MAX_PIPELINE)) {
-    pushProspect(
-      entry.prospectId,
-      entry.daysOverdue > 0 ? `Follow-up overdue by ${entry.daysOverdue} day(s)` : 'Follow-up is due today',
-    );
+    const reason = entry.daysOverdue > 0 ? `Follow-up overdue by ${entry.daysOverdue} day(s)` : 'Follow-up is due today';
+    if (!messageQueued && entry.daysOverdue > 0 && pushMessage(entry.prospectId, reason)) {
+      messageQueued = true;
+    } else {
+      pushProspect(entry.prospectId, reason);
+    }
     if (opportunities.length >= MAX_PIPELINE) break;
   }
 

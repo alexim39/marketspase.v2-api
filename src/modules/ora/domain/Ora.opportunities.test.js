@@ -30,11 +30,13 @@ const input = (over = {}) => ({
   ...over,
 });
 
-test('a stale prospect becomes an open-record opportunity', () => {
+test('a stale prospect with consent becomes an approval-ready message', () => {
   const rows = buildOraOpportunities(input());
-  const row = rows.find((o) => o.type === 'open_page' && o.prospectId === 'p1');
+  const row = rows.find((o) => o.type === 'send_followup' && o.prospectId === 'p1');
   assert.ok(row);
-  assert.equal(row.capabilityKey, 'pipeline.followups');
+  assert.equal(row.requiresApproval, true);
+  assert.equal(row.payload.channel, 'sms');
+  assert.match(row.payload.body, /Paul/);
 });
 
 test('no recorded consent still opens the record, never an automated send', () => {

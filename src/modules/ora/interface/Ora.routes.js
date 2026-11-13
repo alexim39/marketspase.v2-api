@@ -100,7 +100,7 @@ export const buildOraRouter = (deps = {}) => {
   const client = deps.client ?? new DeepSeekClient({ ...env.ora, post: deps.post });
   const analytics = deps.analytics ?? new MongoOraAnalyticsStore();
   const savePlan = deps.savePlan ?? new SaveOraPlanUseCase({ plans });
-  const executor = deps.executor ?? new OraActionExecutor({ savePlan });
+  const executor = deps.executor ?? new OraActionExecutor({ savePlan, mail: deps.mail, sms: deps.sms });
   const ask = deps.ask ?? new AskOraUseCase({
     conversations, client, context, analytics, actions: actionStore, dailyLimit: env.ora.dailyLimit,
   });

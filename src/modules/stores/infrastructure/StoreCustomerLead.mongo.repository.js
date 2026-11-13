@@ -34,7 +34,7 @@ const toPublic = (row) => ({
 const escape = (value) => String(value ?? '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class StoreCustomerLeadRepository {
-  async list(partnerId, { q = '', status = null, limit = 50, skip = 0 } = {}) {
+  async list(partnerId, { q = '', status = null, segment = 'all', limit = 50, skip = 0 } = {}) {
     if (!hasId(partnerId)) throw new ValidationException('Invalid partner');
     const pid = new mongoose.Types.ObjectId(partnerId);
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
@@ -50,8 +50,19 @@ export class StoreCustomerLeadRepository {
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
+    const dormantBefore = new Date(Date.now() - 60 * 86400000);
 
-    const [rows, total, summaryRows, statusRows, newThisMonth, repeatCustomers] = await Promise.all([
+    const segmentFilters = {
+      new: { paidOrders: { $lte: 1 } },
+      repeat: { paidOrders: { $gte: 2 } },
+      dormant: { paidOrders: { $gte: 1 }, lastPaidAt: { $lte: dormantBefore } },
+      loyal: { paidOrders: { $gte: 3 } },
+    };
+    if (segment && segment !== 'all' && segmentFilters[segment]) {
+      Object.assign(filter, segmentFilters[segment]);
+    }
+
+    const [rows, total, summaryRows, statusRows, newThisMonth, repeatCustomers, dormantCustomers, loyalCustomers, newCustomers] = await Promise.all([
       StoreCustomerLeadModel.find(filter).sort({ lastCheckoutAt: -1 }).skip(sk).limit(lim).lean(),
       StoreCustomerLeadModel.countDocuments(filter),
       StoreCustomerLeadModel.aggregate([
@@ -64,6 +75,9 @@ export class StoreCustomerLeadRepository {
       ]),
       StoreCustomerLeadModel.countDocuments({ partnerId: pid, firstSeenAt: { $gte: monthStart } }),
       StoreCustomerLeadModel.countDocuments({ partnerId: pid, paidOrders: { $gte: 2 } }),
+      StoreCustomerLeadModel.countDocuments({ partnerId: pid, ...segmentFilters.dormant }),
+      StoreCustomerLeadModel.countDocuments({ partnerId: pid, ...segmentFilters.loyal }),
+      StoreCustomerLeadModel.countDocuments({ partnerId: pid, ...segmentFilters.new }),
     ]);
 
     return {
@@ -75,6 +89,12 @@ export class StoreCustomerLeadRepository {
         paidOrders: Number(summaryRows?.[0]?.paidOrders ?? 0),
         revenue: round((Number(summaryRows?.[0]?.revenueKobo ?? 0)) / 100),
         newThisMonth,
+        segments: {
+          new: newCustomers,
+          repeat: repeatCustomers,
+          dormant: dormantCustomers,
+          loyal: loyalCustomers,
+        },
       },
       statusCounts: statusCounts(statusRows),
     };

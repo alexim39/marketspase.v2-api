@@ -111,6 +111,7 @@ export const StorePublicProductParamsSchema = z.object({
 export const StoreCustomerLeadQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['New', 'Contacted', 'Qualified', 'Converted', 'Closed']).optional(),
+  segment: z.enum(['all', 'new', 'repeat', 'dormant', 'loyal']).optional().default('all'),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   skip: z.coerce.number().int().min(0).optional().default(0),
 });

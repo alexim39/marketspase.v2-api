@@ -14,11 +14,13 @@ const clean = (row) => {
   const opportunityId = text(row.opportunityId, 120) || null;
   const capability = text(row.capability, 80) || null;
   if (!opportunityId && !capability) return null;
+  const subject = text(row.subject, 120);
   return {
     ...(opportunityId ? { opportunityId } : {}),
     ...(capability ? { capability } : {}),
     label: text(row.label, 60),
     summary: text(row.summary, 220),
+    ...(subject ? { subject } : {}),
     draft: text(row.draft, 2000),
   };
 };
