@@ -45,8 +45,14 @@ const ProfessionUpdate = z.object({
   id: objectId,
   jobTitle: z.string().trim().min(1).max(120),
   educationBackground: z.string().trim().min(1).max(200),
-  hobby: z.string().trim().max(200).optional(),
-  skill: z.string().trim().max(200).optional(),
+  hobby: z.preprocess(
+    (value) => (value === null ? '' : value),
+    z.union([z.string().trim().max(2000), z.array(z.string().trim().max(200)).max(50)]).optional(),
+  ),
+  skill: z.preprocess(
+    (value) => (value === null ? '' : value),
+    z.union([z.string().trim().max(2000), z.array(z.string().trim().max(200)).max(50)]).optional(),
+  ),
 });
 const UsernameUpdate = z.object({
   id: objectId,

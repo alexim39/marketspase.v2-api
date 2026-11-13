@@ -211,10 +211,12 @@ const partnersSchema = mongoose.Schema(
       type: String,
     },
     hobby: {
-      type: String,
+      type: [String],
+      default: [],
     },
     skill: {
-      type: String,
+      type: [String],
+      default: [],
     },
     role: {
       type: String,

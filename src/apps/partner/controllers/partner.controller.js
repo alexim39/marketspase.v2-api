@@ -31,6 +31,28 @@ const requireSelf = (req, res, id) => {
   return true;
 };
 
+const MAX_PROFILE_TAGS = 10;
+const MAX_PROFILE_TAG_LENGTH = 40;
+
+/** Accept legacy comma strings or arrays; trim, dedupe and cap at the API contract. */
+const normalizeProfileTags = (value) => {
+  const raw = Array.isArray(value) ? value : String(value ?? '').split(',');
+  const seen = new Set();
+  const tags = [];
+  for (const entry of raw) {
+    for (const part of String(entry ?? '').split(',')) {
+      const tag = part.replace(/\s+/g, ' ').trim().slice(0, MAX_PROFILE_TAG_LENGTH);
+      if (!tag) continue;
+      const key = tag.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tags.push(tag);
+      if (tags.length >= MAX_PROFILE_TAGS) return tags;
+    }
+  }
+  return tags;
+};
+
 /** Strip secrets + internal fields from any partner document sent out. */
 const safePartner = (doc) => {
   if (!doc) return doc;
@@ -115,7 +137,9 @@ export const updateProfession = async (req, res) => {
       });
     }
 
-    const updateData = { jobTitle, educationBackground, hobby, skill };
+    const updateData = { jobTitle, educationBackground };
+    if (hobby !== undefined) updateData.hobby = normalizeProfileTags(hobby);
+    if (skill !== undefined) updateData.skill = normalizeProfileTags(skill);
 
     const partner = await PartnersModel.findByIdAndUpdate(id, updateData, {
       new: true,
