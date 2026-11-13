@@ -24,6 +24,8 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 notificationSchema.index({ recipientId: 1, archivedAt: 1, createdAt: -1 });
+notificationSchema.index({ recipientId: 1, archivedAt: 1, category: 1, createdAt: -1 });
+notificationSchema.index({ recipientId: 1, archivedAt: 1, readAt: 1, createdAt: -1 });
 // Duplicate suppression: same producer key → same logical item, one row.
 notificationSchema.index(
   { recipientId: 1, key: 1 },
@@ -91,10 +93,13 @@ export class MongoStoredNotificationStore {
     return exists !== null;
   }
 
-  async list(partnerId, { unreadOnly = false, search = '', cursor = null, limit = 50 } = {}) {
+  async list(partnerId, { unreadOnly = false, search = '', cursor = null, limit = 50, categories = [] } = {}) {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const filter = { recipientId: partnerId, archivedAt: null };
     if (unreadOnly) filter.readAt = null;
+    if (Array.isArray(categories) && categories.length > 0) {
+      filter.category = { $in: [...new Set(categories.map(String))].slice(0, 30) };
+    }
     if (search) filter.$text = { $search: search };
     if (cursor) {
       const anchor = await StoredNotificationModel.findById(cursor).select('createdAt').lean();
@@ -111,6 +116,23 @@ export class MongoStoredNotificationStore {
       .lean();
     const hasMore = docs.length > lim;
     return { items: docs.slice(0, lim).map(shaped), hasMore };
+  }
+
+  /** Whole-inbox counts used by the center; independent of the current page. */
+  async centerSummary(partnerId) {
+    const [total, unread, categoryRows] = await Promise.all([
+      StoredNotificationModel.countDocuments({ recipientId: partnerId, archivedAt: null }),
+      StoredNotificationModel.countDocuments({ recipientId: partnerId, archivedAt: null, readAt: null }),
+      StoredNotificationModel.aggregate([
+        { $match: { recipientId: new mongoose.Types.ObjectId(partnerId), archivedAt: null } },
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+      ]),
+    ]);
+    return {
+      total,
+      unread,
+      categories: Object.fromEntries((categoryRows ?? []).map((row) => [String(row._id), Number(row.count) || 0])),
+    };
   }
 
   async markRead(partnerId, id) {

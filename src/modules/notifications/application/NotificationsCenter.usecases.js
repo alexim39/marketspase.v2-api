@@ -57,12 +57,13 @@ export class ListCenterUseCase {
     Object.assign(this, { stored, feed });
   }
 
-  async execute({ partnerId, unreadOnly = false, search = '', cursor = null, limit = 50 }) {
-    const [stored, derived] = await Promise.all([
-      this.stored.list(partnerId, { unreadOnly, search, cursor, limit }),
+  async execute({ partnerId, unreadOnly = false, search = '', cursor = null, limit = 50, categories = [] } = {}) {
+    const [stored, derived, summary] = await Promise.all([
+      this.stored.list(partnerId, { unreadOnly, search, cursor, limit, categories }),
       unreadOnly || search || cursor
         ? []
         : this.feed.execute({ partnerId, limit: 50 }).then((f) => f.items ?? []),
+      this.stored.centerSummary ? this.stored.centerSummary(partnerId).catch(() => null) : Promise.resolve(null),
     ]);
     const items = stored.items.map(asStoredItem);
     // N4: a stored mention supersedes its derived twin (`mention:<type>:<id>`
@@ -79,6 +80,7 @@ export class ListCenterUseCase {
         .filter((d) => !(d.kind === 'mention' && superseded.has(d.id)))
         .map(asDerivedItem),
       hasMore: stored.hasMore,
+      summary: summary ?? null,
     };
   }
 }

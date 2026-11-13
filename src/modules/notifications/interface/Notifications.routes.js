@@ -38,6 +38,7 @@ const CenterListQuery = z.object({
   unread: z.union([z.boolean(), z.enum(['true', 'false'])]).optional().default(false),
   q: z.string().trim().max(120).optional().default(''),
   cursor: objectIdParam.optional(),
+  categories: z.string().trim().max(500).optional().default(''),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 const BulkSchema = z.object({ action: z.enum(['read-all', 'archive-all', 'delete-all']) });
@@ -123,6 +124,7 @@ export const buildNotificationsRouter = (deps = {}) => {
       search: q?.q ?? '',
       cursor: q?.cursor,
       limit: q?.limit,
+      categories: String(q?.categories ?? '').split(',').map((value) => value.trim()).filter(Boolean),
     });
     res.status(200).json({ message: 'Notification center retrieved successfully', data, success: true });
   }));
