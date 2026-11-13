@@ -26,6 +26,7 @@ import {
   StoreCustomerLeadQuerySchema,
   StoreCustomerLeadParamsSchema,
   StoreCustomerLeadUpdateSchema,
+  StoreCustomerLeadOutreachSchema,
   StoreProductParamsSchema,
   StoreProductUpdateSchema,
   StorePublicProductParamsSchema,
@@ -203,6 +204,27 @@ export const buildStoreRouter = (deps = {}) => {
         detail: { status: data.status },
       });
       return sendSuccess(res, { message: 'Customer updated', data });
+    }),
+  );
+
+  router.post(
+    '/me/customer-leads/:leadId/outreach',
+    auth,
+    validate({ params: StoreCustomerLeadParamsSchema, body: StoreCustomerLeadOutreachSchema }),
+    asyncHandler(async (req, res) => {
+      const data = await customerLeads.recordOutreach(
+        req.auth.partnerId,
+        req.validated.params.leadId,
+        req.validated.body.channel,
+      );
+      void audit({
+        actorId: req.auth.partnerId,
+        action: 'store.customer-lead.outreach',
+        targetType: 'store-customer-lead',
+        targetId: req.validated.params.leadId,
+        detail: { channel: req.validated.body.channel },
+      });
+      return sendSuccess(res, { message: 'Outreach recorded', data });
     }),
   );
 

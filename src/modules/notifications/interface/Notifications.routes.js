@@ -17,6 +17,14 @@ import { MongoNotificationStore } from '../infrastructure/Notifications.mongo.re
 import { MongoStoredNotificationStore } from '../infrastructure/StoredNotifications.mongo.repository.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { MongoCommunityStore } from '../../community/infrastructure/Community.mongo.repository.js';
+import { GetActionInboxUseCase } from '../application/ActionInbox.usecase.js';
+import { GetFollowUpRemindersUseCase } from '../../crm/application/Prospect.queries.js';
+import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
+import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
+import { MongoOrderReader } from '../../billing/infrastructure/Billing.mongo.repository.js';
+import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
+import { GetMyCompensationUseCase } from '../../compensation/application/Compensation.usecases.js';
+import { MongoCompensationRepository } from '../../compensation/infrastructure/Compensation.mongo.repository.js';
 
 const FeedQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional().default(100),
@@ -80,6 +88,16 @@ export const buildNotificationsRouter = (deps = {}) => {
   const stats = new NotificationStatsUseCase({ stored: centerStore });
   const saveSub = new SavePushSubscriptionUseCase({ stored: centerStore });
   const removeSub = new RemovePushSubscriptionUseCase({ stored: centerStore });
+  const actionInbox = deps.actionInbox ?? new GetActionInboxUseCase({
+    reminders: new GetFollowUpRemindersUseCase({ prospects }),
+    progression: new GetMyProgressionUseCase({
+      progress: new MongoProgressionStore(),
+      network: new MongoNetworkRepository(),
+      orders: new MongoOrderReader(),
+      recognition: null,
+    }),
+    compensation: new GetMyCompensationUseCase({ repo: new MongoCompensationRepository() }),
+  });
 
   const router = express.Router();
   // Session identity only — partners see exactly their own feed.
@@ -107,6 +125,11 @@ export const buildNotificationsRouter = (deps = {}) => {
       limit: q?.limit,
     });
     res.status(200).json({ message: 'Notification center retrieved successfully', data, success: true });
+  }));
+
+  router.get('/action-inbox', asyncHandler(async (req, res) => {
+    const data = await actionInbox.execute({ partnerId: req.auth?.partnerId });
+    res.status(200).json({ message: 'Action inbox retrieved successfully', data, success: true });
   }));
 
   router.post('/:id/read', validate({ params: StoredIdParam }), asyncHandler(async (req, res) => {

@@ -4,6 +4,9 @@ import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { GetActionsUseCase, GetActivationUseCase, GetBenchUseCase, GetFunnelUseCase, GetOrgFunnelUseCase, GetRetentionUseCase, GetTeamUseCase } from '../application/Analytics.usecases.js';
+import { GetFeatureAdoptionUseCase, RecordFeatureEventsUseCase } from '../application/FeatureAdoption.usecases.js';
+import { GetRecurringRevenueUseCase } from '../application/RecurringRevenue.usecase.js';
+import { FeatureEventStore } from '../infrastructure/FeatureEvents.mongo.repository.js';
 import { resolveSubject } from '../../network/application/SubjectScope.js';
 import { GetFollowUpRemindersUseCase, GetStuckProspectsUseCase } from '../../crm/application/Prospect.queries.js';
 import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
@@ -31,6 +34,15 @@ const ActionsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(15),
 });
 
+const FeatureEventSchema = z.object({
+  event: z.string().trim().min(2).max(80),
+  feature: z.string().trim().max(60).optional().default(''),
+  meta: z.record(z.string(), z.unknown()).optional().default({}),
+});
+const FeatureEventsSchema = z.object({
+  events: z.array(FeatureEventSchema).min(1).max(50),
+});
+
 /** Manual wiring — use-case composition (feed + goals) over shared repos. */
 export const buildAnalyticsRouter = (deps = {}) => {
   const prospects = deps.prospects ?? new MongoProspectRepository();
@@ -56,6 +68,10 @@ export const buildAnalyticsRouter = (deps = {}) => {
   const retention = deps.retention ?? new GetRetentionUseCase({ partners, progress: progressStore });
   const activation = new GetActivationUseCase({ partners, prospects, progress: progressStore, network });
   const bench = new GetBenchUseCase({ progress: progressStore, network });
+  const featureEvents = deps.featureEvents ?? new FeatureEventStore();
+  const recordFeatureEvents = new RecordFeatureEventsUseCase({ events: featureEvents });
+  const featureAdoption = deps.featureAdoption ?? new GetFeatureAdoptionUseCase({ events: featureEvents });
+  const recurringRevenue = deps.recurringRevenue ?? new GetRecurringRevenueUseCase();
 
   const router = express.Router();
   router.use(requireAuth);
@@ -90,6 +106,24 @@ export const buildAnalyticsRouter = (deps = {}) => {
   router.get('/bench', asyncHandler(async (req, res) => {
     const data = await bench.execute({ partnerId: req.auth?.partnerId });
     res.status(200).json({ message: 'Leadership bench retrieved successfully', data, success: true });
+  }));
+
+  router.post('/events', validate({ body: FeatureEventsSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await recordFeatureEvents.execute({ partnerId: req.auth?.partnerId, rows: body?.events });
+    res.status(200).json({ message: 'Feature events recorded', data, success: true });
+  }));
+
+  router.get('/admin/feature-adoption', requireRole('admin'), validate({ query: WindowQuery }), asyncHandler(async (req, res) => {
+    const q = req.validated?.query ?? req.query;
+    const data = await featureAdoption.execute({ days: q?.days });
+    res.status(200).json({ message: 'Feature adoption retrieved successfully', data, success: true });
+  }));
+
+  router.get('/admin/recurring-revenue', requireRole('admin'), validate({ query: WindowQuery }), asyncHandler(async (req, res) => {
+    const q = req.validated?.query ?? req.query;
+    const data = await recurringRevenue.execute({ days: q?.days });
+    res.status(200).json({ message: 'Recurring revenue evaluation retrieved successfully', data, success: true });
   }));
 
   router.get('/admin/funnel', requireRole('admin'), validate({ query: WindowQuery }), asyncHandler(async (req, res) => {

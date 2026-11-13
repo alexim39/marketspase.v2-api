@@ -1,10 +1,11 @@
 import express from 'express';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
+import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import {
   ProspectIdParam, PartnerIdParam, CreateProspectSchema, UpdateProspectSchema,
   UpdateStatusSchema, LogCommunicationSchema, PaginationQuery, CommIdsParam, StuckQuery,
-  ConvertProspectSchema, RateLeadSchema,
+  ConvertProspectSchema, RateLeadSchema, MentorCheckinSchema, MentorMemberParam,
 } from './Prospect.validator.js';
 import { makeProspectController } from './Prospect.controller.js';
 import {
@@ -12,6 +13,7 @@ import {
 } from '../application/Prospect.commands.js';
 import { LogCommunicationUseCase, RemoveCommunicationUseCase } from '../application/Prospect.communications.js';
 import { ListActivationBoardUseCase } from '../application/ContactList.usecases.js';
+import { RecordMentorCheckinUseCase } from '../application/MentorPlaybook.usecases.js';
 import { MongoNetworkRepository } from '../../network/infrastructure/Network.mongo.repository.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
 import {
@@ -41,6 +43,7 @@ export const buildProspectRouter = (deps = {}) => {
   const network = deps.network ?? new MongoNetworkRepository();
   const progress = deps.progress ?? new MongoProgressionStore();
   const events = deps.events ?? domainEvents;
+  const mentorCheckin = deps.mentorCheckin ?? new RecordMentorCheckinUseCase({ network });
   // Ownership guard: owner/upline/admin for reads + support writes,
   // owner/admin for PII, deletes and converts. Null-safe in tests via deps.
   const guard = deps.guard ?? buildProspectAccess({
@@ -89,6 +92,22 @@ export const buildProspectRouter = (deps = {}) => {
   router.get('/notifications/:partnerId', validate({ params: PartnerIdParam }), c.notifications);
 
   router.get('/stuck/:partnerId', validate({ params: PartnerIdParam, query: StuckQuery }), c.stuck);
+
+  router.post(
+    '/activation-board/:memberId/checkin',
+    validate({ params: MentorMemberParam, body: MentorCheckinSchema }),
+    asyncHandler(async (req, res) => {
+      const body = req.validated?.body ?? req.body;
+      const params = req.validated?.params ?? req.params;
+      const data = await mentorCheckin.execute({
+        mentorId: req.auth?.partnerId,
+        memberId: params.memberId,
+        kind: body?.kind ?? 'ad_hoc',
+        note: body?.note ?? '',
+      });
+      res.status(200).json({ message: 'Mentor check-in recorded', data, success: true });
+    }),
+  );
 
   router.get('/:prospectId', validate({ params: ProspectIdParam }), c.getById);
   router.get('/getById/:prospectId', validate({ params: ProspectIdParam }), c.getById);

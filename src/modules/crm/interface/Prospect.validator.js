@@ -97,8 +97,17 @@ export const ConvertProspectSchema = z.object({
 });
 
 
-/** POST /v1/prospects/:prospectId/rate — 1–5 star quality vote. */
+/** POST /v1/prospects/:prospectId/rate - 1-5 star quality vote. */
 export const RateLeadSchema = z.object({
   score: z.number().min(1).max(5),
   note: z.string().trim().max(500).optional().default(''),
+});
+
+export const MentorCheckinSchema = z.object({
+  kind: z.enum(['welcome', 'day3', 'day7', 'ad_hoc']).optional().default('ad_hoc'),
+  note: z.string().trim().max(500).optional().default(''),
+});
+
+export const MentorMemberParam = z.object({
+  memberId: objectId,
 });

@@ -311,6 +311,9 @@ const storeCustomerLeadSchema = new mongoose.Schema(
     firstSeenAt: { type: Date, default: Date.now },
     lastCheckoutAt: { type: Date, default: Date.now },
     lastPaidAt: { type: Date, default: null },
+    lastOutreachAt: { type: Date, default: null, index: true },
+    lastOutreachChannel: { type: String, default: '', trim: true, maxlength: 20 },
+    outreachCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true, collection: 'store_customer_leads' },
 );

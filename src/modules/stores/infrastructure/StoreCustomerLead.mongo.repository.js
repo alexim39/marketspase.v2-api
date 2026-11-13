@@ -27,6 +27,9 @@ const toPublic = (row) => ({
   firstSeenAt: row.firstSeenAt ?? null,
   lastCheckoutAt: row.lastCheckoutAt ?? null,
   lastPaidAt: row.lastPaidAt ?? null,
+  lastOutreachAt: row.lastOutreachAt ?? null,
+  lastOutreachChannel: row.lastOutreachChannel ?? '',
+  outreachCount: Number(row.outreachCount) || 0,
   createdAt: row.createdAt ?? null,
   updatedAt: row.updatedAt ?? null,
 });
@@ -121,6 +124,23 @@ export class StoreCustomerLeadRepository {
     const row = await StoreCustomerLeadModel.findOneAndUpdate(
       { _id: id, partnerId },
       { $set: update },
+      { new: true },
+    ).lean();
+    if (!row) throw new NotFoundException('Customer not found');
+    return toPublic(row);
+  }
+
+  async recordOutreach(partnerId, id, channel) {
+    if (!hasId(partnerId) || !hasId(id)) throw new ValidationException('Invalid customer');
+    const allowed = ['whatsapp', 'email', 'call'];
+    const value = String(channel ?? '').trim().toLowerCase();
+    if (!allowed.includes(value)) throw new ValidationException('Invalid outreach channel');
+    const row = await StoreCustomerLeadModel.findOneAndUpdate(
+      { _id: id, partnerId },
+      {
+        $set: { lastOutreachAt: new Date(), lastOutreachChannel: value },
+        $inc: { outreachCount: 1 },
+      },
       { new: true },
     ).lean();
     if (!row) throw new NotFoundException('Customer not found');

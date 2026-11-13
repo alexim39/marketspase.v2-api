@@ -120,6 +120,10 @@ export const StoreCustomerLeadParamsSchema = z.object({
   leadId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid customer'),
 });
 
+export const StoreCustomerLeadOutreachSchema = z.object({
+  channel: z.enum(['whatsapp', 'email', 'call']),
+});
+
 export const StoreCustomerLeadUpdateSchema = z.object({
   status: z.enum(['New', 'Contacted', 'Qualified', 'Converted', 'Closed']).optional(),
   partnerNotes: z.string().trim().max(2000).optional(),

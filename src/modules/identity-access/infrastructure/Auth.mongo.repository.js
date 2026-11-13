@@ -127,6 +127,26 @@ export class MongoPartnerRepository {
       .catch(() => []);
     return (docs ?? []).map((d) => ({ id: String(d._id), lastSeenAt: d.lastSeenAt ?? null }));
   }
+
+  async findPlaybookSnapshots(ids) {
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map((v) => String(v ?? '').trim()))]
+      .filter((v) => /^[a-fA-F0-9]{24}$/.test(v)).slice(0, 2000);
+    if (list.length === 0) return [];
+    const docs = await PartnersModel.find({ _id: { $in: list } })
+      .select('_id phone address accountState createdAt activatedAt profileImage')
+      .limit(2000)
+      .lean()
+      .catch(() => []);
+    return (docs ?? []).map((d) => ({
+      id: String(d._id),
+      phone: d.phone ?? '',
+      address: d.address ?? null,
+      accountState: d.accountState ?? 'member',
+      createdAt: d.createdAt ?? null,
+      activatedAt: d.activatedAt ?? null,
+      profileImage: d.profileImage ?? null,
+    }));
+  }
   /** Case-insensitive role count (absorbs legacy 'User'/'admin' casing). */
   /**
    * Signup cohorts: member ids per trailing calendar month (newest last),
