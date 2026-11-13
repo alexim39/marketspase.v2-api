@@ -32,6 +32,10 @@ export const GrowCampaignQuerySchema = z.object({
 
 export const CampaignIdParamsSchema = z.object({ id });
 
+export const CampaignAnalyticsQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).optional().default(30),
+});
+
 export const CancelGrowthCampaignSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 });

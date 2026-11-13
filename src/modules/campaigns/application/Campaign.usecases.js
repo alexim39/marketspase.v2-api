@@ -105,6 +105,16 @@ export class GetCampaignAttributionUseCase {
   }
 }
 
+export class GetCampaignAnalyticsUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute(campaignId, ownerId, { days } = {}) {
+    return this.repo.analyticsForCampaign({ campaignId, ownerId, days });
+  }
+}
+
 export class ActivateGrowthCampaignUseCase {
   constructor({ repo, events = domainEvents }) {
     this.repo = repo;

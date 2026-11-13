@@ -62,6 +62,9 @@ export const INDEXES = [
   { collection: 'partners', keys: { role: 1, createdAt: -1 }, options: {} },
   { collection: 'partners', keys: { suspendedAt: 1 }, options: {} },
   { collection: 'partners', keys: { dobMonth: 1, dobDay: 1 }, options: {} },
+  // Campaign attribution: signup and activation series per tracking code.
+  { collection: 'partners', keys: { campaignCode: 1, createdAt: 1 }, options: {} },
+  { collection: 'partners', keys: { campaignCode: 1, activatedAt: 1 }, options: {} },
   { collection: 'prospects', keys: { partnerId: 1, createdAt: -1 }, options: {} },
   { collection: 'prospects', keys: { partnerId: 1, 'status.stage': 1 }, options: {} },
   // Downline contact-list coaching query (?status=&attention= match the

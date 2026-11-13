@@ -14,6 +14,7 @@ import {
   CancelGrowthCampaignUseCase,
   CreateGrowthCampaignUseCase,
   EndGrowthCampaignUseCase,
+  GetCampaignAnalyticsUseCase,
   GetCampaignAttributionUseCase,
   GetCampaignQueueUseCase,
   GetMyAllocationUseCase,
@@ -34,6 +35,7 @@ import {
   AllocationOverrideSchema,
   AllocationReverseSchema,
   AllocatePartnersSchema,
+  CampaignAnalyticsQuerySchema,
   CampaignIdParamsSchema,
   CancelGrowthCampaignSchema,
   CreateGrowthCampaignSchema,
@@ -52,6 +54,7 @@ export const buildCampaignRouter = (deps = {}) => {
   });
   const listMine = deps.listMine ?? new ListMyGrowthCampaignsUseCase({ repo });
   const getMine = deps.getMine ?? new GetMyGrowthCampaignUseCase({ repo });
+  const analytics = deps.analytics ?? new GetCampaignAnalyticsUseCase({ repo });
   const cancel = deps.cancel ?? new CancelGrowthCampaignUseCase({ repo, events: deps.events });
   const pause = deps.pause ?? new PauseGrowthCampaignUseCase({ repo });
   const resume = deps.resume ?? new ResumeGrowthCampaignUseCase({ repo });
@@ -107,6 +110,19 @@ export const buildCampaignRouter = (deps = {}) => {
     const data = await getMine.execute(req.validated.params.id, req.auth.partnerId);
     return sendSuccess(res, { data });
   }));
+
+  router.get(
+    '/:id/analytics',
+    validate({ params: CampaignIdParamsSchema, query: CampaignAnalyticsQuerySchema }),
+    asyncHandler(async (req, res) => {
+      const data = await analytics.execute(
+        req.validated.params.id,
+        req.auth.partnerId,
+        req.validated.query,
+      );
+      return sendSuccess(res, { data });
+    }),
+  );
 
   router.post(
     '/:id/cancel',

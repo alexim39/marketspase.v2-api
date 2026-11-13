@@ -24,6 +24,15 @@ app.use('/v1/campaigns', buildCampaignRouter({
   recordAudit: async () => null,
   listMine: { execute: async () => [{ id: campaignId, name: 'Lagos growth', status: 'Pending' }] },
   getMine: { execute: async () => ({ id: campaignId, name: 'Lagos growth' }) },
+  analytics: {
+    execute: async (id, ownerId, query) => ({
+      campaign: { id, name: 'Lagos growth', status: 'Active' },
+      windowDays: query.days,
+      summary: { signups: 10, activated: 6, activationRate: 60, retained7: 3, eligible7: 4, retentionRate: 75 },
+      series: [{ date: '2026-11-11', signups: 1, activated: 1 }],
+      ownerId,
+    }),
+  },
   create: {
     execute: async (_ownerId, input) => {
       createdInput = input;
@@ -175,6 +184,25 @@ describe('growth campaign partner routes', () => {
 
     assert.equal(result.status, 400);
     assert.equal(createdInput, null);
+  });
+
+  it('serves campaign analytics only for the signed-in owner', async () => {
+    const response = await fetch(`${baseUrl}/v1/campaigns/${campaignId}/analytics?days=30`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.summary.signups, 10);
+    assert.equal(body.data.summary.activationRate, 60);
+    assert.equal(body.data.summary.retentionRate, 75);
+    assert.equal(body.data.windowDays, 30);
+    assert.equal(body.data.ownerId, partnerId);
+    assert.equal(body.data.campaign.id, campaignId);
+  });
+
+  it('rejects an invalid analytics window before the use case', async () => {
+    const response = await fetch(`${baseUrl}/v1/campaigns/${campaignId}/analytics?days=365`);
+
+    assert.equal(response.status, 400);
   });
 
   it('serves the queue/allocation status for the signed-in partner', async () => {

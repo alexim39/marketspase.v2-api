@@ -358,8 +358,10 @@ export class MongoCampaignRepository {
     };
   }
 
-  async attribution(limit = 100) {
+  async attribution(limit = 100, now = new Date()) {
     const size = Math.min(Math.max(Number(limit) || 100, 1), 200);
+    const sevenDaysAgo = new Date(now.getTime() - (7 * DAY_MS));
+    const retentionMs = 7 * DAY_MS;
     const rows = await PartnersModel.aggregate([
       { $match: { campaignCode: { $type: 'string', $nin: [''] } } },
       {
@@ -368,7 +370,34 @@ export class MongoCampaignRepository {
           signups: { $sum: 1 },
           activated: { $sum: { $cond: [{ $eq: ['$accountState', 'partner'] }, 1, 0] } },
           kycVerified: { $sum: { $cond: [{ $eq: ['$kycStatus', 'verified'] }, 1, 0] } },
+          eligible7: {
+            $sum: {
+              $cond: [{
+                $and: [
+                  { $ne: ['$activatedAt', null] },
+                  { $lte: ['$activatedAt', sevenDaysAgo] },
+                ],
+              }, 1, 0],
+            },
+          },
+          retained7: {
+            $sum: {
+              $cond: [{
+                $and: [
+                  { $ne: ['$activatedAt', null] },
+                  { $lte: ['$activatedAt', sevenDaysAgo] },
+                  {
+                    $gte: [
+                      { $ifNull: ['$lastSeenAt', '$lastLoginAt'] },
+                      { $add: ['$activatedAt', retentionMs] },
+                    ],
+                  },
+                ],
+              }, 1, 0],
+            },
+          },
           lastSignupAt: { $max: '$createdAt' },
+          lastActivityAt: { $max: { $ifNull: ['$lastSeenAt', '$lastLoginAt'] } },
         },
       },
       { $sort: { signups: -1, _id: 1 } },
@@ -388,6 +417,8 @@ export class MongoCampaignRepository {
       const campaign = byCode.get(code);
       const signups = Number(row.signups ?? 0);
       const activated = Number(row.activated ?? 0);
+      const eligible7 = Number(row.eligible7 ?? 0);
+      const retained7 = Number(row.retained7 ?? 0);
       return {
         campaignCode: code,
         campaign: campaign
@@ -396,10 +427,125 @@ export class MongoCampaignRepository {
         signups,
         activated,
         kycVerified: Number(row.kycVerified ?? 0),
+        eligible7,
+        retained7,
         activationRate: signups ? round((activated / signups) * 100) : 0,
+        retentionRate: eligible7 ? round((retained7 / eligible7) * 100) : null,
         lastSignupAt: row.lastSignupAt ?? null,
+        lastActivityAt: row.lastActivityAt ?? null,
       };
     });
+  }
+
+  async analyticsForCampaign({ campaignId, ownerId, days = 30, now = new Date() } = {}) {
+    if (!hasId(campaignId)) throw new ValidationException('Invalid campaign id');
+    const campaign = await GrowthCampaignModel.findOne({ _id: campaignId, ownerId }).lean();
+    if (!campaign) throw new NotFoundException('Campaign not found');
+
+    const windowDays = Math.min(Math.max(Number(days) || 30, 7), 90);
+    const endDay = new Date(now);
+    endDay.setUTCHours(0, 0, 0, 0);
+    const windowStart = new Date(endDay.getTime() - ((windowDays - 1) * DAY_MS));
+    const sevenDaysAgo = new Date(now.getTime() - (7 * DAY_MS));
+    const retentionMs = 7 * DAY_MS;
+
+    const [result] = await PartnersModel.aggregate([
+      { $match: { campaignCode: campaign.trackingCode } },
+      {
+        $facet: {
+          summary: [{
+            $group: {
+              _id: null,
+              signups: { $sum: 1 },
+              activated: { $sum: { $cond: [{ $eq: ['$accountState', 'partner'] }, 1, 0] } },
+              kycVerified: { $sum: { $cond: [{ $eq: ['$kycStatus', 'verified'] }, 1, 0] } },
+              eligible7: {
+                $sum: {
+                  $cond: [{
+                    $and: [
+                      { $ne: ['$activatedAt', null] },
+                      { $lte: ['$activatedAt', sevenDaysAgo] },
+                    ],
+                  }, 1, 0],
+                },
+              },
+              retained7: {
+                $sum: {
+                  $cond: [{
+                    $and: [
+                      { $ne: ['$activatedAt', null] },
+                      { $lte: ['$activatedAt', sevenDaysAgo] },
+                      {
+                        $gte: [
+                          { $ifNull: ['$lastSeenAt', '$lastLoginAt'] },
+                          { $add: ['$activatedAt', retentionMs] },
+                        ],
+                      },
+                    ],
+                  }, 1, 0],
+                },
+              },
+              lastSignupAt: { $max: '$createdAt' },
+              lastActivityAt: { $max: { $ifNull: ['$lastSeenAt', '$lastLoginAt'] } },
+            },
+          }],
+          signupSeries: [
+            { $match: { createdAt: { $gte: windowStart } } },
+            {
+              $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } },
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          activationSeries: [
+            { $match: { activatedAt: { $gte: windowStart, $ne: null } } },
+            {
+              $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$activatedAt', timezone: 'UTC' } },
+                count: { $sum: 1 },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const summary = result?.summary?.[0] ?? {};
+    const signupByDate = new Map((result?.signupSeries ?? []).map((row) => [row._id, Number(row.count ?? 0)]));
+    const activationByDate = new Map((result?.activationSeries ?? []).map((row) => [row._id, Number(row.count ?? 0)]));
+    const series = [];
+    for (let i = windowDays - 1; i >= 0; i -= 1) {
+      const date = new Date(endDay.getTime() - (i * DAY_MS));
+      const key = date.toISOString().slice(0, 10);
+      series.push({
+        date: key,
+        signups: signupByDate.get(key) ?? 0,
+        activated: activationByDate.get(key) ?? 0,
+      });
+    }
+
+    const signups = Number(summary.signups ?? 0);
+    const activated = Number(summary.activated ?? 0);
+    const eligible7 = Number(summary.eligible7 ?? 0);
+    const retained7 = Number(summary.retained7 ?? 0);
+
+    return {
+      campaign: campaignDto(campaign),
+      windowDays,
+      summary: {
+        signups,
+        activated,
+        kycVerified: Number(summary.kycVerified ?? 0),
+        eligible7,
+        retained7,
+        activationRate: signups ? round((activated / signups) * 100) : 0,
+        retentionRate: eligible7 ? round((retained7 / eligible7) * 100) : null,
+        lastSignupAt: summary.lastSignupAt ?? null,
+        lastActivityAt: summary.lastActivityAt ?? null,
+      },
+      series,
+    };
   }
 
   async activateCampaign({ campaignId, adminId, now = new Date() }) {
