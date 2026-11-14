@@ -1,4 +1,7 @@
 import { STORE_EVENTS } from '../../stores/domain/StoreEvents.js';
+import { storePublicUrl } from '../../stores/domain/StoreOrderAccess.js';
+
+const storeSupportUrl = () => `${storePublicUrl()}/support`;
 
 /** Notify a partner when a customer payment settles into escrow. */
 export class StoreOrderFanoutUseCase {
@@ -41,7 +44,7 @@ export class StoreOrderFanoutUseCase {
         `;
         const receipt = await this.mail(customerEmail, subject, html, {
           title: 'Order confirmed',
-          actionUrl: trackingUrl || 'https://marketspase.com/support',
+          actionUrl: trackingUrl || storeSupportUrl(),
           actionLabel: trackingUrl ? 'Track your order' : 'Contact support',
         }).catch(() => null);
         emailed = receipt?.sent === true;
@@ -100,7 +103,7 @@ export class StoreOrderFanoutUseCase {
       `;
       const receipt = await this.mail(customerEmail, subject, html, {
         title: `Return ${label}`,
-        actionUrl: 'https://marketspase.com/support',
+        actionUrl: storeSupportUrl(),
         actionLabel: 'Contact support',
       }).catch(() => null);
       return { status: receipt?.sent === true ? 'sent' : 'skipped', emailed: receipt?.sent === true };
@@ -132,7 +135,7 @@ export class StoreOrderFanoutUseCase {
       `;
       const receipt = await this.mail(customerEmail, subject, html, {
         title: `Order ${label}`,
-        actionUrl: trackingUrl || 'https://marketspase.com/support',
+        actionUrl: trackingUrl || storeSupportUrl(),
         actionLabel: trackingUrl ? 'View order' : 'Contact support',
       }).catch(() => null);
       return { status: receipt?.sent === true ? 'sent' : 'skipped', emailed: receipt?.sent === true };
@@ -183,7 +186,7 @@ export class StoreOrderFanoutUseCase {
         `;
         const receipt = await this.mail(customerEmail, subject, html, {
           title: 'Order refunded',
-          actionUrl: 'https://marketspase.com/support',
+          actionUrl: storeSupportUrl(),
           actionLabel: 'Contact support',
         }).catch(() => null);
         emailed = receipt?.sent === true;

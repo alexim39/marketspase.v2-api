@@ -25,7 +25,22 @@ describe('store order access tokens', () => {
 
   it('builds a tracking URL on the public store domain', () => {
     process.env.PUBLIC_SITE_URL = 'https://marketspase.com/';
+    process.env.STORE_PUBLIC_URL = 'https://store.marketspase.com/';
     const url = storeOrderTrackingUrl(order);
-    assert.match(url, /^https:\/\/marketspase\.com\/order\/MS-TEST-ORDER-1\?token=/);
+    assert.match(url, /^https:\/\/store\.marketspase\.com\/order\/MS-TEST-ORDER-1\?token=/);
+  });
+
+  it('never derives the store link from the platform public site', (t) => {
+    const previousStore = process.env.STORE_PUBLIC_URL;
+    delete process.env.STORE_PUBLIC_URL;
+    process.env.PUBLIC_SITE_URL = 'https://marketspase.com';
+    process.env.FRONTEND_URL = 'https://marketspase.com';
+    process.env.APP_BASE_URL = 'https://marketspase.com';
+    t.after(() => {
+      if (previousStore === undefined) delete process.env.STORE_PUBLIC_URL;
+      else process.env.STORE_PUBLIC_URL = previousStore;
+    });
+    const url = storeOrderTrackingUrl(order);
+    assert.match(url, /^https:\/\/store\.marketspase\.com\/order\//);
   });
 });

@@ -44,7 +44,7 @@ app.use('/v1/stores', buildStoreRouter({
       },
       checkoutUrl: 'https://checkout.paystack.com/abc',
       orderToken: 'test-order-token',
-      trackingUrl: 'https://marketspase.com/order/MS-TEST-ORDER-1?token=test-order-token',
+      trackingUrl: 'https://store.marketspase.com/order/MS-TEST-ORDER-1?token=test-order-token',
       body,
     }),
     getOrder: async (reference, { token } = {}) => {

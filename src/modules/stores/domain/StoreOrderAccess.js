@@ -30,11 +30,26 @@ export const verifyStoreOrderAccessToken = (order, provided) => {
   }
 };
 
-export const publicSiteUrl = () => String(
-  process.env.PUBLIC_SITE_URL || process.env.APP_BASE_URL || 'https://marketspase.com',
-).replace(/\/+$/, '');
+/**
+ * Canonical public storefront origin.
+ *
+ * Store pages are served by the store app, never by the platform host.
+ * `PUBLIC_SITE_URL`/`APP_BASE_URL` describe the platform (campaign landing
+ * pages, dashboard links) and must not be reused for customer order links.
+ * Set `STORE_PUBLIC_URL` explicitly in deployed environments.
+ */
+export const storePublicUrl = () => {
+  const configured = String(process.env.STORE_PUBLIC_URL ?? '').trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  const local = [
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_SITE_URL,
+    process.env.APP_BASE_URL,
+  ].some((value) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(String(value ?? '')));
+  return local ? 'http://localhost:4201' : 'https://store.marketspase.com';
+};
 
 export const storeOrderTrackingUrl = (order) => (
-  `${publicSiteUrl()}/order/${encodeURIComponent(String(order?.reference ?? ''))}`
+  `${storePublicUrl()}/order/${encodeURIComponent(String(order?.reference ?? ''))}`
   + `?token=${encodeURIComponent(storeOrderAccessToken(order))}`
 );
