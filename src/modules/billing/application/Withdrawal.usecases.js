@@ -13,10 +13,12 @@ const newWithdrawalReference = () =>
 /**
  * POST /v1/billing/withdrawals — create a payout.
  *
- * The bank account is re-resolved with Paystack server-side, so the account
- * name cannot be forged by the browser. When automatic payout is enabled the
- * wallet is debited, a Paystack transfer is started, and the webhook (plus the
- * reconcile job) finishes the row as Paid or Rejected + refund. Setting
+ * The HTTP route runs `ConfirmPasswordUseCase` before this use-case, so the
+ * account password is verified before the wallet is touched. The bank account
+ * is re-resolved with Paystack server-side, so the account name cannot be
+ * forged by the browser. When automatic payout is enabled the wallet is
+ * debited, a Paystack transfer is started, and the webhook (plus the reconcile
+ * job) finishes the row as Paid or Rejected + refund. Setting
  * `autoPayout: false` keeps the older manual admin-review flow.
  */
 export class CreateWithdrawalUseCase {

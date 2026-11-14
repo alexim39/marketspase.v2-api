@@ -20,6 +20,14 @@ export class MongoPartnerRepository {
   async findById(id, { session } = {}) {
     return PartnersModel.findById(id, null, byId(session)).lean();
   }
+  /**
+   * Password hash for step-up confirmation (withdrawals). Never select the
+   * hash on general reads — this is the only place that asks for it.
+   */
+  async findPasswordHash(id) {
+    const row = await PartnersModel.findById(id).select('password').lean();
+    return row?.password ?? null;
+  }
   async existsByUsername(username, { session } = {}) {
     return (await PartnersModel.exists({ username }).setOptions(opts(session))) !== null;
   }

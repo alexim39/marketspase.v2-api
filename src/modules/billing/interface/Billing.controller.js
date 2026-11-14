@@ -25,6 +25,26 @@ export const makeBillingController = (uc) => ({
     });
   }),
 
+  /** Step-up password check for the money-moving withdrawal route. */
+  confirmWithdrawalPassword: asyncHandler(async (req, _res, next) => {
+    const body = req.validated?.body ?? req.body;
+    try {
+      await uc.confirmPassword.execute({
+        partnerId: req.auth?.partnerId,
+        password: body?.password,
+      });
+    } catch (error) {
+      if (error?.code === 'INVALID_PASSWORD') {
+        logger.warn('withdrawal_password_rejected', {
+          partnerId: req.auth?.partnerId ?? null,
+          requestId: req.id,
+        });
+      }
+      throw error;
+    }
+    next();
+  }),
+
   createWithdrawal: asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await uc.createWithdrawal.execute({

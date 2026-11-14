@@ -10,6 +10,9 @@ import { makeBillingController } from './Billing.controller.js';
 import { ResolveAccountUseCase, ListBanksUseCase } from '../application/Commission.queries.js';
 import { CreateWithdrawalUseCase, MIN_WITHDRAWAL_NGN, MAX_WITHDRAWAL_NGN } from '../application/Withdrawal.usecases.js';
 import { GetSavedPayoutAccountUseCase } from '../application/SavedPayoutAccount.usecases.js';
+import { ConfirmPasswordUseCase } from '../../identity-access/application/ConfirmPassword.usecase.js';
+import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
+import { BcryptPasswordHasher } from '../../identity-access/infrastructure/Auth.crypto.js';
 import { MongoSavedPayoutAccountRepository } from '../infrastructure/SavedPayoutAccount.mongo.repository.js';
 import { PaystackClient } from '../infrastructure/PaystackClient.js';
 import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
@@ -24,6 +27,9 @@ const WithdrawalSchema = z.object({
   accountNumber: z.string().trim().regex(/^\d{10}$/, 'Invalid account number'),
   amountNgn: z.number().min(MIN_WITHDRAWAL_NGN).max(MAX_WITHDRAWAL_NGN),
   saveAccount: z.boolean().optional(),
+  // Step-up confirmation: the signed-in partner's account password. Checked
+  // server-side before any Paystack call or wallet debit.
+  password: z.string().min(1).max(128),
 });
 
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
@@ -34,12 +40,17 @@ export const buildBillingRouter = (deps = {}) => {
   // silently strand a debited withdrawal in a manual review state.
   const autoPayout = deps.autoPayout ?? true;
   const savedAccounts = deps.savedAccounts ?? new MongoSavedPayoutAccountRepository();
+  const confirmPassword = deps.confirmPassword ?? new ConfirmPasswordUseCase({
+    partners: deps.partners ?? new MongoPartnerRepository(),
+    hasher: deps.hasher ?? new BcryptPasswordHasher(),
+  });
 
   const c = makeBillingController({
     resolveAccount: new ResolveAccountUseCase({ http: deps.http ?? axios }),
     listBanks: new ListBanksUseCase({ http: deps.http ?? axios }),
     getSavedPayoutAccount: new GetSavedPayoutAccountUseCase({ savedAccounts }),
-    createWithdrawal: new CreateWithdrawalUseCase({
+    confirmPassword,
+    createWithdrawal: deps.createWithdrawal ?? new CreateWithdrawalUseCase({
       paystack,
       notifier: notifyPayoutOutcome,
       autoPayout,
@@ -68,8 +79,17 @@ export const buildBillingRouter = (deps = {}) => {
   router.get('/banks', c.listBanks);
   // Owner-scoped saved destination for the withdrawal dialog.
   router.get('/withdrawal-account', c.getSavedPayoutAccount);
-  // Withdrawal request — account name is re-resolved server-side.
-  router.post('/withdrawals', withdrawalLimit, withdrawalHourLimit, validate({ body: WithdrawalSchema }), idempotency(), c.createWithdrawal);
+  // Withdrawal request — password confirms the account holder, then the
+  // server re-resolves the destination account before debiting the wallet.
+  router.post(
+    '/withdrawals',
+    withdrawalLimit,
+    withdrawalHourLimit,
+    validate({ body: WithdrawalSchema }),
+    c.confirmWithdrawalPassword,
+    idempotency(),
+    c.createWithdrawal,
+  );
   return router;
 };
 
