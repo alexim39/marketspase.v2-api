@@ -1,11 +1,13 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 
 process.env.JWTTOKENSECRET ??= 'test-secret-for-auth-routes';
 
 const { buildAuthRouter } = await import('./Auth.routes.js');
 const { errorMiddleware } = await import('../../../shared/http/errorMiddleware.js');
+const { UnauthorizedException } = await import('../../../shared/domain/AppError.js');
 
 const mail = [];
 const rows = new Map();
@@ -71,12 +73,49 @@ const sessions = {
   verify: () => 'p-1',
 };
 
+/** In-memory stand-in for the rotating refresh-session store. */
+const refreshRows = new Map();
+let refreshSeq = 0;
+
+const issueRefresh = (partnerId, scope) => {
+  const token = `refresh-${++refreshSeq}-${'r'.repeat(40)}`;
+  refreshRows.set(token, { partnerId: String(partnerId), scope, revokedAt: null });
+  return token;
+};
+
+const refreshSessions = {
+  issue: async ({ partnerId, scope }) => ({
+    token: issueRefresh(partnerId, scope),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  }),
+  rotate: async ({ token, scope }) => {
+    const row = refreshRows.get(token);
+    if (!row || row.revokedAt || row.scope !== scope) {
+      throw new UnauthorizedException('Refresh session expired');
+    }
+    row.revokedAt = new Date();
+    return {
+      token: issueRefresh(row.partnerId, scope),
+      partnerId: row.partnerId,
+      scope,
+    };
+  },
+  revoke: async ({ token, scope }) => {
+    const row = refreshRows.get(token);
+    if (!row || row.scope !== scope) return false;
+    row.revokedAt = new Date();
+    return true;
+  },
+};
+
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use('/v1/auth', buildAuthRouter({
   partners,
   hasher,
   sessions,
+  refreshSessions,
   tx: { runInTransaction: async (fn) => fn(undefined) },
   tokens,
   verificationMailer,
@@ -154,7 +193,9 @@ describe('open signup + email verification route flow', () => {
     assert.equal(signedIn.status, 200);
     assert.equal(signedIn.body.success, true);
     assert.equal(signedIn.body.data.token, 'jwt-token');
+    assert.match(signedIn.body.data.refreshToken ?? '', /^refresh-/);
     assert.match(signedIn.headers.get('set-cookie') ?? '', /(?:^|,\s*)jwt=/);
+    assert.match(signedIn.headers.get('set-cookie') ?? '', /(?:^|,\s*)refresh_jwt=/);
 
     const adminSignedIn = await post(
       '/signin',
@@ -182,5 +223,66 @@ describe('open signup + email verification route flow', () => {
     const response = await post('/verify-email', { token: 'short' });
     assert.equal(response.status, 400);
     assert.equal(response.body.code, 'VALIDATION_ERROR');
+  });
+
+  it('rejects a malformed refresh body', async () => {
+    const response = await post('/refresh', { refreshToken: 'short' });
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, 'VALIDATION_ERROR');
+  });
+
+  it('accepts signout without a body', async () => {
+    const response = await post('/signout', undefined);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+  });
+
+  it('rotates and revokes sessions with a body token when cookies are unavailable', async () => {
+    const signedIn = await post('/signin', { email: signupBody.email, password: signupBody.password });
+    assert.equal(signedIn.status, 200);
+    const firstRefresh = signedIn.body.data.refreshToken;
+    assert.ok(firstRefresh);
+
+    // No cookie jar in these requests: the body token is the only transport.
+    const refreshed = await post('/refresh', { refreshToken: firstRefresh });
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.body.data.token, 'jwt-token');
+    assert.ok(refreshed.body.data.refreshToken);
+    assert.notEqual(refreshed.body.data.refreshToken, firstRefresh);
+    assert.match(refreshed.headers.get('set-cookie') ?? '', /refresh_jwt=/);
+
+    // Rotation is single-use.
+    const replay = await post('/refresh', { refreshToken: firstRefresh });
+    assert.equal(replay.status, 401);
+
+    const secondRefresh = refreshed.body.data.refreshToken;
+    const signedOut = await post('/signout', { refreshToken: secondRefresh });
+    assert.equal(signedOut.status, 200);
+
+    const afterSignout = await post('/refresh', { refreshToken: secondRefresh });
+    assert.equal(afterSignout.status, 401);
+  });
+
+  it('prefers the rotating body token over a stale refresh cookie', async () => {
+    const first = await post('/signin', { email: signupBody.email, password: signupBody.password });
+    const second = await post('/signin', { email: signupBody.email, password: signupBody.password });
+    const staleCookie = first.body.data.refreshToken;
+    const currentBody = second.body.data.refreshToken;
+    assert.ok(staleCookie);
+    assert.ok(currentBody);
+    assert.notEqual(staleCookie, currentBody);
+
+    // A refused Set-Cookie can leave an already-rotated cookie in the jar.
+    const signedOut = await post(
+      '/signout',
+      { refreshToken: currentBody },
+      { cookie: `refresh_jwt=${encodeURIComponent(staleCookie)}` },
+    );
+    assert.equal(signedOut.status, 200);
+
+    const currentAfter = await post('/refresh', { refreshToken: currentBody });
+    assert.equal(currentAfter.status, 401);
+    const staleAfter = await post('/refresh', { refreshToken: staleCookie });
+    assert.equal(staleAfter.status, 200);
   });
 });

@@ -65,6 +65,19 @@ describe('requireAuth transports', () => {
     assert.deepEqual(authed, { partnerId: 'partner1' });
   });
 
+  it('falls back to a valid Bearer token when the cookie no longer verifies', async () => {
+    let authed = null;
+    const req = {
+      cookies: { jwt: 'stale.invalid.cookie' },
+      headers: { authorization: `Bearer ${token}` },
+    };
+    const err = await new Promise((resolve) => {
+      requireAuth(req, {}, (e) => { authed = req.auth; resolve(e ?? null); });
+    });
+    assert.equal(err, null);
+    assert.deepEqual(authed, { partnerId: 'partner1' });
+  });
+
   it('rejects with neither transport', async () => {
     const err = await run({ cookies: {}, headers: {} });
     assert.match(err?.message ?? '', /No authentication token/);

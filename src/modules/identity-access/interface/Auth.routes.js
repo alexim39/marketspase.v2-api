@@ -1,9 +1,10 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { rateLimit, clientIp } from '../../../shared/http/rateLimit.js';
 import { mongoRateLimit } from '../../../shared/http/mongoRateLimit.js';
-import { SignupSchema, SigninSchema, ResetRequestSchema, ResetConfirmSchema, VerifyEmailSchema, ResendVerificationSchema } from './Auth.validator.js';
+import { SignupSchema, SigninSchema, ResetRequestSchema, ResetConfirmSchema, VerifyEmailSchema, ResendVerificationSchema, RefreshSessionSchema, SignoutSchema } from './Auth.validator.js';
 import { makeAuthController } from './Auth.controller.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { SignupUseCase } from '../application/Signup.usecase.js';
@@ -129,7 +130,25 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   // Brute-force guard on credential + reset endpoints (per-IP budgets).
   const authLimit = rateLimit({ name: 'auth-attempt', windowMs: 60000, max: 10 });
   const loginHourLimit = mongoRateLimit({ name: 'auth-login-hour', windowMs: 3600000, max: 30 });
-  const refreshLimit = mongoRateLimit({ name: 'auth-refresh-hour', windowMs: 3600000, max: 30 });
+  // Refresh is keyed by the rotating token (never the raw value — only its
+  // hash), so many members behind one office/CGNAT IP no longer exhaust a
+  // shared hourly budget and get logged out. Cookie clients fall back to IP.
+  const refreshKey = (req) => {
+    const token = String(
+      req.body?.refreshToken
+      ?? req.cookies?.refresh_jwt
+      ?? req.cookies?.admin_refresh_jwt
+      ?? '',
+    ).trim();
+    if (token) return `token:${crypto.createHash('sha256').update(token).digest('hex')}`;
+    return `ip:${clientIp(req)}`;
+  };
+  const refreshLimit = mongoRateLimit({
+    name: 'auth-refresh-hour',
+    windowMs: 3600000,
+    max: 60,
+    key: refreshKey,
+  });
   const resetLimit = rateLimit({ name: 'auth-reset', windowMs: 60000, max: 5 });
   const verifyLimit = rateLimit({ name: 'auth-verify', windowMs: 60000, max: 10 });
   const resendIpLimit = rateLimit({ name: 'auth-resend-ip', windowMs: 600000, max: 20 });
@@ -141,10 +160,10 @@ export const buildAuthRouter = (deps = {}) => {  const partners = deps.partners 
   });
   router.post('/signup', authLimit, validate({ body: SignupSchema }), controller.signup);
   router.post('/signin', loginHourLimit, authLimit, validate({ body: SigninSchema }), controller.signin);
-  router.post('/refresh', refreshLimit, controller.refresh);
+  router.post('/refresh', refreshLimit, validate({ body: RefreshSessionSchema }), controller.refresh);
   router.post('/verify-email', verifyLimit, validate({ body: VerifyEmailSchema }), controller.verifyEmail);
   router.post('/resend-verification', resendIpLimit, resendLimit, validate({ body: ResendVerificationSchema }), controller.resendVerification);
-  router.post('/signout', controller.signout);
+  router.post('/signout', validate({ body: SignoutSchema }), controller.signout);
   router.get('/me', requireAuth, controller.me);
   router.get('/', requireAuth, controller.me); // legacy alias for GET /auth
   // Presence heartbeat — the dashboard shell pings every few minutes while

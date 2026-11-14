@@ -37,3 +37,15 @@ export const VerifyEmailSchema = z.object({
 });
 
 export const ResendVerificationSchema = z.object({ email });
+
+/**
+ * Optional body transport for the rotating refresh token. Browsers that
+ * block the cross-site `refresh_jwt` cookie (third-party-cookie protection)
+ * can still refresh by replaying the token issued in the signin/refresh
+ * response body. Requests with a cookie may omit it.
+ */
+export const RefreshSessionSchema = z.object({
+  refreshToken: z.string().trim().min(20).max(512).optional(),
+});
+
+export const SignoutSchema = RefreshSessionSchema;

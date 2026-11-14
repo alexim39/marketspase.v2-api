@@ -30,6 +30,22 @@ export const refreshCookieFlags = () => ({
 
 const scopeOf = (req) => (sessionCookieName(req) === 'admin_jwt' ? 'admin' : 'partner');
 
+/**
+ * Explicit body token first, cookie second.
+ *
+ * Rotation writes a new Set-Cookie on every refresh. Browsers that accept
+ * cross-site cookies but block the *response* cookie (common in partitioned
+ * or third-party-cookie modes) leave a stale, already-revoked cookie in the
+ * jar. Preferring the body token the SPA just received keeps the session
+ * alive; the cookie remains the transport for clients that never send a
+ * body (and for the very first refresh after an older signin).
+ */
+const refreshTokenOf = (req, scope) => {
+  const bodyToken = req.validated?.body?.refreshToken ?? req.body?.refreshToken;
+  if (typeof bodyToken === 'string' && bodyToken.trim()) return bodyToken.trim();
+  return req.cookies?.[refreshCookieName(scope)] ?? null;
+};
+
 export const makeAuthController = ({
   signup,
   signin,
@@ -61,6 +77,7 @@ export const makeAuthController = ({
     });
     const scope = scopeOf(req);
     res.cookie(sessionCookieName(req), token, sessionCookieFlags());
+    let refreshToken = null;
     if (refreshSessions) {
       const partnerId = String(user?.id ?? user?._id ?? '');
       if (partnerId) {
@@ -70,7 +87,10 @@ export const makeAuthController = ({
           ip: req.ip ?? null,
           userAgent: req.headers?.['user-agent'] ?? null,
         }).catch(() => null);
-        if (refresh) res.cookie(refreshCookieName(scope), refresh.token, refreshCookieFlags());
+        if (refresh) {
+          refreshToken = refresh.token;
+          res.cookie(refreshCookieName(scope), refresh.token, refreshCookieFlags());
+        }
       }
     }
     // Legacy shape preserved; `data` is additive for new clients.
@@ -78,7 +98,13 @@ export const makeAuthController = ({
     // third-party-cookie blocking can drop the Set-Cookie while the login
     // itself succeeds — the SPA then replays it as `Authorization: Bearer`
     // (see requireAuth), so sessions survive without the cookie.
-    res.status(200).json({ message: 'Login successful', success: true, data: { user, token } });
+    // `refreshToken` covers the same gap for silent refresh; the SPA keeps
+    // it only as a fallback and clears it on sign-out.
+    res.status(200).json({
+      message: 'Login successful',
+      success: true,
+      data: { user, token, refreshToken },
+    });
   }),
 
   refresh: asyncHandler(async (req, res) => {
@@ -86,7 +112,7 @@ export const makeAuthController = ({
       throw new UnauthorizedException('Session refresh is not available');
     }
     const scope = scopeOf(req);
-    const token = req.cookies?.[refreshCookieName(scope)];
+    const token = refreshTokenOf(req, scope);
     const rotated = await refreshSessions.rotate({
       token,
       scope,
@@ -100,13 +126,13 @@ export const makeAuthController = ({
     res.status(200).json({
       message: 'Session refreshed',
       success: true,
-      data: { user, token: accessToken },
+      data: { user, token: accessToken, refreshToken: rotated.token },
     });
   }),
 
   signout: asyncHandler(async (req, res) => {
     const scope = scopeOf(req);
-    const token = req.cookies?.[refreshCookieName(scope)];
+    const token = refreshTokenOf(req, scope);
     if (refreshSessions) await refreshSessions.revoke({ token, scope }).catch(() => null);
     res.cookie(sessionCookieName(req), '', { ...sessionCookieFlags(), maxAge: 0 });
     res.cookie(refreshCookieName(scope), '', { ...refreshCookieFlags(), maxAge: 0 });

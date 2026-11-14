@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SignupSchema, VerifyEmailSchema, ResendVerificationSchema } from './Auth.validator.js';
+import { SignupSchema, VerifyEmailSchema, ResendVerificationSchema, RefreshSessionSchema } from './Auth.validator.js';
 
 const openSignup = {
   name: 'Ada',
@@ -46,5 +46,17 @@ describe('ResendVerificationSchema', () => {
   it('normalizes email casing and rejects invalid addresses', () => {
     assert.equal(ResendVerificationSchema.parse({ email: 'ADA@example.com' }).email, 'ada@example.com');
     assert.throws(() => ResendVerificationSchema.parse({ email: 'not-an-email' }));
+  });
+});
+
+describe('RefreshSessionSchema', () => {
+  it('accepts an omitted or well-formed body token and rejects junk', () => {
+    assert.equal(RefreshSessionSchema.parse({}).refreshToken, undefined);
+    assert.equal(
+      RefreshSessionSchema.parse({ refreshToken: `  ${'r'.repeat(48)}  ` }).refreshToken,
+      'r'.repeat(48),
+    );
+    assert.throws(() => RefreshSessionSchema.parse({ refreshToken: 123 }));
+    assert.throws(() => RefreshSessionSchema.parse({ refreshToken: 'short' }));
   });
 });
