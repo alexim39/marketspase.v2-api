@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 process.env.JWTTOKENSECRET ??= 'test-secret-for-auth-routes';
 
 const { buildAuthRouter } = await import('./Auth.routes.js');
+const { sessionCookieFlags, refreshCookieFlags } = await import('./Auth.controller.js');
 const { errorMiddleware } = await import('../../../shared/http/errorMiddleware.js');
 const { UnauthorizedException } = await import('../../../shared/domain/AppError.js');
 
@@ -164,6 +165,31 @@ const signupBody = {
   password: 'secret123',
   tnc: true,
 };
+
+describe('cross-site cookie flags', () => {
+  it('uses SameSite=None; Secure for HTTPS requests even when NODE_ENV is unset', () => {
+    for (const req of [
+      { headers: { 'x-forwarded-proto': 'https' }, secure: false },
+      { headers: { origin: 'https://marketspase.com' }, secure: false },
+      { headers: {}, secure: true },
+    ]) {
+      const session = sessionCookieFlags(req);
+      assert.equal(session.sameSite, 'none');
+      assert.equal(session.secure, true);
+      const refresh = refreshCookieFlags(req);
+      assert.equal(refresh.sameSite, 'none');
+      assert.equal(refresh.secure, true);
+    }
+  });
+
+  it('keeps localhost-friendly flags over plain http', () => {
+    const req = { headers: { origin: 'http://localhost:4200' }, secure: false };
+    assert.equal(sessionCookieFlags(req).sameSite, 'lax');
+    assert.equal(sessionCookieFlags(req).secure, false);
+    assert.equal(refreshCookieFlags(req).sameSite, 'lax');
+    assert.equal(refreshCookieFlags(req).secure, false);
+  });
+});
 
 describe('open signup + email verification route flow', () => {
   it('registers without a reservation code, blocks sign-in until verified, verifies, then signs in', async () => {

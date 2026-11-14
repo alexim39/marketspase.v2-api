@@ -8,22 +8,42 @@ const ACCESS_TTL_MS = Number(process.env.ACCESS_TOKEN_TTL_MS || 15 * 60 * 1000);
 const REFRESH_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_MS || 7 * 24 * 60 * 60 * 1000);
 
 /**
+ * Cross-site cookie flags must not depend on NODE_ENV alone. Managed hosts
+ * can run the container with NODE_ENV unset (observed on the live API:
+ * `/health` reported `development`) — that turned SameSite=None into Lax,
+ * so browsers never sent the session or refresh cookie from the SPA origin.
+ * Any HTTPS request (direct, proxy header, or HTTPS Origin) is treated as
+ * cross-site; plain-http localhost keeps Lax/non-Secure so dev works.
+ */
+const requestIsHttps = (req) => {
+  if (!req) return false;
+  if (req.secure) return true;
+  const proto = String(req.headers?.['x-forwarded-proto'] ?? '')
+    .split(',')[0].trim().toLowerCase();
+  if (proto === 'https') return true;
+  return /^https:/i.test(String(req.headers?.origin ?? ''));
+};
+
+const usesCrossSiteCookies = (req) => isProd() || requestIsHttps(req);
+
+/**
  * Legacy set `secure:true; SameSite=None` unconditionally, which browsers
  * REJECT over plain http://localhost — one cause of the localhost:4200
- * signin pain. New behavior: strict in prod, localhost-friendly in dev.
+ * signin pain. Current behavior: cross-site flags for every HTTPS request,
+ * localhost-friendly flags otherwise.
  */
-export const sessionCookieFlags = () => ({
+export const sessionCookieFlags = (req = null) => ({
   httpOnly: true,
-  secure: isProd(),
-  sameSite: isProd() ? 'none' : 'lax',
+  secure: usesCrossSiteCookies(req),
+  sameSite: usesCrossSiteCookies(req) ? 'none' : 'lax',
   maxAge: ACCESS_TTL_MS,
   path: '/',
 });
 
-export const refreshCookieFlags = () => ({
+export const refreshCookieFlags = (req = null) => ({
   httpOnly: true,
-  secure: isProd(),
-  sameSite: isProd() ? 'none' : 'lax',
+  secure: usesCrossSiteCookies(req),
+  sameSite: usesCrossSiteCookies(req) ? 'none' : 'lax',
   maxAge: REFRESH_TTL_MS,
   path: '/',
 });
@@ -76,7 +96,7 @@ export const makeAuthController = ({
       agent: req.headers?.['user-agent'] ?? null,
     });
     const scope = scopeOf(req);
-    res.cookie(sessionCookieName(req), token, sessionCookieFlags());
+    res.cookie(sessionCookieName(req), token, sessionCookieFlags(req));
     let refreshToken = null;
     if (refreshSessions) {
       const partnerId = String(user?.id ?? user?._id ?? '');
@@ -89,7 +109,7 @@ export const makeAuthController = ({
         }).catch(() => null);
         if (refresh) {
           refreshToken = refresh.token;
-          res.cookie(refreshCookieName(scope), refresh.token, refreshCookieFlags());
+          res.cookie(refreshCookieName(scope), refresh.token, refreshCookieFlags(req));
         }
       }
     }
@@ -121,8 +141,8 @@ export const makeAuthController = ({
     });
     const user = await getCurrentPartner.execute({ partnerId: rotated.partnerId });
     const accessToken = sessions.sign(rotated.partnerId);
-    res.cookie(sessionCookieName(req), accessToken, sessionCookieFlags());
-    res.cookie(refreshCookieName(scope), rotated.token, refreshCookieFlags());
+    res.cookie(sessionCookieName(req), accessToken, sessionCookieFlags(req));
+    res.cookie(refreshCookieName(scope), rotated.token, refreshCookieFlags(req));
     res.status(200).json({
       message: 'Session refreshed',
       success: true,
@@ -134,8 +154,8 @@ export const makeAuthController = ({
     const scope = scopeOf(req);
     const token = refreshTokenOf(req, scope);
     if (refreshSessions) await refreshSessions.revoke({ token, scope }).catch(() => null);
-    res.cookie(sessionCookieName(req), '', { ...sessionCookieFlags(), maxAge: 0 });
-    res.cookie(refreshCookieName(scope), '', { ...refreshCookieFlags(), maxAge: 0 });
+    res.cookie(sessionCookieName(req), '', { ...sessionCookieFlags(req), maxAge: 0 });
+    res.cookie(refreshCookieName(scope), '', { ...refreshCookieFlags(req), maxAge: 0 });
     res.status(200).json({ message: 'Logged out successfully', success: true });
   }),
 

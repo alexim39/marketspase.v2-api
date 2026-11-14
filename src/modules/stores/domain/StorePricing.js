@@ -34,7 +34,7 @@ export const storeCheckoutReturnUrl = () => {
   const configured = String(process.env.STORE_CHECKOUT_RETURN_URL ?? '').trim();
   if (configured) return configured;
   if (String(process.env.NODE_ENV ?? '').toLowerCase() === 'production') {
-    return 'https://marketspase.com/checkout/result';
+    return 'https://store.marketspase.com/checkout/result';
   }
   return 'http://localhost:4201/checkout/result';
 };
