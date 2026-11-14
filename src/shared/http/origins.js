@@ -7,6 +7,8 @@ const DEFAULT_ORIGINS = Object.freeze([
   'https://www.c21fg.online',
   'https://marketspase.com',
   'https://www.marketspase.com',
+  'https://store.marketspase.com',
+  'https://www.store.marketspase.com',
   'https://admin.marketspase.com',
   'https://survey.c21fg.online',
   'https://shop.c21fg.online',
