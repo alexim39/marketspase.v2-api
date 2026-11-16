@@ -26,6 +26,11 @@ before(async () => {
     repo: {
       people: async () => ({ domain: 'people', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
       finance: async () => ({ domain: 'finance', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      commerce: async () => ({ domain: 'commerce', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      growth: async () => ({ domain: 'growth', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      support: async () => ({ domain: 'support', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      content: async () => ({ domain: 'content', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      communications: async () => ({ domain: 'communications', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
     },
   }));
   app.use(errorMiddleware);
@@ -45,13 +50,12 @@ const get = async (path, headers = {}) => {
 };
 
 describe('admin summary routes', () => {
-  it('serves people and finance summaries to an admin', async () => {
-    const people = await get('/people?days=30');
-    const finance = await get('/finance?days=90');
-    assert.equal(people.status, 200);
-    assert.equal(people.body.data.domain, 'people');
-    assert.equal(finance.status, 200);
-    assert.equal(finance.body.data.domain, 'finance');
+  it('serves every supported summary domain to an admin', async () => {
+    for (const domain of ['people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications']) {
+      const response = await get(`/${domain}?days=30`);
+      assert.equal(response.status, 200, domain);
+      assert.equal(response.body.data.domain, domain);
+    }
   });
 
   it('rejects an unknown domain and invalid window', async () => {

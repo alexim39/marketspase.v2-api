@@ -1,7 +1,7 @@
 import { ValidationException } from '../../../shared/domain/AppError.js';
 import { AdminSummaryRepository, summaryWindow } from '../infrastructure/AdminSummary.repository.js';
 
-const DOMAINS = ['people', 'finance'];
+const DOMAINS = ['people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications'];
 
 /**
  * Read-only admin summaries. Each domain returns the same decision-oriented
