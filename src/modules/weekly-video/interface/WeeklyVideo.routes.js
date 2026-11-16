@@ -67,12 +67,15 @@ const ModerateSchema = z.object({
   status: z.enum(['visible', 'hidden']),
 });
 
-const makeNotifier = (repo, deps = {}) => deps.notifier ?? new WeeklyVideoNotifier({
-  repo,
-  notify: deps.notify ?? new NotifyUseCase({
-    stored: deps.stored ?? new MongoStoredNotificationStore(),
-  }),
-});
+const makeNotifier = (repo, deps = {}) => {
+  if (deps.notifier) return deps.notifier;
+  const stored = deps.stored ?? new MongoStoredNotificationStore();
+  return new WeeklyVideoNotifier({
+    repo,
+    notify: deps.notify ?? new NotifyUseCase({ stored }),
+    prefsFor: deps.prefsFor ?? ((partnerIds) => stored.getPreferencesFor(partnerIds)),
+  });
+};
 
 /** Member-facing weekly video, watch verification and reflections. */
 export const buildWeeklyVideoRouter = (deps = {}) => {

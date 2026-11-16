@@ -34,6 +34,7 @@ export const EXPECTED_EVERY_MIN = {
   'store-escrow-release': 60,
   'outbox-delivery': 5,
   'weekly-video-due': 10,
+  'weekly-video-reminder': 90,
 };
 
 const summarize = (value, max = 2000) => {

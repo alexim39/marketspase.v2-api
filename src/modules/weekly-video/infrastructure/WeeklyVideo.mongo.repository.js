@@ -187,6 +187,63 @@ export class MongoWeeklyVideoRepository {
     );
   }
 
+  /** Latest published video young enough to deserve a follow-up reminder. */
+  async latestPublishedForReminders(now = new Date()) {
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return WeeklyVideoModel.findOne({
+      status: 'published',
+      publishedAt: { $ne: null, $gte: since, $lte: now },
+    })
+      .sort({ publishedAt: -1, weekStart: -1 })
+      .lean();
+  }
+
+  /**
+   * Atomic stage claim. Stage 2 also closes an unsent stage 1 so a job that was
+   * down for days sends one current reminder instead of two back-to-back.
+   */
+  async claimReminder(id, stage, now = new Date()) {
+    if (stage !== 1 && stage !== 2) return null;
+    const filter = stage === 1
+      ? { _id: id, reminder1At: null }
+      : { _id: id, reminder2At: null };
+    const update = stage === 1
+      ? { $set: { reminder1At: now } }
+      : { $set: { reminder2At: now, reminder1At: now } };
+    return WeeklyVideoModel.findOneAndUpdate(filter, update, { new: true }).lean();
+  }
+
+  /** Release a claim when fan-out throws, so the next run retries. */
+  async releaseReminder(id, stage) {
+    if (stage !== 1 && stage !== 2) return null;
+    const field = stage === 1 ? 'reminder1At' : 'reminder2At';
+    return WeeklyVideoModel.findByIdAndUpdate(id, { $set: { [field]: null } }, { new: true }).lean();
+  }
+
+  async setReminderResult(id, stage, { count = 0, failed = 0, capped = false } = {}) {
+    if (stage !== 1 && stage !== 2) return null;
+    const prefix = stage === 1 ? 'reminder1' : 'reminder2';
+    return WeeklyVideoModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          [`${prefix}Count`]: Math.max(Number(count) || 0, 0),
+          [`${prefix}Failed`]: Math.max(Number(failed) || 0, 0),
+          [`${prefix}Capped`]: capped === true,
+        },
+      },
+      { new: true },
+    ).lean();
+  }
+
+  /** Partner ids that reached the verified completion threshold for a video. */
+  async completedPartnerIds(videoId) {
+    const rows = await WeeklyVideoProgressModel.find({ videoId, completedAt: { $ne: null } })
+      .select('partnerId')
+      .lean();
+    return rows.map((row) => String(row.partnerId));
+  }
+
   async listScheduledDue(now = new Date(), limit = 10) {
     return WeeklyVideoModel.find({
       status: 'scheduled',

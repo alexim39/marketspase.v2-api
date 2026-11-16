@@ -35,6 +35,16 @@ const weeklyVideoSchema = new mongoose.Schema(
     notificationCount: { type: Number, min: 0, default: 0 },
     notificationFailed: { type: Number, min: 0, default: 0 },
     notificationCapped: { type: Boolean, default: false },
+    // Follow-up reminders: stamped atomically per stage so parallel dynos
+    // cannot send the same reminder twice. Stage 1 = 24h, stage 2 = 72h.
+    reminder1At: { type: Date, default: null },
+    reminder1Count: { type: Number, min: 0, default: 0 },
+    reminder1Failed: { type: Number, min: 0, default: 0 },
+    reminder1Capped: { type: Boolean, default: false },
+    reminder2At: { type: Date, default: null },
+    reminder2Count: { type: Number, min: 0, default: 0 },
+    reminder2Failed: { type: Number, min: 0, default: 0 },
+    reminder2Capped: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
     archivedAt: { type: Date, default: null },

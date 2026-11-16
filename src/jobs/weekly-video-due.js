@@ -5,11 +5,11 @@ import { MongoStoredNotificationStore } from '../modules/notifications/infrastru
 
 export const buildWeeklyVideoDueJob = (deps = {}) => {
   const repo = deps.repo ?? new MongoWeeklyVideoRepository();
+  const stored = deps.stored ?? new MongoStoredNotificationStore();
   const notifier = deps.notifier ?? new WeeklyVideoNotifier({
     repo,
-    notify: deps.notify ?? new NotifyUseCase({
-      stored: deps.stored ?? new MongoStoredNotificationStore(),
-    }),
+    notify: deps.notify ?? new NotifyUseCase({ stored }),
+    prefsFor: deps.prefsFor ?? ((partnerIds) => stored.getPreferencesFor(partnerIds)),
   });
   return { repo, notifier };
 };

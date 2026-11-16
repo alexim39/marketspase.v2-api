@@ -282,4 +282,58 @@ describe('weekly video use cases', () => {
     assert.equal(calls[0].category, 'training');
     assert.equal(calls[0].link, '/dashboard/learn/video-of-the-week');
   });
+
+  it('follows up only with partners who have not completed the watch', async () => {
+    const calls = [];
+    const notifier = new WeeklyVideoNotifier({
+      repo: fakeRepo({
+        notificationRecipients: async () => ({ ids: ['p1', 'p2', 'p3'], capped: false }),
+        completedPartnerIds: async () => ['p2'],
+      }),
+      notify: {
+        execute: async (input) => {
+          calls.push(input);
+          return { id: calls.length };
+        },
+      },
+    });
+    const report = await notifier.remind({
+      video: video({ id: 'video-1', title: 'Lead with clarity' }),
+      stage: 1,
+    });
+    assert.equal(report.delivered, 2);
+    assert.equal(report.skippedCompleted, 1);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].key, 'weekly-video:watch-1:video-1');
+    assert.equal(calls[0].priority, 'medium');
+    assert.equal(calls[0].link, '/dashboard/learn/video-of-the-week/video-1');
+  });
+
+  it('sends a final follow-up at stage 2 and respects muted training notifications', async () => {
+    const calls = [];
+    const notifier = new WeeklyVideoNotifier({
+      repo: fakeRepo({
+        notificationRecipients: async () => ({ ids: ['p1', 'p2'], capped: false }),
+        completedPartnerIds: async () => [],
+      }),
+      prefs: async (partnerId) => (partnerId === 'p2'
+        ? { channels: { training: { inApp: false } } }
+        : null),
+      notify: {
+        execute: async (input) => {
+          calls.push(input);
+          return { id: calls.length };
+        },
+      },
+    });
+    const report = await notifier.remind({
+      video: video({ id: 'video-1', title: 'Lead with clarity' }),
+      stage: 2,
+    });
+    assert.equal(report.delivered, 1);
+    assert.equal(report.muted, 1);
+    assert.equal(calls[0].key, 'weekly-video:watch-2:video-1');
+    assert.equal(calls[0].priority, 'high');
+    assert.match(calls[0].title, /Last call/);
+  });
 });

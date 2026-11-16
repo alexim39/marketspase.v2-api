@@ -250,6 +250,20 @@ export class MongoStoredNotificationStore {
     return doc ? { channels: doc.channels ?? {}, emailDigest: doc.emailDigest ?? 'immediate' } : null;
   }
 
+  /** One query for a fan-out page — avoids per-recipient preference reads. */
+  async getPreferencesFor(partnerIds = []) {
+    const ids = [...new Set((partnerIds ?? []).map(String))]
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (ids.length === 0) return {};
+    const docs = await NotificationPreferenceModel.find({ partnerId: { $in: ids } })
+      .select('partnerId channels emailDigest')
+      .lean();
+    return Object.fromEntries(docs.map((doc) => [String(doc.partnerId), {
+      channels: doc.channels ?? {},
+      emailDigest: doc.emailDigest ?? 'immediate',
+    }]));
+  }
+
   async savePreferences(partnerId, prefs) {
     const doc = await NotificationPreferenceModel.findOneAndUpdate(
       { partnerId },
