@@ -43,6 +43,7 @@ describe('admin summary use case', () => {
       const result = await uc.execute({ domain, days: 30, now: new Date('2026-11-16T12:00:00Z') });
       assert.equal(result.domain, domain);
       assert.equal(result.window.days, 30);
+      assert.ok(fake.calls.at(-1)[1].now instanceof Date);
     }
     assert.equal(fake.calls.length, domains.length);
   });

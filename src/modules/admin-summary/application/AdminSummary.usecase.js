@@ -18,9 +18,17 @@ export class GetAdminSummaryUseCase {
     if (!DOMAINS.includes(key)) {
       throw new ValidationException(`Unknown summary domain: ${domain || 'missing'}`);
     }
-    const window = summaryWindow(days, now);
-    const data = await this.repo[key](window);
-    return { ...data, window: { ...data.window, days: window.days } };
+    const range = summaryWindow(days, now);
+    const data = await this.repo[key]({ days: range.days, from: range.from, now: range.to });
+    return {
+      ...data,
+      window: {
+        ...data.window,
+        days: range.days,
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+      },
+    };
   }
 }
 
