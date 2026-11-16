@@ -37,6 +37,9 @@ const ListQuery = z.object({
   skip: z.coerce.number().int().min(0).optional().default(0),
   cursor: z.string().trim().max(200).optional(),
 });
+const CommentListQuery = ListQuery.extend({
+  q: z.string().trim().max(120).optional().default(''),
+});
 const CreateSchema = z.object({
   youtubeUrl: z.string().trim().min(5).max(300),
   title: z.string().trim().min(3).max(120),
@@ -102,7 +105,7 @@ export const buildWeeklyVideoRouter = (deps = {}) => {
     return sendSuccess(res, { message: 'Weekly videos retrieved successfully', data });
   }));
 
-  router.get('/:id/comments', validate({ params: IdParam, query: ListQuery }), asyncHandler(async (req, res) => {
+  router.get('/:id/comments', validate({ params: IdParam, query: CommentListQuery }), asyncHandler(async (req, res) => {
     const params = req.validated?.params ?? req.params;
     const q = req.validated?.query ?? req.query;
     const data = await comments.execute({
@@ -111,6 +114,7 @@ export const buildWeeklyVideoRouter = (deps = {}) => {
       limit: q.limit,
       skip: q.skip,
       cursor: q.cursor,
+      search: q.q,
     });
     return sendSuccess(res, { message: data.unlocked ? 'Reflections retrieved' : 'Reflections are locked', data });
   }));

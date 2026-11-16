@@ -189,6 +189,25 @@ describe('weekly video use cases', () => {
     assert.equal(patch.watchedSeconds, 110);
   });
 
+  it('passes a reflection search term to the repository', async () => {
+    let seen = null;
+    const usecase = new ListWeeklyVideoCommentsUseCase({
+      repo: fakeRepo({
+        getProgress: async () => ({ completed: true }),
+        listComments: async (_id, options) => {
+          seen = options;
+          return { rows: [], total: 0 };
+        },
+      }),
+    });
+    await usecase.execute({
+      partnerId: 'p1',
+      id: '507f1f77bcf86cd799439011',
+      search: 'clarity',
+    });
+    assert.equal(seen.search, 'clarity');
+  });
+
   it('locks reflections until completion and allows a completed member to post', async () => {
     const locked = new ListWeeklyVideoCommentsUseCase({
       repo: fakeRepo({ getProgress: async () => ({ completed: false }) }),

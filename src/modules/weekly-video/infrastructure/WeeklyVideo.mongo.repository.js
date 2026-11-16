@@ -9,6 +9,7 @@ import {
 
 const oid = (value) => String(value ?? '');
 const iso = (value) => (value ? new Date(value).toISOString() : null);
+const escapeRegex = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const shapeWeeklyVideo = (row, { admin = false } = {}) => {
   if (!row) return null;
@@ -337,27 +338,47 @@ export class MongoWeeklyVideoRepository {
     return shapeComment(row);
   }
 
-  async listComments(videoId, { limit = 50, skip = 0, cursor = null, includeHidden = false } = {}) {
+  async listComments(videoId, { limit = 50, skip = 0, cursor = null, includeHidden = false, search = '' } = {}) {
     const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const offset = Math.max(Number(skip) || 0, 0);
     const baseFilter = { videoId };
     if (!includeHidden) baseFilter.status = 'visible';
     const decoded = cursor ? decodeCommentCursor(cursor) : null;
-    const pageFilter = decoded
-      ? {
-        ...baseFilter,
+    const conditions = [];
+    const term = String(search ?? '').trim();
+    if (term) {
+      const rx = new RegExp(escapeRegex(term), 'i');
+      const authors = await PartnersModel.find({
+        $or: [{ name: rx }, { surname: rx }, { username: rx }],
+      }).select('_id').limit(50).lean();
+      conditions.push({
+        $or: [
+          { body: rx },
+          ...(authors.length ? [{ partnerId: { $in: authors.map((row) => row._id) } }] : []),
+        ],
+      });
+    }
+    const countConditions = [...conditions];
+    if (decoded) {
+      conditions.push({
         $or: [
           { createdAt: { $lt: decoded.createdAt } },
           { createdAt: decoded.createdAt, _id: { $lt: decoded.id } },
         ],
-      }
-      : baseFilter;
+      });
+    }
+    const pageFilter = conditions.length === 0
+      ? baseFilter
+      : { ...baseFilter, $and: conditions };
+    const countFilter = countConditions.length === 0
+      ? baseFilter
+      : { ...baseFilter, $and: countConditions };
 
     const query = WeeklyVideoCommentModel.find(pageFilter).sort({ createdAt: -1, _id: -1 });
     if (!decoded) query.skip(offset);
     const [rows, total] = await Promise.all([
       query.limit(size + 1).lean(),
-      WeeklyVideoCommentModel.countDocuments(baseFilter),
+      WeeklyVideoCommentModel.countDocuments(countFilter),
     ]);
     const hasMore = rows.length > size;
     const page = hasMore ? rows.slice(0, size) : rows;
