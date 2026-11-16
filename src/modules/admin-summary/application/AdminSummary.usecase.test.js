@@ -32,13 +32,17 @@ const repo = () => ({
     this.calls.push(['communications', window]);
     return { domain: 'communications', window: { days: window.days }, kpis: [], trends: [], distributions: [], alerts: [] };
   },
+  async overview(window) {
+    this.calls.push(['overview', window]);
+    return { domain: 'overview', window: { days: window.days }, kpis: [], trends: [], distributions: [], alerts: [] };
+  },
 });
 
 describe('admin summary use case', () => {
   it('routes every supported domain to the repository', async () => {
     const fake = repo();
     const uc = new GetAdminSummaryUseCase({ repo: fake });
-    const domains = ['people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications'];
+    const domains = ['overview', 'people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications'];
     for (const domain of domains) {
       const result = await uc.execute({ domain, days: 30, now: new Date('2026-11-16T12:00:00Z') });
       assert.equal(result.domain, domain);

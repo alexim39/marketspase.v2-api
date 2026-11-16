@@ -31,6 +31,7 @@ before(async () => {
       support: async () => ({ domain: 'support', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
       content: async () => ({ domain: 'content', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
       communications: async () => ({ domain: 'communications', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
+      overview: async () => ({ domain: 'overview', kpis: [], trends: [], distributions: [], alerts: [], window: { days: 30 } }),
     },
   }));
   app.use(errorMiddleware);
@@ -51,7 +52,7 @@ const get = async (path, headers = {}) => {
 
 describe('admin summary routes', () => {
   it('serves every supported summary domain to an admin', async () => {
-    for (const domain of ['people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications']) {
+    for (const domain of ['overview', 'people', 'finance', 'commerce', 'growth', 'support', 'content', 'communications']) {
       const response = await get(`/${domain}?days=30`);
       assert.equal(response.status, 200, domain);
       assert.equal(response.body.data.domain, domain);

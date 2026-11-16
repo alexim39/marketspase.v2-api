@@ -566,6 +566,7 @@ const contentSummary = async ({ days, from, now }) => {
 };
 
 const communicationsSummary = async ({ days, from, now }) => {
+  const buckets = buildBuckets(from, now, days);
   const [subscriptionRows, subscriptionDaily, broadcastRows, sentRow] = await Promise.all([
     EmailSubscriptionModel.aggregate([
       { $match: { deletedAt: null } },
@@ -610,11 +611,11 @@ const communicationsSummary = async ({ days, from, now }) => {
       key: 'subscribers',
       title: 'New subscribers',
       type: 'line',
-      labels: buildBuckets(from, now, days).map((bucket) => bucket.label),
+      labels: buckets.map((bucket) => bucket.label),
       series: [{
         name: 'Subscribers',
         color: COLORS[3],
-        values: seriesFromDaily(subscriptionDaily.map((row) => ({ _id: row._id, days, count: row.count })), buildBuckets(from, now, days)),
+        values: seriesFromDaily(subscriptionDaily.map((row) => ({ _id: row._id, days, count: row.count })), buckets),
       }],
       format: 'number',
     }],
@@ -626,6 +627,50 @@ const communicationsSummary = async ({ days, from, now }) => {
       ...(pending > 0 ? [{ tone: 'info', title: `${pending} subscriber${pending === 1 ? '' : 's'} awaiting confirmation`, detail: 'A clean list keeps broadcast deliverability healthy.', link: '/subscriptions' }] : []),
       ...(failed > 0 ? [{ tone: 'danger', title: `${failed} broadcast${failed === 1 ? '' : 's'} failed`, detail: 'Open the broadcast desk and retry the failed audience.', link: '/broadcast' }] : []),
     ],
+  };
+};
+
+const overviewSummary = async ({ days, from, now }) => {
+  const [people, finance, commerce, growth, support, content, communications] = await Promise.all([
+    peopleSummary({ days, from, now }),
+    financeSummary({ days, from, now }),
+    commerceSummary({ days, from, now }),
+    growthSummary({ days, from, now }),
+    supportSummary({ days, from, now }),
+    contentSummary({ days, from, now }),
+    communicationsSummary({ days, from, now }),
+  ]);
+  const kpi = (summary, key) => summary.kpis.find((item) => item.key === key);
+  const pick = (summary, keys) => keys.map((key) => kpi(summary, key)).filter(Boolean);
+  const alerts = [people, finance, commerce, growth, support, content, communications]
+    .flatMap((summary) => summary.alerts)
+    .slice(0, 5);
+
+  return {
+    domain: 'overview',
+    title: 'Platform overview',
+    description: 'The cross-domain picture: people, money, commerce, support, growth and learning in one place.',
+    generatedAt: now.toISOString(),
+    window: { days, from: from.toISOString(), to: now.toISOString() },
+    kpis: [
+      ...pick(people, ['total', 'active', 'new']),
+      ...pick(finance, ['in', 'out', 'net']),
+      ...pick(commerce, ['gmv', 'escrow']),
+      ...pick(support, ['open']),
+      ...pick(growth, ['campaigns']),
+      ...pick(content, ['watch']),
+      ...pick(communications, ['subscribers']),
+    ],
+    trends: [
+      finance.trends[0],
+      people.trends[0],
+      commerce.trends[0],
+    ].filter(Boolean),
+    distributions: [
+      commerce.distributions[0],
+      support.distributions[0],
+    ].filter(Boolean),
+    alerts,
   };
 };
 
@@ -656,6 +701,10 @@ export class AdminSummaryRepository {
 
   async communications({ days, from, now }) {
     return communicationsSummary({ days, from, now });
+  }
+
+  async overview({ days, from, now }) {
+    return overviewSummary({ days, from, now });
   }
 }
 
