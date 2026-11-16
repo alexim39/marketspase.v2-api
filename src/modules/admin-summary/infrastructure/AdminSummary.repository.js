@@ -264,8 +264,8 @@ const financeSummary = async ({ days, from, now }) => {
     generatedAt: now.toISOString(),
     window: { days, from: from.toISOString(), to: now.toISOString() },
     kpis: [
-      { key: 'in', label: 'Deposits confirmed', value: round(depositsIn), format: 'currency', tone: 'ok', detail: `${depositDaily.reduce((sum, row) => sum + num(row.count), 0)} successful funding events`, link: '/deposits' },
-      { key: 'out', label: 'Withdrawals paid', value: round(withdrawalsOut), format: 'currency', tone: 'info', detail: `${withdrawalDaily.reduce((sum, row) => sum + num(row.count), 0)} completed payouts`, link: '/deposits' },
+      { key: 'in', label: 'Deposits confirmed', value: round(depositsIn), format: 'currency', tone: 'ok', detail: `${depositDaily.reduce((sum, row) => sum + num(row.count), 0)} successful funding events`, link: '/finance/transactions' },
+      { key: 'out', label: 'Withdrawals paid', value: round(withdrawalsOut), format: 'currency', tone: 'info', detail: `${withdrawalDaily.reduce((sum, row) => sum + num(row.count), 0)} completed payouts`, link: '/finance/transactions' },
       { key: 'net', label: 'Net wallet flow', value: round(netFlow), format: 'currency', tone: netFlow >= 0 ? 'ok' : 'danger', detail: 'Deposits minus paid withdrawals — not profit' },
       { key: 'pending', label: 'Pending withdrawals', value: round(num(pending.amount)), format: 'currency', tone: num(pending.count) ? 'warn' : 'neutral', detail: `${num(pending.count)} request${num(pending.count) === 1 ? '' : 's'} awaiting completion` },
       { key: 'liability', label: 'Wallet liability', value: round(num(liability.amount)), format: 'currency', tone: 'brand', detail: `Across ${num(liability.count)} active wallets` },
@@ -287,9 +287,9 @@ const financeSummary = async ({ days, from, now }) => {
       { key: 'withdrawals', title: 'Withdrawal status', type: 'bar', items: withdrawalByStatus.map((row) => ({ label: row._id || 'Unknown', value: round(row.amount) })), format: 'currency' },
     ],
     alerts: [
-      ...(netFlow < 0 ? [{ tone: 'danger', title: 'Net wallet flow is negative', detail: 'Withdrawals exceeded confirmed deposits in this window. Check payout volume and funding activity.', link: '/deposits' }] : []),
-      ...(num(pending.count) > 0 ? [{ tone: 'warn', title: `${num(pending.count)} withdrawal${num(pending.count) === 1 ? '' : 's'} pending`, detail: `₦${round(pending.amount).toLocaleString('en-NG')} is awaiting completion or reconciliation.`, link: '/deposits' }] : []),
-      ...(depositsIn === 0 ? [{ tone: 'info', title: 'No confirmed deposits in this window', detail: 'Check payment provider health and deposit conversion.', link: '/deposits' }] : []),
+      ...(netFlow < 0 ? [{ tone: 'danger', title: 'Net wallet flow is negative', detail: 'Withdrawals exceeded confirmed deposits in this window. Check payout volume and funding activity.', link: '/finance/transactions' }] : []),
+      ...(num(pending.count) > 0 ? [{ tone: 'warn', title: `${num(pending.count)} withdrawal${num(pending.count) === 1 ? '' : 's'} pending`, detail: `₦${round(pending.amount).toLocaleString('en-NG')} is awaiting completion or reconciliation.`, link: '/finance/transactions' }] : []),
+      ...(depositsIn === 0 ? [{ tone: 'info', title: 'No confirmed deposits in this window', detail: 'Check payment provider health and deposit conversion.', link: '/finance/transactions' }] : []),
     ],
   };
 };
