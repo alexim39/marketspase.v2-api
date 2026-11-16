@@ -46,5 +46,7 @@ transactionSchema.index({ paymentMethod: 1, status: 1, payoutMode: 1, payoutInit
 transactionSchema.index({ partnerId: 1, date: -1 });
 transactionSchema.index({ partnerId: 1, createdAt: -1 });
 transactionSchema.index({ reference: 1 });
+transactionSchema.index({ date: -1 });
+transactionSchema.index({ transactionType: 1, status: 1, paymentMethod: 1, date: -1 });
 
 export const TransactionModel = mongoose.model('Transaction', transactionSchema);

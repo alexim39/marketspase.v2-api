@@ -405,6 +405,7 @@ storeStockLedgerSchema.index({ partnerId: 1, createdAt: -1 });
 platformSettingSchema.index({ key: 1 }, { unique: true });
 storeOrderSchema.index({ partnerId: 1, createdAt: -1 });
 storeOrderSchema.index({ storeId: 1, createdAt: -1 });
+storeOrderSchema.index({ createdAt: -1 });
 storeOrderSchema.index({ status: 1, expiresAt: 1 });
 storeOrderSchema.index({ status: 1, 'escrow.status': 1, 'escrow.releaseAt': 1 });
 storeEscrowLedgerSchema.index({ orderId: 1, type: 1 }, { unique: true });

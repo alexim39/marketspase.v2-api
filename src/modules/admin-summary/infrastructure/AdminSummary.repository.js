@@ -447,7 +447,7 @@ const growthSummary = async ({ days, from, now }) => {
 
 const supportSummary = async ({ days, from, now }) => {
   const dateMatch = { createdAt: { $gte: from, $lte: now } };
-  const [statusRows, priorityRows, categoryRows, openRows, oldOpen, resolutionRow] = await Promise.all([
+  const [statusRows, priorityRows, categoryRows, openRows, oldOpen, resolutionRow, resolvedWindow] = await Promise.all([
     TicketMongooseModel.aggregate([
       { $match: dateMatch },
       { $group: { _id: { $ifNull: ['$status', 'open'] }, count: { $sum: 1 } } },
@@ -471,9 +471,10 @@ const supportSummary = async ({ days, from, now }) => {
       { $match: { ...dateMatch, resolvedAt: { $ne: null } } },
       { $group: { _id: null, avgMs: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } }, count: { $sum: 1 } } },
     ]),
+    TicketMongooseModel.countDocuments({ resolvedAt: { $gte: from, $lte: now } }),
   ]);
   const total = statusRows.reduce((sum, row) => sum + num(row.count), 0);
-  const resolved = statusRows.filter((row) => ['resolved', 'closed'].includes(row._id)).reduce((sum, row) => sum + num(row.count), 0);
+  const resolved = resolvedWindow;
   const highPriority = priorityRows.filter((row) => String(row._id).toLowerCase() === 'high').reduce((sum, row) => sum + num(row.count), 0);
   const resolution = resolutionRow[0] ?? { avgMs: null, count: 0 };
   const avgHours = resolution.avgMs === null ? null : Math.round((num(resolution.avgMs) / 3600000) * 10) / 10;

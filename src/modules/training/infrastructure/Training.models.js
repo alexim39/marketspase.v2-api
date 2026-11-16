@@ -105,6 +105,7 @@ const progressSchema = new mongoose.Schema(
 
 progressSchema.index({ partnerId: 1, courseId: 1 }, { unique: true });
 progressSchema.index({ courseId: 1 });
+progressSchema.index({ certificateAt: -1 });
 
 export const TrainingCourseModel =
   mongoose.models.TrainingCourse
