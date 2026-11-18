@@ -38,6 +38,7 @@ const recipientSchema = new mongoose.Schema({
   renderedBody: { type: String, required: true, maxlength: 459 },
   pages: { type: Number, required: true, min: 1, max: 3 },
   cost: { type: Number, required: true, min: 0 },
+  bonusCost: { type: Number, required: true, min: 0, default: 0 },
   status: {
     type: String,
     enum: ['queued', 'sending', 'sent', 'failed', 'cancelled'],

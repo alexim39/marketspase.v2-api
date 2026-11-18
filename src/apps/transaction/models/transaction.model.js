@@ -8,6 +8,9 @@ const transactionSchema = new mongoose.Schema({
     required: true,
   },
   amount: Number,
+  // Portion of this movement that belongs to the non-withdrawable bonus
+  // bucket (credits) or was paid from it (debits/refunds).
+  bonusAmount: { type: Number, default: 0, min: 0 },
   // Immutable wallet snapshot for disputes and reconciliation.
   balanceBefore: { type: Number, default: null },
   balanceAfter: { type: Number, default: null },

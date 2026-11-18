@@ -21,6 +21,8 @@ const growthCampaignSchema = new mongoose.Schema(
       total: { type: Number, required: true, min: 1 },
       spent: { type: Number, default: 0, min: 0 },
       refunded: { type: Number, default: 0, min: 0 },
+      bonus: { type: Number, default: 0, min: 0 },
+      bonusRemaining: { type: Number, default: 0, min: 0 },
     },
     flight: {
       startAt: { type: Date, required: true },

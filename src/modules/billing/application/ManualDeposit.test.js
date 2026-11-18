@@ -353,3 +353,16 @@ test('creditPartnerWallet increments and records in one core', async () => {
   assert.equal(out.balance, 1400);
   assert.ok(out.transactionId);
 });
+
+test('creditPartnerWallet marks platform bonus as non-withdrawable', async () => {
+  const partners = fakePartners({ p1: member() });
+  const transactions = fakeTransactions();
+  const out = await creditPartnerWallet(
+    { partners, transactions },
+    { partnerId: 'p1', amountNgn: 400, paymentMethod: 'Welcome Bonus', reference: 'B1', nonWithdrawable: true },
+  );
+  assert.equal(out.balance, 1400);
+  assert.equal(out.bonusBalance, 400);
+  assert.equal(out.withdrawableBalance, 1000);
+  assert.equal(transactions.docs[0].bonusAmount, 400);
+});

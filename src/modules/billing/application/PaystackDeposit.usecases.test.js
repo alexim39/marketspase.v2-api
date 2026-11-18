@@ -7,6 +7,12 @@ import {
 import { HandlePaystackTransferUseCase } from './PaystackPayout.usecases.js';
 import { CreateWithdrawalUseCase } from './Withdrawal.usecases.js';
 
+const withdrawalWallet = (balance = 4000, bonusBalance = 0) => ({
+  findById: () => ({
+    select: () => ({ lean: async () => ({ balance, bonusBalance }) }),
+  }),
+});
+
 test('InitPaystackDepositUseCase creates a pending checkout intent', async () => {
   let created;
   let updated;
@@ -94,7 +100,8 @@ test('creditPaystackIntent propagates DB failures so the provider retries', asyn
 test('CreateWithdrawalUseCase (manual mode) debits and stores the resolved name', async () => {
   const created = [];
   const partners = {
-    findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000 }),
+    ...withdrawalWallet(),
+    findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000, bonusBalance: 0 }),
   };
   const transactions = {
     create: async ([doc]) => { created.push(doc); return [{ ...doc, _id: 't1' }]; },
@@ -122,7 +129,8 @@ test('CreateWithdrawalUseCase (manual mode) debits and stores the resolved name'
 test('CreateWithdrawalUseCase starts an automatic Paystack transfer', async () => {
   const created = [];
   const partners = {
-    findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000 }),
+    ...withdrawalWallet(),
+    findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000, bonusBalance: 0 }),
   };
   const transactions = {
     create: async ([doc]) => { created.push(doc); return [{ ...doc, _id: 't1' }]; },
@@ -161,7 +169,10 @@ test('CreateWithdrawalUseCase refuses when the payout balance is short', async (
     availableBalanceKobo: async () => 1000,
   };
   const uc = new CreateWithdrawalUseCase({
-    partners: { findOneAndUpdate: async () => { throw new Error('must not debit'); } },
+    partners: {
+      ...withdrawalWallet(),
+      findOneAndUpdate: async () => { throw new Error('must not debit'); },
+    },
     transactions: { create: async () => { created += 1; return []; } },
     paystack,
   });
@@ -172,16 +183,37 @@ test('CreateWithdrawalUseCase refuses when the payout balance is short', async (
   assert.equal(created, 0);
 });
 
+test('CreateWithdrawalUseCase refuses a platform bonus balance', async () => {
+  let paystackTouched = false;
+  const uc = new CreateWithdrawalUseCase({
+    partners: {
+      ...withdrawalWallet(2500, 2500),
+      findOneAndUpdate: async () => { throw new Error('must not debit'); },
+    },
+    transactions: { create: async () => [] },
+    paystack: {
+      enabled: true,
+      resolveAccount: async () => { paystackTouched = true; return { accountName: 'Ada Obi' }; },
+    },
+  });
+  await assert.rejects(
+    uc.execute({ partnerId: 'p1', bankCode: '058', bankName: 'GTBank', accountNumber: '0123456789', amountNgn: 1000 }),
+    /Platform bonuses cannot be withdrawn/,
+  );
+  assert.equal(paystackTouched, false);
+});
+
 test('CreateWithdrawalUseCase refunds when Paystack cannot start the transfer', async () => {
   const created = [];
   let refunds = 0;
   const partners = {
+    ...withdrawalWallet(),
     findOneAndUpdate: async (_filter, update) => {
       if (Number(update?.$inc?.balance) > 0) {
         refunds += 1;
-        return { _id: 'p1', balance: 5000 };
+        return { _id: 'p1', balance: 5000, bonusBalance: 0 };
       }
-      return { _id: 'p1', balance: 4000 };
+      return { _id: 'p1', balance: 4000, bonusBalance: 0 };
     },
     updateOne: async () => { refunds += 1; return {}; },
   };
@@ -344,7 +376,7 @@ test('transfer.reversed after Paid flags the row without clawing back the wallet
 test('CreateWithdrawalUseCase refuses insufficient balance and bad accounts', async () => {
   const paystack = { enabled: true, resolveAccount: async () => ({ accountName: 'Ada Obi', accountNumber: '0123456789' }) };
   const uc = new CreateWithdrawalUseCase({
-    partners: { findOneAndUpdate: async () => null },
+    partners: { ...withdrawalWallet(0, 0), findOneAndUpdate: async () => null },
     transactions: { create: async () => [] },
     paystack,
     autoPayout: false,

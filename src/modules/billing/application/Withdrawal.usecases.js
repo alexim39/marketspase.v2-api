@@ -1,8 +1,9 @@
-﻿import { ConflictException, ValidationException } from '../../../shared/domain/AppError.js';
+﻿import { ConflictException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import { seal } from '../../../shared/security/fieldCrypto.js';
 import { logger } from '../../../shared/observability/logger.js';
 import { PartnersModel, TransactionModel, runInTransaction } from '../infrastructure/Billing.models.js';
 import { markWithdrawalPaid, refundWithdrawal } from './PaystackPayout.usecases.js';
+import { debitWithdrawableWallet } from './Deposit.usecases.js';
 
 const MIN_WITHDRAWAL_NGN = 100;
 const MAX_WITHDRAWAL_NGN = 1_000_000;
@@ -78,6 +79,15 @@ export class CreateWithdrawalUseCase {
       throw new ValidationException(`Maximum withdrawal is ₦${MAX_WITHDRAWAL_NGN.toLocaleString()}`);
     }
 
+    const wallet = await this.partners.findById(partnerId).select('balance bonusBalance').lean();
+    if (!wallet) throw new NotFoundException('Partner not found');
+    const withdrawable = Math.max(0, Number(wallet.balance ?? 0) - Math.max(0, Number(wallet.bonusBalance ?? 0)));
+    if (withdrawable < amount) {
+      throw new ConflictException(
+        `You can withdraw up to ₦${withdrawable.toLocaleString()}. Platform bonuses cannot be withdrawn; use them for SMS, campaigns and other platform services.`,
+      );
+    }
+
     let resolved;
     try {
       resolved = await this.paystack.resolveAccount(account, bank);
@@ -123,17 +133,27 @@ export class CreateWithdrawalUseCase {
     try {
       outcome = await runInTransaction(async (session) => {
         const opt = session ? { session } : {};
-        const partner = await this.partners.findOneAndUpdate(
-          { _id: partnerId, balance: { $gte: amount } },
-          { $inc: { balance: -amount } },
-          { new: true, ...opt },
+        const debit = await debitWithdrawableWallet(
+          { partners: this.partners },
+          { partnerId, amountNgn: amount },
+          opt,
         );
-        if (!partner) {
-          throw new ConflictException('Your wallet balance is too low for this withdrawal');
+        if (debit.insufficient) {
+          if (debit.withdrawable !== undefined) {
+            throw new ConflictException(
+              `You can withdraw up to ₦${Number(debit.withdrawable ?? 0).toLocaleString()}. Platform bonuses cannot be withdrawn.`,
+            );
+          }
+          throw new ConflictException('Your withdrawable balance is too low for this withdrawal');
         }
+        if (!debit.partner) {
+          throw new ConflictException('Your withdrawable balance is too low for this withdrawal');
+        }
+        const partner = debit.partner;
         const created = await this.transactions.create([{
           partnerId,
           amount,
+          bonusAmount: 0,
           balanceBefore: Number(partner.balance ?? 0) + amount,
           balanceAfter: partner.balance ?? null,
           status: 'Pending',
@@ -153,6 +173,8 @@ export class CreateWithdrawalUseCase {
         return {
           transaction: Array.isArray(created) ? created[0] : created,
           balance: partner.balance ?? null,
+          withdrawableBalance: debit.withdrawableBalance ?? null,
+          bonusBalance: debit.bonusBalance ?? null,
         };
       });
     } catch (err) {
@@ -166,6 +188,8 @@ export class CreateWithdrawalUseCase {
       reference,
       amountNgn: amount,
       balance: outcome.balance,
+      withdrawableBalance: outcome.withdrawableBalance,
+      bonusBalance: outcome.bonusBalance,
       bank: bankLabel,
       bankCode: bank,
       accountNumber: account,

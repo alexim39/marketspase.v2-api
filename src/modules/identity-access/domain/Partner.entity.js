@@ -86,6 +86,8 @@ export const toSafePartner = (doc) => {
   o.role = lenientRole(o.role);
   // Suspension flag for admin tooling (timestamps stay for audit detail).
   o.suspended = !!o.suspendedAt;
+  o.bonusBalance = Math.max(0, Number(o.bonusBalance ?? 0));
+  o.withdrawableBalance = Math.max(0, Number(o.balance ?? 0) - o.bonusBalance);
   o.capabilities = partnerCapabilities(o);
   return o;
 };

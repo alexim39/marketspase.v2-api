@@ -163,7 +163,7 @@ const peopleSummary = async ({ days, from, now }) => {
     states.push({ label: state, value: 1 });
     ranks.push({ label: titleCase(row.commissionRank) || 'Partner', value: 1 });
     const role = lenientRole(row.role);
-    roles.push({ label: role === 'admin' ? 'Admin' : role === 'leader' ? 'Leader' : 'Member', value: 1 });
+    roles.push({ label: role === 'admin' ? 'Admin' : role === 'leader' ? 'Leader' : 'User', value: 1 });
   }
 
   const stateTotals = countBy(states, (row) => row.label);
@@ -184,6 +184,7 @@ const peopleSummary = async ({ days, from, now }) => {
       { key: 'new', label: `New in ${days} days`, value: newInWindow, format: 'number', tone: 'ok', detail: 'Fresh signups in this window' },
       { key: 'active', label: 'Active in 30 days', value: active30, format: 'number', tone: 'info', detail: total > 0 ? `${Math.round((active30 / total) * 100)}% of the base` : 'No users yet' },
       { key: 'dormant', label: 'No activity 60d', value: dormant60, format: 'number', tone: 'warn', detail: 'Follow-up or reactivation audience' },
+      { key: 'members', label: 'Registered members', value: members, format: 'number', tone: 'warn', detail: members ? 'Signed up, not activated yet' : 'Every account is activated', link: '/roles' },
       { key: 'activated', label: 'Activated partners', value: activated, format: 'number', tone: 'ok', detail: `${members} still members` },
       { key: 'kyc', label: 'KYC verified', value: kycVerified, format: 'number', tone: 'info', detail: kycPending ? `${kycPending} pending review` : 'No pending reviews', link: '/activation' },
       { key: 'suspended', label: 'Suspended', value: suspended, format: 'number', tone: suspended ? 'danger' : 'neutral', detail: suspended ? 'Review restricted accounts' : 'No suspensions' },
@@ -197,6 +198,7 @@ const peopleSummary = async ({ days, from, now }) => {
       format: 'number',
     }],
     distributions: [
+      { key: 'activation', title: 'Activation status', type: 'donut', items: [{ label: 'Partners', value: activated }, { label: 'Members', value: members }], format: 'number' },
       { key: 'states', title: 'Users by state', type: 'bar', items: distribution(stateTotals, { limit: 12, otherLabel: 'Other states' }), format: 'number' },
       { key: 'ranks', title: 'Commission rank', type: 'donut', items: rankTotals, format: 'number' },
       { key: 'roles', title: 'Access roles', type: 'donut', items: roleTotals, format: 'number' },

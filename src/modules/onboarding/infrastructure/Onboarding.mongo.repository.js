@@ -12,6 +12,7 @@ import {
   runInTransaction,
 } from '../../identity-access/infrastructure/Auth.models.js';
 import { partnerCapabilities } from '../../identity-access/domain/PartnerCapabilities.js';
+import { debitPartnerWallet } from '../../billing/application/Deposit.usecases.js';
 import {
   ActivationOrderModel,
   ActivationQueueEntryModel,
@@ -329,15 +330,13 @@ export class MongoOnboardingRepository {
           opts(session),
         );
 
-        const activated = await PartnersModel.findOneAndUpdate(
+        const debit = await debitPartnerWallet(
+          { partners: PartnersModel },
           {
-            _id: partnerId,
-            accountState: 'member',
-            balance: { $gte: product.price },
-          },
-          {
-            $inc: { balance: -Number(product.price) },
-            $set: {
+            partnerId,
+            amountNgn: product.price,
+            filter: { accountState: 'member' },
+            set: {
               accountState: 'partner',
               activatedAt: now,
               activationOrderId: order._id,
@@ -353,17 +352,18 @@ export class MongoOnboardingRepository {
               },
             },
           },
-          opts(session, { new: true }),
-        ).lean();
-
-        if (!activated) {
+          opts(session),
+        );
+        if (!debit) {
           throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
         }
+        const activated = debit.partner;
 
         await TransactionModel.create(
           [{
             partnerId,
             amount: product.price,
+            bonusAmount: debit.bonusUsed,
             balanceBefore: Number(activated.balance ?? 0) + Number(product.price),
             balanceAfter: activated.balance ?? null,
             reference: number,
@@ -517,10 +517,21 @@ export class MongoOnboardingRepository {
         throw new ConflictException('Order can no longer be refunded');
       }
 
+      const originalQ = TransactionModel.findOne({
+        partnerId: order.partnerId,
+        reference: order.orderNumber,
+        transactionType: 'Debit',
+      }).select('bonusAmount');
+      if (session) originalQ.session(session);
+      const original = await originalQ.lean();
+      const bonusRefund = Math.min(
+        Number(order.amount),
+        Math.max(0, Number(original?.bonusAmount ?? 0)),
+      );
       const deactivated = await PartnersModel.findOneAndUpdate(
         { _id: order.partnerId, activationOrderId: order._id },
         {
-          $inc: { balance: Number(order.amount) },
+          $inc: { balance: Number(order.amount), bonusBalance: bonusRefund },
           $set: {
             accountState: 'member',
             activatedAt: null,
@@ -533,7 +544,7 @@ export class MongoOnboardingRepository {
       if (!deactivated) {
         await PartnersModel.updateOne(
           { _id: order.partnerId },
-          { $inc: { balance: Number(order.amount) } },
+          { $inc: { balance: Number(order.amount), bonusBalance: bonusRefund } },
           opts(session),
         );
       }
@@ -548,6 +559,7 @@ export class MongoOnboardingRepository {
         [{
           partnerId: order.partnerId,
           amount: order.amount,
+          bonusAmount: bonusRefund,
           balanceBefore: refundedBalance === null ? null : Number(refundedBalance) - Number(order.amount),
           balanceAfter: refundedBalance,
           reference: `REF-${order.orderNumber}`,

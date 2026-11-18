@@ -29,7 +29,10 @@ const withdrawalDeps = (savedCalls = []) => {
     savedCalls,
     deps: {
       partners: {
-        findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000 }),
+        findById: () => ({
+          select: () => ({ lean: async () => ({ balance: 4000, bonusBalance: 0 }) }),
+        }),
+        findOneAndUpdate: async () => ({ _id: 'p1', balance: 4000, bonusBalance: 0 }),
       },
       transactions: {
         create: async ([doc]) => {

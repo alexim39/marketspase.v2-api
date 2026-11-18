@@ -32,12 +32,19 @@ import {
   ownerEligibleForCampaign,
   partnerEligibleForAllocation,
 } from '../domain/Campaign.allocation.js';
+import { debitPartnerWallet } from '../../billing/application/Deposit.usecases.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 const objectId = (value) => String(value ?? '');
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/** Refund only the bonus still unspent in this campaign. */
+const bonusRefundFor = (campaign, refund) => Math.min(
+  Math.max(0, Number(refund) || 0),
+  Math.max(0, Number(campaign?.budget?.bonusRemaining ?? 0)),
+);
 const hasId = (value) => /^[a-fA-F0-9]{24}$/.test(objectId(value));
 
 /** Legacy partners predate accountState/kycStatus; missing values mean active + verified. */
@@ -221,22 +228,22 @@ export class MongoCampaignRepository {
     const fundingReference = `GCF-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
     return runInTransaction(async (session) => {
-      const debited = await PartnersModel.findOneAndUpdate(
+      const debit = await debitPartnerWallet(
+        { partners: PartnersModel },
         {
-          _id: ownerId,
-          suspendedAt: null,
-          balance: { $gte: total },
-          ...activationEligibilityFilter,
+          partnerId: ownerId,
+          amountNgn: total,
+          filter: { suspendedAt: null, ...activationEligibilityFilter },
         },
-        { $inc: { balance: -total } },
-        opts(session, { new: true }),
-      ).lean();
+        opts(session),
+      );
 
-      if (!debited) {
+      if (!debit) {
         const latest = await this.findPartner(ownerId, { session });
         await this.assertOwnerEligible(latest);
         throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
       }
+      const debited = debit.partner;
 
       const [campaign] = await GrowthCampaignModel.create(
         [{
@@ -246,7 +253,7 @@ export class MongoCampaignRepository {
           brief: input.brief ?? '',
           status,
           ...(autoActivate ? { activatedAt: now, activatedBy: ownerId, pausedAt: null } : {}),
-          budget: { total, spent: 0, refunded: 0 },
+          budget: { total, spent: 0, refunded: 0, bonus: debit.bonusUsed, bonusRemaining: debit.bonusUsed },
           flight: { startAt, endAt },
           capacity: {
             total: capacityTotal,
@@ -269,6 +276,7 @@ export class MongoCampaignRepository {
         [{
           partnerId: ownerId,
           amount: total,
+          bonusAmount: debit.bonusUsed,
           balanceBefore: Number(debited.balance ?? 0) + Number(total),
           balanceAfter: debited.balance ?? null,
           reference: fundingReference,
@@ -308,6 +316,7 @@ export class MongoCampaignRepository {
             refundReason: reason ?? 'Owner cancelled before activation',
             adminNote: reason ?? 'Owner cancelled before activation',
           },
+          ...(refund > 0 ? { 'budget.bonusRemaining': 0 } : {}),
           ...(refund > 0 ? { $inc: { 'budget.refunded': refund } } : {}),
         },
         opts(session, { new: true }),
@@ -318,6 +327,7 @@ export class MongoCampaignRepository {
         await this.refundOwner({
           ownerId: campaign.ownerId,
           amount: refund,
+          bonusAmount: bonusRefundFor(campaign, refund),
           reference: `GCREF-${campaign._id}`,
           method: 'Growth Campaign Refund',
           note: reason ?? 'Owner cancelled',
@@ -640,6 +650,7 @@ export class MongoCampaignRepository {
             refundedAt: refund > 0 ? now : null,
             refundReason: refund > 0 ? (note ?? 'Unspent campaign budget returned') : null,
           },
+          ...(refund > 0 ? { 'budget.bonusRemaining': 0 } : {}),
           ...(refund > 0 ? { $inc: { 'budget.refunded': refund } } : {}),
         },
         opts(session, { new: true }),
@@ -650,6 +661,7 @@ export class MongoCampaignRepository {
         await this.refundOwner({
           ownerId: campaign.ownerId,
           amount: refund,
+          bonusAmount: bonusRefundFor(campaign, refund),
           reference: `GCEND-${campaign._id}`,
           method: 'Growth Campaign Closeout',
           note: note ?? 'Unspent budget refunded',
@@ -950,13 +962,23 @@ export class MongoCampaignRepository {
             ],
           },
         },
-        {
-          $inc: {
-            'capacity.allocated': 1,
-            'budget.spent': COST_PER_PROSPECT_NGN,
+        [
+          {
+            $set: {
+              'capacity.allocated': { $add: ['$capacity.allocated', 1] },
+              'budget.spent': { $add: ['$budget.spent', COST_PER_PROSPECT_NGN] },
+              'budget.bonusRemaining': {
+                $max: [0, {
+                  $subtract: [
+                    { $ifNull: ['$budget.bonusRemaining', 0] },
+                    COST_PER_PROSPECT_NGN,
+                  ],
+                }],
+              },
+              lastAllocatedAt: now,
+            },
           },
-          $set: { lastAllocatedAt: now },
-        },
+        ],
         opts(session, { new: true }),
       ).lean();
       if (!campaign) throw new ConflictException('Campaign has no remaining capacity or budget');
@@ -1017,6 +1039,7 @@ export class MongoCampaignRepository {
                 refundReason: 'Campaign completed — unspent budget returned',
               } : {}),
             },
+            ...(refund > 0 ? { 'budget.bonusRemaining': 0 } : {}),
             ...(refund > 0 ? { $inc: { 'budget.refunded': refund } } : {}),
           },
           opts(session, { new: true }),
@@ -1027,6 +1050,7 @@ export class MongoCampaignRepository {
             await this.refundOwner({
               ownerId,
               amount: refund,
+              bonusAmount: bonusRefundFor(campaign, refund),
               reference: `GCAUTO-${campaignId}-${allocation._id}`,
               method: 'Growth Campaign Closeout',
               note: 'Campaign completed — unspent budget returned',
@@ -1275,6 +1299,7 @@ export class MongoCampaignRepository {
             endedAt: status === 'Ended' ? now : null,
             endedBy: status === 'Ended' ? adminId : null,
           },
+          ...(refund > 0 ? { 'budget.bonusRemaining': 0 } : {}),
           ...(refund > 0 ? { $inc: { 'budget.refunded': refund } } : {}),
         },
         opts(session, { new: true }),
@@ -1284,6 +1309,7 @@ export class MongoCampaignRepository {
         await this.refundOwner({
           ownerId: campaign.ownerId,
           amount: refund,
+          bonusAmount: bonusRefundFor(campaign, refund),
           reference: `GCREF-${campaign._id}`,
           method: 'Growth Campaign Refund',
           note: reason,
@@ -1297,11 +1323,12 @@ export class MongoCampaignRepository {
     });
   }
 
-  async refundOwner({ ownerId, amount, reference, method, note, actorId, now, session }) {
+  async refundOwner({ ownerId, amount, bonusAmount = 0, reference, method, note, actorId, now, session }) {
     if (!(amount > 0)) return 0;
+    const bonus = Math.min(Math.max(0, Number(bonusAmount) || 0), Number(amount));
     const owner = await PartnersModel.findByIdAndUpdate(
       ownerId,
-      { $inc: { balance: Number(amount) } },
+      { $inc: { balance: Number(amount), bonusBalance: bonus } },
       opts(session, { new: true }),
     ).lean();
     if (!owner) throw new NotFoundException('Campaign owner not found');
@@ -1309,6 +1336,7 @@ export class MongoCampaignRepository {
       [{
         partnerId: ownerId,
         amount: Number(amount),
+        bonusAmount: bonus,
         balanceBefore: Number(owner.balance ?? 0) - Number(amount),
         balanceAfter: owner.balance ?? null,
         reference,

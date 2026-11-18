@@ -14,6 +14,7 @@ import {
 } from '../../../modules/compensation/application/ProductCommission.usecases.js';
 import { summarizeProductMargins } from '../../../modules/compensation/domain/ProductCommission.js';
 import { runInTransaction } from '../../../modules/identity-access/infrastructure/Auth.models.js';
+import { debitPartnerWallet } from '../../../modules/billing/application/Deposit.usecases.js';
 import { AppError } from '../../../shared/domain/AppError.js';
 import mongoose from 'mongoose';
 import { SearchMissModel } from '../../../modules/search/infrastructure/SearchMiss.mongo.model.js';
@@ -135,9 +136,20 @@ export const decideOrder = async (req, res) => {
 
       if (status === 'Cancelled') {
         if (Number(claimed.totalCost) > 0) {
+          const originalQ = TransactionModel.findOne({
+            partnerId: claimed.partner,
+            reference: claimed.orderNumber,
+            paymentMethod: 'Product Purchase',
+          }).select('bonusAmount');
+          if (session) originalQ.session(session);
+          const original = await originalQ.lean();
+          const bonusRefund = Math.min(
+            Number(claimed.totalCost),
+            Math.max(0, Number(original?.bonusAmount ?? 0)),
+          );
           const owner = await PartnersModel.findByIdAndUpdate(
             claimed.partner,
-            { $inc: { balance: Number(claimed.totalCost) } },
+            { $inc: { balance: Number(claimed.totalCost), bonusBalance: bonusRefund } },
             { new: true, ...opts },
           ).lean();
           if (!owner) {
@@ -147,6 +159,7 @@ export const decideOrder = async (req, res) => {
             [{
               partnerId: claimed.partner,
               amount: Number(claimed.totalCost),
+              bonusAmount: bonusRefund,
               balanceBefore: Number(owner.balance ?? 0) - Number(claimed.totalCost),
               balanceAfter: owner.balance ?? null,
               status: 'Completed',
@@ -1217,19 +1230,21 @@ export const Savecart = async (req, res) => {
         }
       }
 
-      const buyer = await PartnersModel.findOneAndUpdate(
-        { _id: partnerId, balance: { $gte: totalCost } },
-        { $inc: { balance: -totalCost } },
-        { new: true, ...opts },
-      ).lean();
-      if (!buyer) {
+      const debit = await debitPartnerWallet(
+        { partners: PartnersModel },
+        { partnerId, amountNgn: totalCost },
+        opts,
+      );
+      if (!debit) {
         throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
       }
+      const buyer = debit.partner;
 
       await TransactionModel.create(
         [{
           partnerId,
           amount: totalCost,
+          bonusAmount: debit.bonusUsed,
           balanceBefore: Number(buyer.balance ?? 0) + Number(totalCost),
           balanceAfter: buyer.balance ?? null,
           status: 'Completed',

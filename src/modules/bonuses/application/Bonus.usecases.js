@@ -122,7 +122,7 @@ export class ClaimBonusUseCase {
       }
       const credited = await creditPartnerWallet(
         { partners: this.partners, transactions: this.transactions },
-        { partnerId, amountNgn: campaign.amountNgn, paymentMethod: 'Welcome Bonus', reference },
+        { partnerId, amountNgn: campaign.amountNgn, paymentMethod: 'Welcome Bonus', reference, nonWithdrawable: true },
         opt,
       );
       await this.claims.updateOne(
@@ -135,7 +135,14 @@ export class ClaimBonusUseCase {
     if (this.notifier) {
       await this.notifier(partnerId, campaign.amountNgn, reference).catch(() => null);
     }
-    return { amountNgn: campaign.amountNgn, balance: out.balance, reference, transactionId: out.transactionId };
+    return {
+      amountNgn: campaign.amountNgn,
+      balance: out.balance,
+      bonusBalance: out.bonusBalance,
+      withdrawableBalance: out.withdrawableBalance,
+      reference,
+      transactionId: out.transactionId,
+    };
   }
 }
 

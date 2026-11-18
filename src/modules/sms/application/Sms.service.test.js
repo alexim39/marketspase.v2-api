@@ -27,6 +27,7 @@ const matches = (row, filter = {}) => {
     if (expected instanceof RegExp) return expected.test(String(actual ?? ''));
     if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
       if ('$in' in expected) return expected.$in.map(String).includes(String(actual));
+      if ('$exists' in expected) return expected.$exists ? actual !== undefined && actual !== null : actual === undefined || actual === null;
       if ('$gte' in expected) return Number(actual) >= Number(expected.$gte);
       if ('$lte' in expected) return new Date(actual).getTime() <= new Date(expected.$lte).getTime();
       if ('$ne' in expected) return String(actual) !== String(expected.$ne);
@@ -621,6 +622,26 @@ describe('SMS service', () => {
   it('includes the business opportunity system template', async () => {
     const templates = await kit.service.templates(ACTOR);
     assert.ok(templates.some((row) => row.name === 'Business opportunity' && row.system));
+  });
+
+  it('uses platform bonus first and restores it on failure', async () => {
+    const actor = kit.state.partners.rows.find((row) => row._id === ACTOR);
+    actor.bonusBalance = 100;
+    kit.failedPhones.add('2348031234567');
+    const campaign = await kit.service.send(ACTOR, {
+      idempotencyKey: 'bonus-funded-1',
+      recipients: [{ type: 'prospect', id: P_MERCY }],
+      body: 'Hello from Ada.',
+    });
+    assert.equal(balanceOf(kit.state), 490);
+    assert.equal(Number(actor.bonusBalance), 90);
+    assert.equal(kit.state.recipients.rows[0].bonusCost, 10);
+
+    await kit.service.processCampaign(campaign.id);
+    assert.equal(balanceOf(kit.state), 500);
+    assert.equal(Number(actor.bonusBalance), 100);
+    const refund = kit.state.transactions.rows.find((row) => row.transactionType === 'SMS refund');
+    assert.equal(refund.bonusAmount, 10);
   });
 
   it('suggests copy from the prospect stage and partner activation state', async () => {

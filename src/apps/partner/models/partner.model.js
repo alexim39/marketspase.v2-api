@@ -201,6 +201,13 @@ const partnersSchema = mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Platform-granted bonus (welcome/promo/admin credit). It is spendable on
+    // platform services but excluded from withdrawal eligibility.
+    bonusBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     profileImage: {
       type: String,
     },

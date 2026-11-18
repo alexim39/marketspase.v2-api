@@ -203,14 +203,21 @@ export class DepositStatusUseCase {
  * and admin credit both land here). $inc + Completed/Credit record travel
  * together inside the caller's transaction.
  */
-export const creditPartnerWallet = async ({ partners, transactions }, { partnerId, amountNgn, paymentMethod, reference }, opts = {}) => {
+export const creditPartnerWallet = async (
+  { partners, transactions },
+  { partnerId, amountNgn, paymentMethod, reference, nonWithdrawable = false },
+  opts = {},
+) => {
+  const inc = { balance: amountNgn };
+  if (nonWithdrawable) inc.bonusBalance = amountNgn;
   const updated = await partners.findByIdAndUpdate(
     partnerId,
-    { $inc: { balance: amountNgn } },
+    { $inc: inc },
     { new: true, ...opts },
   );
   if (!updated) throw new NotFoundException('Partner not found');
   const balanceAfter = updated.balance ?? null;
+  const bonusBalance = Math.max(0, Number(updated.bonusBalance ?? 0));
   const balanceBefore = balanceAfter === null ? null : Number(balanceAfter) - Number(amountNgn);
   // NOTE: array form is mandatory — Mongoose ignores a `session` passed
   // with a single doc (and misreads the args). Single-doc create here once
@@ -218,6 +225,7 @@ export const creditPartnerWallet = async ({ partners, transactions }, { partnerI
   const made = await transactions.create([{
     partnerId,
     amount: amountNgn,
+    bonusAmount: nonWithdrawable ? Number(amountNgn) : 0,
     balanceBefore,
     balanceAfter,
     status: 'Completed',
@@ -229,8 +237,94 @@ export const creditPartnerWallet = async ({ partners, transactions }, { partnerI
   return {
     transactionId: String(tx._id ?? tx.id),
     balance: balanceAfter,
+    bonusBalance,
+    withdrawableBalance: Math.max(0, Number(balanceAfter ?? 0) - bonusBalance),
     balanceBefore,
   };
+};
+
+const walletQuery = (partners, partnerId, opts) => {
+  const query = partners.findById(partnerId).select('balance bonusBalance');
+  if (opts?.session && typeof query.session === 'function') query.session(opts.session);
+  return query;
+};
+
+const settle = async (query) => (query && typeof query.lean === 'function' ? query.lean() : query);
+
+/**
+ * Debit the total wallet, consuming non-withdrawable bonus first. Spending
+ * helpers must use this so a deposit-funded balance is never locked behind
+ * an older bonus. Returns `null` when the wallet cannot cover the amount.
+ */
+export const debitPartnerWallet = async (
+  { partners },
+  { partnerId, amountNgn, filter = {}, set = null },
+  opts = {},
+) => {
+  const amount = Math.round(Number(amountNgn) * 100) / 100;
+  if (!(amount > 0)) return null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await settle(walletQuery(partners, partnerId, opts));
+    if (!current) throw new NotFoundException('Partner not found');
+    const balance = Number(current.balance ?? 0);
+    if (balance < amount) return null;
+    const bonusBefore = Math.max(0, Number(current.bonusBalance ?? 0));
+    const bonusUsed = Math.min(bonusBefore, amount);
+    const guard = { _id: partnerId, ...filter, balance: { $gte: amount } };
+    if (bonusBefore > 0) guard.bonusBalance = bonusBefore;
+    else guard.$or = [{ bonusBalance: 0 }, { bonusBalance: { $exists: false } }];
+    const update = { $inc: { balance: -amount, bonusBalance: -bonusUsed } };
+    if (set) update.$set = set;
+    const updated = await settle(partners.findOneAndUpdate(guard, update, { new: true, ...opts }));
+    if (updated) {
+      return {
+        partner: updated,
+        bonusUsed,
+        cashUsed: Math.round((amount - bonusUsed) * 100) / 100,
+        bonusBalance: Math.max(0, Number(updated.bonusBalance ?? 0)),
+      };
+    }
+  }
+  return null;
+};
+
+/**
+ * Debit only withdrawable cash. Bonus stays untouched and cannot be moved
+ * through a payout, even if a stale client or an old UI asks for it.
+ */
+export const debitWithdrawableWallet = async (
+  { partners },
+  { partnerId, amountNgn },
+  opts = {},
+) => {
+  const amount = Math.round(Number(amountNgn) * 100) / 100;
+  if (!(amount > 0)) return { insufficient: true, withdrawable: 0 };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await settle(walletQuery(partners, partnerId, opts));
+    if (!current) throw new NotFoundException('Partner not found');
+    const balance = Number(current.balance ?? 0);
+    const bonusBefore = Math.max(0, Number(current.bonusBalance ?? 0));
+    const withdrawable = Math.max(0, balance - bonusBefore);
+    if (withdrawable < amount) {
+      return { insufficient: true, withdrawable, balance, bonusBalance: bonusBefore };
+    }
+    const guard = { _id: partnerId, balance: { $gte: amount } };
+    if (bonusBefore > 0) guard.bonusBalance = bonusBefore;
+    else guard.$or = [{ bonusBalance: 0 }, { bonusBalance: { $exists: false } }];
+    const updated = await settle(partners.findOneAndUpdate(
+      guard,
+      { $inc: { balance: -amount } },
+      { new: true, ...opts },
+    ));
+    if (updated) {
+      return {
+        partner: updated,
+        withdrawableBalance: Math.max(0, Number(updated.balance ?? 0) - bonusBefore),
+        bonusBalance: bonusBefore,
+      };
+    }
+  }
+  return { insufficient: true };
 };
 
 /**
@@ -470,7 +564,7 @@ export class AdminCreditWalletUseCase {
       }], opt);
       return creditPartnerWallet(
         { partners: this.partners, transactions: this.transactions },
-        { partnerId, amountNgn: amount, paymentMethod: 'Admin Credit', reference },
+        { partnerId, amountNgn: amount, paymentMethod: 'Admin Credit', reference, nonWithdrawable: true },
         opt,
       );
     });

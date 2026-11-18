@@ -54,8 +54,11 @@ const prepareCreate = ({ balance = 100000 } = {}) => {
   const repo = new MongoCampaignRepository();
   repo.findPartner = async () => eligibleOwner;
 
+  patch(PartnersModel, 'findById', () => ({
+    select: () => ({ lean: async () => ({ balance, bonusBalance: 0 }) }),
+  }));
   patch(PartnersModel, 'findOneAndUpdate', () => ({
-    lean: async () => ({ balance }),
+    lean: async () => ({ balance, bonusBalance: 0 }),
   }));
   patch(GrowthCampaignModel, 'create', async ([doc]) => {
     captured.campaign = doc;

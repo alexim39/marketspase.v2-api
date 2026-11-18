@@ -10,6 +10,7 @@ import { TransactionModel } from '../../../apps/transaction/models/transaction.m
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { LogCommunicationUseCase } from '../../crm/application/Prospect.communications.js';
 import { StoreCustomerLeadModel } from '../../stores/infrastructure/Store.models.js';
+import { debitPartnerWallet } from '../../billing/application/Deposit.usecases.js';
 import { buildSmsSender } from '../../notifications/infrastructure/SmsSender.js';
 import {
   SmsCampaignModel,
@@ -530,9 +531,21 @@ export class SmsService {
       throw error;
     }
 
-    let debited = false;
+    let debit = null;
     try {
-      await this.recipientStore.insertMany(priced.map((row) => ({
+      debit = await debitPartnerWallet(
+        { partners: this.partners },
+        { partnerId, amountNgn: totalCost },
+      );
+      if (!debit) throw new ConflictException('Your wallet balance changed. Refresh and try again.');
+
+      let remainingBonus = debit.bonusUsed;
+      const rows = priced.map((row) => {
+        const bonusCost = Math.min(remainingBonus, row.cost);
+        remainingBonus = Math.round((remainingBonus - bonusCost) * 100) / 100;
+        return { ...row, bonusCost };
+      });
+      await this.recipientStore.insertMany(rows.map((row) => ({
         campaignId: campaign._id,
         partnerId,
         recipientType: row.type,
@@ -542,22 +555,16 @@ export class SmsService {
         renderedBody: row.renderedBody,
         pages: row.pages,
         cost: row.cost,
+        bonusCost: row.bonusCost,
         status: 'queued',
       })));
-
-      const wallet = await this.partners.findOneAndUpdate(
-        { _id: partnerId, balance: { $gte: totalCost } },
-        { $inc: { balance: -totalCost } },
-        { new: true },
-      ).lean();
-      if (!wallet) throw new ConflictException('Your wallet balance changed. Refresh and try again.');
-      debited = true;
 
       await this.transactions.create({
         partnerId,
         amount: -totalCost,
-        balanceBefore: Number(wallet.balance ?? 0) + totalCost,
-        balanceAfter: Number(wallet.balance ?? 0),
+        bonusAmount: debit.bonusUsed,
+        balanceBefore: Number(debit.partner.balance ?? 0) + totalCost,
+        balanceAfter: Number(debit.partner.balance ?? 0),
         reference: `sms:${String(campaign._id)}`,
         status: 'Completed',
         paymentMethod: 'Wallet',
@@ -572,10 +579,10 @@ export class SmsService {
     } catch (error) {
       // Never leave a debit without a campaign (or a campaign without a
       // debit). Both halves of the write must stand or fall together.
-      if (debited) {
+      if (debit) {
         await this.partners.findOneAndUpdate(
           { _id: partnerId },
-          { $inc: { balance: totalCost } },
+          { $inc: { balance: totalCost, bonusBalance: debit.bonusUsed } },
           { new: true },
         ).catch(() => null);
       }
@@ -616,6 +623,7 @@ export class SmsService {
         phoneMasked: maskPhone(row.phone),
         status: row.status,
         cost: row.cost,
+        bonusCost: row.bonusCost ?? 0,
         refundedAmount: row.refundAmount ?? 0,
         error: row.error,
         sentAt: row.sentAt,
@@ -654,36 +662,58 @@ export class SmsService {
     const failed = await this.recipientStore.find({ campaignId: id, status: 'failed' }).lean();
     if (failed.length === 0) throw new ValidationException('No failed recipients to retry');
     const totalCost = failed.reduce((sum, row) => sum + Number(row.cost ?? 0), 0);
-    const debited = await this.partners.findOneAndUpdate(
-      { _id: partnerId, balance: { $gte: totalCost } },
-      { $inc: { balance: -totalCost } },
-      { new: true },
-    ).lean();
-    if (!debited) throw new ConflictException(`Insufficient wallet balance for retry. You need ₦${totalCost.toLocaleString()}.`);
-    await this.transactions.create({
-      partnerId,
-      amount: -totalCost,
-      balanceBefore: Number(debited.balance ?? 0) + totalCost,
-      balanceAfter: Number(debited.balance ?? 0),
-      reference: `smsretry:${id}:${Date.now()}`,
-      status: 'Completed',
-      paymentMethod: 'Wallet',
-      transactionType: 'SMS',
-      date: new Date(),
-    });
-    await this.recipientStore.updateMany({ campaignId: id, status: 'failed' }, {
-      $set: { status: 'queued', error: null, refundedAt: null, refundAmount: 0, providerId: null, sentAt: null },
-    });
-    const updated = await this.campaignStore.findByIdAndUpdate(id, {
-      $set: {
-        status: 'sending',
-        completedAt: null,
-        error: null,
-        refundedAmount: Math.max(0, Number(campaign.refundedAmount ?? 0) - totalCost),
-      },
-    }, { new: true }).lean();
-    this.schedule(String(id));
-    return this.campaignResponse(updated);
+    const debit = await debitPartnerWallet(
+      { partners: this.partners },
+      { partnerId, amountNgn: totalCost },
+    );
+    if (!debit) throw new ConflictException(`Insufficient wallet balance for retry. You need ₦${totalCost.toLocaleString()}.`);
+    try {
+      await this.transactions.create({
+        partnerId,
+        amount: -totalCost,
+        bonusAmount: debit.bonusUsed,
+        balanceBefore: Number(debit.partner.balance ?? 0) + totalCost,
+        balanceAfter: Number(debit.partner.balance ?? 0),
+        reference: `smsretry:${id}:${Date.now()}`,
+        status: 'Completed',
+        paymentMethod: 'Wallet',
+        transactionType: 'SMS',
+        date: new Date(),
+      });
+      let remainingBonus = debit.bonusUsed;
+      for (const row of failed) {
+        const bonusCost = Math.min(remainingBonus, Number(row.cost ?? 0));
+        remainingBonus = Math.round((remainingBonus - bonusCost) * 100) / 100;
+        await this.recipientStore.updateOne({ _id: row._id }, {
+          $set: {
+            status: 'queued',
+            error: null,
+            refundedAt: null,
+            refundAmount: 0,
+            providerId: null,
+            sentAt: null,
+            bonusCost,
+          },
+        });
+      }
+      const updated = await this.campaignStore.findByIdAndUpdate(id, {
+        $set: {
+          status: 'sending',
+          completedAt: null,
+          error: null,
+          refundedAmount: Math.max(0, Number(campaign.refundedAmount ?? 0) - totalCost),
+        },
+      }, { new: true }).lean();
+      this.schedule(String(id));
+      return this.campaignResponse(updated);
+    } catch (error) {
+      await this.partners.findOneAndUpdate(
+        { _id: partnerId },
+        { $inc: { balance: totalCost, bonusBalance: debit.bonusUsed } },
+        { new: true },
+      ).catch(() => null);
+      throw error;
+    }
   }
 
   async refundRecipient(recipient) {
@@ -694,14 +724,16 @@ export class SmsService {
     ).lean();
     if (!claimed || !(Number(recipient.cost) > 0)) return 0;
     const amount = Number(recipient.cost);
+    const bonusCost = Math.min(amount, Math.max(0, Number(recipient.bonusCost ?? 0)));
     const updated = await this.partners.findOneAndUpdate(
       { _id: recipient.partnerId },
-      { $inc: { balance: amount } },
+      { $inc: { balance: amount, bonusBalance: bonusCost } },
       { new: true },
     ).lean();
     await this.transactions.create({
       partnerId: recipient.partnerId,
       amount,
+      bonusAmount: bonusCost,
       balanceBefore: Number(updated?.balance ?? 0) - amount,
       balanceAfter: Number(updated?.balance ?? 0),
       reference: `smsrefund:${String(recipient._id)}`,

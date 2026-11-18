@@ -260,7 +260,7 @@ export class MongoPartnerRepository {
     const t = new Date(now).getTime();
     const since = (days) => new Date(t - days * 24 * 60 * 60 * 1000);
     const role = (r) => PartnersModel.find({ role: r }).collation({ locale: 'en', strength: 2 }).countDocuments();
-    const [total, new7d, new30d, user, leader, admin, suspended] = await Promise.all([
+    const [total, new7d, new30d, user, leader, admin, suspended, members] = await Promise.all([
       PartnersModel.countDocuments({}),
       PartnersModel.countDocuments({ createdAt: { $gte: since(7) } }),
       PartnersModel.countDocuments({ createdAt: { $gte: since(30) } }),
@@ -268,7 +268,16 @@ export class MongoPartnerRepository {
       role('leader'),
       role('admin'),
       PartnersModel.countDocuments({ suspendedAt: { $ne: null } }),
+      PartnersModel.countDocuments({ accountState: 'member' }),
     ]);
-    return { total, new7d, new30d, roles: { user, leader, admin }, suspended };
+    return {
+      total,
+      new7d,
+      new30d,
+      roles: { user, leader, admin },
+      members,
+      partners: Math.max(0, total - members),
+      suspended,
+    };
   }
 }
