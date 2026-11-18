@@ -52,7 +52,10 @@ Campaign statuses: `scheduled`, `sending`, `sent`, `partial`, `failed`,
 `cancelled`.
 
 Wallet ledger rows use `transactionType: SMS` for the charge and
-`transactionType: SMS refund` for refunds.
+`transactionType: SMS refund` for refunds. `totalCost` is the campaign's
+original charge; `refundedAmount` is the money returned. A retry's re-debit is
+a separate ledger row and does not inflate `totalCost`, so the net cost stays
+`totalCost - refundedAmount`.
 
 ## API
 

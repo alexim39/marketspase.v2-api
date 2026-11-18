@@ -445,6 +445,7 @@ describe('SMS service', () => {
     assert.equal(balanceOf(kit.state), 490);
     assert.equal(kit.state.campaigns.rows[0].status, 'sending');
     assert.equal(kit.state.campaigns.rows[0].refundedAmount, 0);
+    assert.equal(kit.state.campaigns.rows[0].totalCost, 10);
 
     await kit.service.processCampaign(campaign.id);
     assert.equal(kit.state.campaigns.rows[0].status, 'sent');

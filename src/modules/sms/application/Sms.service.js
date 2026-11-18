@@ -579,7 +579,6 @@ export class SmsService {
         error: null,
         refundedAmount: Math.max(0, Number(campaign.refundedAmount ?? 0) - totalCost),
       },
-      $inc: { totalCost },
     }, { new: true }).lean();
     this.schedule(String(id));
     return this.campaignResponse(updated);
