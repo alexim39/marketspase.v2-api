@@ -24,7 +24,7 @@ export class MentionMailer {
   /** @param {{authorName, excerpt, sourceType}} input @returns {{subject, html}} */
   buildMention({ authorName, excerpt, sourceType }) {
     return {
-      subject: `${authorName} mentioned you on Diamond Project`,
+      subject: `${authorName} mentioned you on MarketSpase`,
       html: `
       <p>Hi there,</p>
       <p><strong>${escapeHtml(authorName)}</strong> mentioned you in a ${escapeHtml(sourceType)}:</p>

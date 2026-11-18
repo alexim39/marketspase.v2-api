@@ -13,24 +13,24 @@ export const userWelcomeEmailTemplate = (surveyData) => {
   return `
   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);">
     <header style="background-color: #f4f4f4; padding: 20px; text-align: center;">
-      <h1 style="margin: 0; font-size: 24px; color: #0e0d17;">Diamond Project Online</h1>
+      <h1 style="margin: 0; font-size: 24px; color: #0e0d17;">MarketSpase</h1>
     </header>
 
     <main style="padding: 24px; color: #333;">
       <p style="font-size: 16px;">Hi ${name},</p>
 
       <p style="font-size: 16px; line-height: 1.6;">
-        Thank you for taking the time to visit Diamond Project Online and completing our survey.
+        Thank you for taking the time to visit MarketSpase and completing our survey.
         We're excited to introduce you to a unique opportunity that could transform your life.
       </p>
 
       <p style="font-size: 16px; line-height: 1.6;">
-        Diamond Project is more than just a project—it's your gateway to freedom in the digital world.
+        MarketSpase is more than just a project—it's your gateway to freedom in the digital world.
         We've combined the power of digital marketing with dynamic online partnership programs to create a system that empowers people like you.
       </p>
 
       <p style="font-size: 16px; line-height: 1.6; margin-bottom: 10px;">
-        Here's what makes Diamond Project Online special:
+        Here's what makes MarketSpase special:
       </p>
 
       <ul style="font-size: 16px; padding-left: 20px; line-height: 1.8;">
@@ -55,12 +55,12 @@ export const userWelcomeEmailTemplate = (surveyData) => {
       <p style="font-size: 16px; line-height: 1.6;">
         Best regards,<br>
         Alex Imenwo<br>
-        <strong>Diamond Project Online Team</strong>
+        <strong>MarketSpase Team</strong>
       </p>
     </main>
 
     <footer style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 14px; color: #666;">
-      Diamond Project: Becoming the ultimate version of yourself
+      MarketSpase: Becoming the ultimate version of yourself
     </footer>
   </div>
 `;

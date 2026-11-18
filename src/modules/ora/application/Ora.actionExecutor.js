@@ -5,6 +5,7 @@ import { LogCommunicationUseCase } from '../../crm/application/Prospect.communic
 import { SaveOraPlanUseCase } from './Ora.plan.usecases.js';
 import { MongoOraPlanStore } from '../infrastructure/Ora.mongo.repository.js';
 import { buildSmsSender } from '../../notifications/infrastructure/SmsSender.js';
+import { MENTOR_CONTACT_LABELS } from '../../mentor-handoff/domain/MentorHandoff.domain.js';
 import { sendEmail } from '../../../services/emailService.js';
 import { env } from '../../../shared/config/env.js';
 
@@ -27,6 +28,10 @@ export class OraActionExecutor {
     savePlan,
     mail = sendEmail,
     sms = null,
+    partners = null,
+    handoffs = null,
+    messages = null,
+    submitTicket = null,
   } = {}) {
     this.prospects = prospects ?? new MongoProspectRepository();
     this.logCommunication = logCommunication ?? new LogCommunicationUseCase({ prospects: this.prospects });
@@ -34,6 +39,10 @@ export class OraActionExecutor {
     this.savePlan = savePlan ?? new SaveOraPlanUseCase({ plans: new MongoOraPlanStore() });
     this.mail = mail;
     this.sms = sms ?? buildSmsSender(env.sms);
+    this.partners = partners;
+    this.handoffs = handoffs;
+    this.messages = messages;
+    this.submitTicket = submitTicket;
   }
 
   async prospectFor(partnerId, prospectId) {
@@ -53,6 +62,111 @@ export class OraActionExecutor {
     if (stage === 'Closed' || stage === 'Converted' || prospect?.status?.status === 'Closed') {
       throw new ForbiddenException('This prospect is no longer in an open pipeline stage.');
     }
+  }
+
+  displayName(person) {
+    return [person?.name, person?.surname].filter(Boolean).join(' ')
+      || person?.username
+      || 'A member';
+  }
+
+  async requestHandoff({ partnerId, payload = {} }) {
+    const requested = ['mentor', 'support', 'auto'].includes(payload.target)
+      ? payload.target
+      : 'auto';
+    const reason = String(payload.reason ?? '').trim().slice(0, 500);
+    const member = this.partners
+      ? await this.partners.findById(partnerId).catch(() => null)
+      : null;
+    if (!member) throw new NotFoundException('Member account not found');
+
+    let target = requested;
+    if (target === 'auto') target = member.partnerOf ? 'mentor' : 'support';
+
+    if (target === 'mentor') {
+      const preference = String(member.mentorContactPreference ?? 'in_app');
+      if (member.partnerOf && preference !== 'prefer_not_now') {
+        const mentorResult = await this.requestMentorHandoff({
+          partnerId,
+          member,
+          reason,
+          preference,
+        });
+        if (mentorResult) return mentorResult;
+      }
+    }
+    return this.requestSupportHandoff({ partnerId, member, reason });
+  }
+
+  async requestMentorHandoff({ partnerId, member, reason, preference }) {
+    if (!this.partners || !this.handoffs) return null;
+    const mentorId = String(member.partnerOf ?? '');
+    if (!mentorId) return null;
+    const mentor = await this.partners.findById(mentorId).catch(() => null);
+    if (!mentor) return null;
+
+    const external = ['email', 'whatsapp', 'phone'].includes(preference);
+    const safePreference = external && !member.mentorContactConsentAt ? 'in_app' : preference;
+    const consentAt = safePreference === 'in_app' ? null : member.mentorContactConsentAt;
+    await this.handoffs.ensureTask({
+      partnerId,
+      mentorId,
+      source: member.placementCampaignId ? 'allocation' : 'referral',
+      joinedAt: member.createdAt ?? new Date(),
+      preference: safePreference,
+      consentAt,
+    });
+
+    if (this.messages) {
+      const preferenceLabel = MENTOR_CONTACT_LABELS[safePreference] ?? 'In-app chat';
+      const body = [
+        `${this.displayName(member)} asked for mentor support through Ora.`,
+        reason ? `What they need: ${reason}` : '',
+        `Preferred contact: ${preferenceLabel}.`,
+      ].filter(Boolean).join('\n\n');
+      await this.messages.create({
+        senderId: String(partnerId),
+        recipientId: mentorId,
+        kind: 'direct',
+        title: 'Mentor support requested',
+        body: body.slice(0, 2000),
+      });
+    }
+
+    return {
+      type: 'request_handoff',
+      target: 'mentor',
+      mentorId,
+      mentorName: this.displayName(mentor),
+      preference: safePreference,
+      consentAdjusted: safePreference !== preference,
+    };
+  }
+
+  async requestSupportHandoff({ partnerId, member, reason }) {
+    if (!this.submitTicket) {
+      throw new ValidationException('Support handoff is not configured');
+    }
+    const description = [
+      `Ora handoff request from ${this.displayName(member)}.`,
+      reason ? `What they need: ${reason}` : '',
+      `Account state: ${member.accountState ?? 'member'}`,
+      `KYC: ${member.kycStatus ?? 'not_started'}`,
+    ].filter(Boolean).join('\n');
+    const ticket = await this.submitTicket.execute({
+      subject: 'Ora handoff request',
+      description,
+      date: new Date(),
+      category: 'Ora handoff',
+      priority: 'normal',
+      comment: 'Requested through Ora chat',
+      partnerId: String(partnerId),
+    });
+    return {
+      type: 'request_handoff',
+      target: 'support',
+      ticketId: String(ticket?.id ?? ticket?._id ?? ''),
+    };
   }
 
   async execute({ partnerId, action }) {
@@ -163,6 +277,8 @@ export class OraActionExecutor {
           items: plan.items,
         };
       }
+      case 'request_handoff':
+        return this.requestHandoff({ partnerId, payload });
       case 'open_page':
         return { type: 'open_page', link: action.link ?? null };
       default:

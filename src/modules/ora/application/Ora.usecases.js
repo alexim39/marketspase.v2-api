@@ -83,6 +83,21 @@ const fallbackProposals = (message, snapshot) => {
     const review = opportunities.find((o) => o.capabilityKey === 'pipeline.followups');
     if (review) return [{ capability: review.capabilityKey, label: 'Open follow-ups' }];
   }
+  const humanAsk = /human|real person|speak to (someone|a person|an agent)|talk to (someone|a person|an agent)|support agent/.test(text);
+  const sensitive = /payment|paid|charge|charged|deduct|refund|kyc|identity|activation|activate|withdraw|wallet|transaction/.test(text);
+  const problem = /problem|issue|wrong|stuck|rejected|failed|help|not working|dispute/.test(text);
+  if (humanAsk || (sensitive && problem)) {
+    const useMentor = !sensitive
+      && snapshot?.sponsor
+      && snapshot?.mentorContactPreference !== 'prefer_not_now';
+    return [{
+      capability: 'support.handoff',
+      target: useMentor ? 'mentor' : 'support',
+      reason: String(message ?? '').trim().slice(0, 500) || 'Requested a human handoff',
+      label: useMentor ? 'Ask my mentor to reach out' : 'Open a support ticket',
+      summary: useMentor ? 'Your mentor will see your request' : 'Support will see the details',
+    }];
+  }
   if (/today|status|business|plan|next|what should i do/.test(text) && opportunities.length > 0) {
     const first = opportunities[0];
     return [first.requiresApproval
@@ -166,6 +181,41 @@ export const materializeProposals = async ({
 
     const capability = proposal.capability ? capabilityByKey(proposal.capability) : null;
     if (!capability) continue;
+    if (capability.key === 'support.handoff') {
+      if (pending >= maxPending) continue;
+      const record = {
+        partnerId,
+        conversationId,
+        opportunityId: null,
+        type: 'request_handoff',
+        capabilityKey: capability.key,
+        area: capability.area,
+        title: capability.title,
+        label: proposal.label || 'Ask a human to help',
+        summary: proposal.summary || capability.description,
+        link: capability.page,
+        payload: {
+          target: proposal.target ?? 'auto',
+          reason: proposal.reason || proposal.summary || '',
+        },
+        status: 'proposed',
+        requiresApproval: true,
+        result: null,
+        error: null,
+      };
+      if (actions?.create) {
+        try {
+          const saved = await actions.create(record);
+          materialized.push(saved);
+        } catch {
+          continue;
+        }
+      } else {
+        materialized.push({ id: null, ...record });
+      }
+      pending += 1;
+      continue;
+    }
     materialized.push({
       id: null,
       partnerId,
@@ -266,7 +316,7 @@ export class AskOraUseCase {
     }
     const { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
     const proposals = parsedProposals.length > 0 ? parsedProposals : fallbackProposals(text, snapshot);
-    const actions = await materializeProposals({
+    let actions = await materializeProposals({
       partnerId,
       conversationId: convo.id,
       snapshot,
@@ -274,6 +324,19 @@ export class AskOraUseCase {
       reply,
       actions: this.actions,
     });
+    if (actions.length === 0) {
+      const fallback = fallbackProposals(text, snapshot);
+      if (fallback.length > 0) {
+        actions = await materializeProposals({
+          partnerId,
+          conversationId: convo.id,
+          snapshot,
+          proposals: fallback,
+          reply,
+          actions: this.actions,
+        });
+      }
+    }
     await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });
     await this.conversations.appendMessage(convo.id, { role: 'assistant', content: reply, at: new Date() });
     this.usage.set(key, used + 1);
@@ -300,13 +363,15 @@ export class GetOraContextUseCase {
     const snapshot = await this.context.assemble({ partnerId, now });
     return {
       displayName: snapshot.displayName,
+      accountState: snapshot.accountState,
+      journeyStage: snapshot.journeyStage,
       level: snapshot.level,
       levelLabel: snapshot.levelLabel,
       next: snapshot.next,
       nextLabel: snapshot.nextLabel,
       percent: snapshot.percent,
       greeting: greetingFor(snapshot),
-      starters: startersForLevel(snapshot.level),
+      starters: startersForLevel(snapshot.level, { accountState: snapshot.accountState }),
     };
   }
 }

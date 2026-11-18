@@ -28,10 +28,10 @@ export const ContactController = async (req, res) => {
 
         const contactObject = await ContactModel.create({ name, surname, email, subject, message });
 
-        const emailSubject = 'Diamond Project Contact Form';
+        const emailSubject = 'MarketSpase Contact Form';
         const emailMessage = `
             <h1>Contact Form</h1>
-            <p>Kindly note that ${escapeHtml(name)} ${escapeHtml(surname)} filled the contact form on the Diamond Project website.</p>
+            <p>Kindly note that ${escapeHtml(name)} ${escapeHtml(surname)} filled the contact form on the MarketSpase website.</p>
 
             <br>
             <h1>Complete Prospect Response</h1>
@@ -58,9 +58,9 @@ export const ContactController = async (req, res) => {
 
         await sendEmail(
             email,
-            'We received your message - Diamond Project',
+            'We received your message - MarketSpase',
             `<p>Hi ${escapeHtml(name)},</p>
-             <p>Thank you for contacting Diamond Project. We have received your message and a member of our team will respond shortly.</p>
+             <p>Thank you for contacting MarketSpase. We have received your message and a member of our team will respond shortly.</p>
              <p><strong>Your subject:</strong> ${escapeHtml(subject)}</p>`
         );
 
@@ -109,10 +109,10 @@ export const DownloadPreapproachController = async (req, res) => {
             username: req.body.username,
         });
 
-        const emailSubject = 'Diamond Project Pre-Approach Download';
+        const emailSubject = 'MarketSpase Pre-Approach Download';
         const emailMessage = `
             <h1>Pre-Approach Download Form</h1>
-            <p>Kindly note that ${escapeHtml(req.body.name)} ${escapeHtml(req.body.surname)} downloaded the pre-approach file on Diamond Project website.</p>
+            <p>Kindly note that ${escapeHtml(req.body.name)} ${escapeHtml(req.body.surname)} downloaded the pre-approach file on MarketSpase website.</p>
 
             <br>
             <h1>Complete Prospect Response</h1>

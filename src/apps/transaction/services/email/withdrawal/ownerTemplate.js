@@ -1,11 +1,11 @@
 export const ownerEmailTemplate = (partner) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
     <header style="text-align: center; padding: 10px; background-color: #f4f4f4;">
-      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">Diamond Project Online</span>
+      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">MarketSpase</span>
     </header>
     <main style="padding: 20px;">
       <h2>Partner Withdrawal Request</h2>
-      <p>A partner with name <strong>${partner.accountName}</strong> and account number <strong>${partner.accountNumber}</strong> just requested for a withdrawal from <a href="https://c21fg.online">Diamond Project Online</a>.</p>
+      <p>A partner with name <strong>${partner.accountName}</strong> and account number <strong>${partner.accountNumber}</strong> just requested for a withdrawal from <a href="https://c21fg.online">MarketSpase</a>.</p>
       <p>You may need to quickly process request</p>
       <h2>Partner Details</h2>
       <p><strong>Name:</strong> ${partner.accountName}</p>

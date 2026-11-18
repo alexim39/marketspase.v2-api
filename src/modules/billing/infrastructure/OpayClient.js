@@ -83,7 +83,7 @@ export class OpayClient {
       returnUrl,
       callbackUrl,
       cancelUrl,
-      product: { name: 'Wallet Deposit', description: 'Diamond Project wallet top-up' },
+      product: { name: 'Wallet Deposit', description: 'MarketSpase wallet top-up' },
       userInfo: {
         userEmail: email ?? '',
         userId: userId ?? '',

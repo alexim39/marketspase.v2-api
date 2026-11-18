@@ -31,6 +31,12 @@ import { MongoPartnerRepository } from '../../identity-access/infrastructure/Aut
 import { MongoCampaignRepository } from '../../campaigns/infrastructure/Campaign.mongo.repository.js';
 import { StoreRepository } from '../../stores/infrastructure/Store.mongo.repository.js';
 import { StoreOrderRepository } from '../../stores/infrastructure/StoreOrder.mongo.repository.js';
+import { MongoOnboardingRepository } from '../../onboarding/infrastructure/Onboarding.mongo.repository.js';
+import { MongoMentorHandoffRepository } from '../../mentor-handoff/infrastructure/MentorHandoff.mongo.repository.js';
+import { MongoMessageStore } from '../../messaging/infrastructure/Messaging.mongo.repository.js';
+import { SubmitTicketUseCase } from '../../support-ticketing/application/SubmitTicket.usecase.js';
+import { MongoTicketRepository } from '../../support-ticketing/infrastructure/Ticket.mongo.repository.js';
+import { TicketMailer } from '../../support-ticketing/infrastructure/clients/TicketMailer.js';
 
 const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 
@@ -93,14 +99,29 @@ export const buildOraRouter = (deps = {}) => {
   const campaigns = deps.campaigns ?? new MongoCampaignRepository();
   const store = deps.store ?? new StoreRepository();
   const storeOrders = deps.storeOrders ?? new StoreOrderRepository();
+  const onboarding = deps.onboarding ?? new MongoOnboardingRepository();
+  const handoffs = deps.handoffs ?? new MongoMentorHandoffRepository();
+  const messages = deps.messages ?? new MongoMessageStore();
+  const submitTicket = deps.submitTicket ?? new SubmitTicketUseCase({
+    ticketRepo: deps.ticketRepo ?? new MongoTicketRepository(),
+    mailer: deps.ticketMailer ?? new TicketMailer(),
+  });
 
   const context = deps.context ?? new OraContextAssembler({
-    journey, goals, prospects, events, notifications, partners, network, campaigns, store, storeOrders, plans,
+    journey, goals, prospects, events, notifications, partners, network, campaigns, store, storeOrders, plans, onboarding,
   });
   const client = deps.client ?? new DeepSeekClient({ ...env.ora, post: deps.post });
   const analytics = deps.analytics ?? new MongoOraAnalyticsStore();
   const savePlan = deps.savePlan ?? new SaveOraPlanUseCase({ plans });
-  const executor = deps.executor ?? new OraActionExecutor({ savePlan, mail: deps.mail, sms: deps.sms });
+  const executor = deps.executor ?? new OraActionExecutor({
+    savePlan,
+    mail: deps.mail,
+    sms: deps.sms,
+    partners,
+    handoffs,
+    messages,
+    submitTicket,
+  });
   const ask = deps.ask ?? new AskOraUseCase({
     conversations, client, context, analytics, actions: actionStore, dailyLimit: env.ora.dailyLimit,
   });

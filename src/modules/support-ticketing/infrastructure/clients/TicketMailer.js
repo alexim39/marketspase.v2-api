@@ -18,7 +18,7 @@ const escapeHtml = (s) =>
 export class TicketMailer {
   /** @param {any} ticket domain ticket */
   async notifyOwner(ticket) {
-    const subject = 'Diamond Project Ticket Submission';
+    const subject = 'MarketSpase Ticket Submission';
     const html = `
       <h1>Ticket Submission</h1>
       <p>Kindly note that someone submitted a ticket.</p>

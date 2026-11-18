@@ -29,9 +29,9 @@ export const ProspectSurveyForm = async (req, res) => {
     const survey = new ProspectSurveyModel({ ...surveyData, stateNorm: normalizeState(surveyData.state) });
     await survey.save();
 
-    const ownerSubject = 'New Prospect Notification - Diamond Project';
+    const ownerSubject = 'New Prospect Notification - MarketSpase';
     const ownerMessage = ownerEmailTemplate(surveyData);
-    const userSubject = 'Welcome to Diamond Project';
+    const userSubject = 'Welcome to MarketSpase';
     const userMessage = userWelcomeEmailTemplate(surveyData);
 
     // Find the referring partner

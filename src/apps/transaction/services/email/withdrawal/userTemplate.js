@@ -2,7 +2,7 @@ export const userWithdrawalEmailTemplate = (partner, request) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
 
     <header style="text-align: center; padding: 10px; background-color: #f4f4f4;">
-      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">Diamond Project Online</span>
+      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">MarketSpase</span>
     </header>
 
     <main style="padding: 20px;">
@@ -31,7 +31,7 @@ export const userWithdrawalEmailTemplate = (partner, request) => `
       <br>
       Alex Imenwo
       <br>
-      <strong>Diamond Project Online Team</strong>
+      <strong>MarketSpase Team</strong>
       </p>
 
       <div style="text-align: center;">

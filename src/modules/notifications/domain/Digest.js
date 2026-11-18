@@ -54,7 +54,7 @@ export const buildDigest = ({ kind = 'daily', items = [] } = {}) => {
   }));
   const total = rows.length;
   const subject = kind === 'weekly'
-    ? `Your week in Diamond Project — ${total} unread ${total === 1 ? 'update' : 'updates'}`
+    ? `Your week in MarketSpase — ${total} unread ${total === 1 ? 'update' : 'updates'}`
     : `Your daily digest — ${total} unread ${total === 1 ? 'update' : 'updates'}`;
   return { subject, total, groups };
 };

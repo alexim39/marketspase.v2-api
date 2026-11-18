@@ -19,6 +19,7 @@ test('every Ora capability has a unique key, a dashboard page and valid actions'
   assert.ok(keys.has('learn.goals'));
   assert.ok(keys.has('wallet.compensation'));
   assert.ok(keys.has('products.store-orders'));
+  assert.ok(keys.has('support.handoff'));
 });
 
 test('capability lookup is exact', () => {

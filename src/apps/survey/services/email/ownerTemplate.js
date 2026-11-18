@@ -10,7 +10,7 @@ export const ownerEmailTemplate = (surveyData) => {
   return `
   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);">
     <header style="background-color: #f4f4f4; padding: 20px; text-align: center;">
-      <h1 style="margin: 0; font-size: 24px; color: #0e0d17;">Diamond Project Online</h1>
+      <h1 style="margin: 0; font-size: 24px; color: #0e0d17;">MarketSpase</h1>
     </header>
 
     <main style="padding: 24px; color: #333;">
@@ -19,7 +19,7 @@ export const ownerEmailTemplate = (surveyData) => {
       </p>
 
       <p style="font-size: 16px; line-height: 1.6;">
-        A prospect named <strong>${name} ${surname}</strong> just visited the Diamond Project Online website and submitted contact details.
+        A prospect named <strong>${name} ${surname}</strong> just visited the MarketSpase website and submitted contact details.
       </p>
 
       <p style="font-size: 16px; line-height: 1.6;">You may need to sign into the application platform to move this prospect into your contact list for further engagement.</p>
@@ -103,7 +103,7 @@ export const ownerEmailTemplate = (surveyData) => {
     </main>
 
     <footer style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 14px; color: #666;">
-      Diamond Project: Becoming the ultimate version of yourself
+      MarketSpase: Becoming the ultimate version of yourself
     </footer>
   </div>
 `;

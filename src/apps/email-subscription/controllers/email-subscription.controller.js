@@ -31,16 +31,16 @@ const safeSubscription = (subscription) => ({
     confirmedAt: subscription.confirmedAt ?? null,
 });
 
-const responsePage = (title, message, actionUrl = null, actionLabel = 'Visit Diamond Project') => `<!doctype html>
+const responsePage = (title, message, actionUrl = null, actionLabel = 'Visit MarketSpase') => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} | Diamond Project</title>
+  <title>${escapeHtml(title)} | MarketSpase</title>
 </head>
 <body style="margin:0;padding:0;background:#faf8f3;font-family:Arial,Helvetica,sans-serif;color:#1c1a15;">
   <main style="max-width:560px;margin:10vh auto;padding:32px 24px;background:#ffffff;border:1px solid #e4ddcd;border-radius:12px;text-align:center;">
-    <p style="color:#a97f2c;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;font-size:12px;">Diamond Project</p>
+    <p style="color:#a97f2c;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;font-size:12px;">MarketSpase</p>
     <h1 style="margin:0 0 12px;font-size:26px;">${escapeHtml(title)}</h1>
     <p style="line-height:1.6;color:#444;">${escapeHtml(message)}</p>
     ${actionUrl ? `<a href="${escapeHtml(actionUrl)}" style="display:inline-block;margin-top:16px;padding:12px 24px;border-radius:6px;background:#a97f2c;color:#fff;text-decoration:none;font-weight:bold;">${escapeHtml(actionLabel)}</a>` : ''}
@@ -85,9 +85,9 @@ export const emailSubscription = async (req, res) => {
         const confirmUrl = `${apiBaseUrl(req)}/v1/email-subscription/confirm/${token}`;
         const sent = await sendEmail(
             email,
-            'Confirm your Diamond Project subscription',
+            'Confirm your MarketSpase subscription',
             `<p>Hi,</p>
-             <p>Please confirm that you want to receive occasional updates and insights from Diamond Project.</p>
+             <p>Please confirm that you want to receive occasional updates and insights from MarketSpase.</p>
              <p>This link expires in 24 hours. If you did not request this, you can safely ignore this email.</p>`,
             { actionUrl: confirmUrl, actionLabel: 'Confirm subscription' }
         );
@@ -135,7 +135,7 @@ export const confirmEmailSubscription = async (req, res) => {
                         ? 'This confirmation link has expired. Please subscribe again from the website.'
                         : 'This confirmation link is not valid or has already been used.',
                     publicSiteUrl(),
-                    'Back to Diamond Project'
+                    'Back to MarketSpase'
                 )
             );
         }
@@ -151,24 +151,24 @@ export const confirmEmailSubscription = async (req, res) => {
         const unsubscribeUrl = `${apiBaseUrl(req)}/v1/email-subscription/unsubscribe/${unsubscribeToken}`;
         await sendEmail(
             subscription.email,
-            'You are subscribed to Diamond Project updates',
+            'You are subscribed to MarketSpase updates',
             `<p>Hi,</p>
-             <p>Your subscription is confirmed. You will receive occasional updates, insights and event news from Diamond Project.</p>
+             <p>Your subscription is confirmed. You will receive occasional updates, insights and event news from MarketSpase.</p>
              <p>You can unsubscribe at any time using the link below.</p>`,
             { actionUrl: unsubscribeUrl, actionLabel: 'Unsubscribe' }
         );
 
         const alertSubject = 'New confirmed email subscriber';
-        const alertMessage = `<p>${escapeHtml(subscription.email)} confirmed their Diamond Project email subscription.</p>
+        const alertMessage = `<p>${escapeHtml(subscription.email)} confirmed their MarketSpase email subscription.</p>
             <p>Partner attribution: ${escapeHtml(subscription.username || 'business')}</p>`;
         await Promise.all(alertRecipients().map((recipient) => sendEmail(recipient, alertSubject, alertMessage)));
 
         return res.status(200).type('html').send(
             responsePage(
                 'Subscription confirmed',
-                'Thank you. You are now subscribed to occasional Diamond Project updates.',
+                'Thank you. You are now subscribed to occasional MarketSpase updates.',
                 publicSiteUrl(),
-                'Back to Diamond Project'
+                'Back to MarketSpase'
             )
         );
 
@@ -193,7 +193,7 @@ export const unsubscribeEmailSubscription = async (req, res) => {
                     'Invalid link',
                     'This unsubscribe link is not valid or has already been used.',
                     publicSiteUrl(),
-                    'Back to Diamond Project'
+                    'Back to MarketSpase'
                 )
             );
         }
@@ -205,9 +205,9 @@ export const unsubscribeEmailSubscription = async (req, res) => {
         return res.status(200).type('html').send(
             responsePage(
                 'You are unsubscribed',
-                'You will no longer receive Diamond Project email updates. You can subscribe again at any time.',
+                'You will no longer receive MarketSpase email updates. You can subscribe again at any time.',
                 publicSiteUrl(),
-                'Back to Diamond Project'
+                'Back to MarketSpase'
             )
         );
 

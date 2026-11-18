@@ -15,12 +15,16 @@ const clean = (row) => {
   const capability = text(row.capability, 80) || null;
   if (!opportunityId && !capability) return null;
   const subject = text(row.subject, 120);
+  const target = ['mentor', 'support'].includes(row.target) ? row.target : null;
+  const reason = text(row.reason, 500);
   return {
     ...(opportunityId ? { opportunityId } : {}),
     ...(capability ? { capability } : {}),
     label: text(row.label, 60),
     summary: text(row.summary, 220),
     ...(subject ? { subject } : {}),
+    ...(target ? { target } : {}),
+    ...(reason ? { reason } : {}),
     draft: text(row.draft, 2000),
   };
 };

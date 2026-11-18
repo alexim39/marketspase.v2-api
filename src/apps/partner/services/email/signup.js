@@ -2,16 +2,16 @@ export const userWelcomeEmailTemplate = (newPartner) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
 
     <header style="text-align: center; padding: 10px; background-color: #f4f4f4;">
-      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">Diamond Project Online</span>
+      <span style="font-family: sans-serif; font-size: 20px; font-weight: bold; color: #0e0d17;">MarketSpase</span>
     </header>
 
     <main style="padding: 20px;">
-      <h2>Welcome to Diamond Project Online Partners Platform – Your Journey Begins!</h2>
+      <h2>Welcome to MarketSpase Partners Platform – Your Journey Begins!</h2>
 
       <p>Hi <strong>${newPartner.name.toUpperCase()}</strong>,</p>
 
       <p>
-        Welcome to the Diamond Project Online family! We’re excited to have you on board and look forward to supporting you on your journey toward financial success and personal growth.
+        Welcome to the MarketSpase family! We’re excited to have you on board and look forward to supporting you on your journey toward financial success and personal growth.
       </p>
 
       <p>
@@ -32,7 +32,7 @@ export const userWelcomeEmailTemplate = (newPartner) => `
       <br>
       Alex Imenwo
       <br>
-      <strong>Diamond Project Online Team</strong>
+      <strong>MarketSpase Team</strong>
       </p>
 
       <div style="text-align: center;">

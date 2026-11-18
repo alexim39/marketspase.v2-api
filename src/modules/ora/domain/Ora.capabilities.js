@@ -11,6 +11,7 @@ export const ORA_ACTION_TYPES = Object.freeze([
   'schedule_followup',
   'advance_stage',
   'save_daily_plan',
+  'request_handoff',
 ]);
 
 const cap = (key, area, title, page, actions, description) => ({
@@ -71,6 +72,7 @@ export const ORA_CAPABILITIES = Object.freeze([
   cap('insights.my-business', 'Insights', 'My business', '/dashboard/insights/my-business', OPEN, 'Explain personal numbers and next moves.'),
   cap('insights.downloads', 'Insights', 'Reports and downloads', '/dashboard/insights/downloads', OPEN, 'Export business data.'),
   cap('support.ticket', 'Support', 'Support ticket', '/dashboard/support/ticket', OPEN, 'Open help or raise a ticket.'),
+  cap('support.handoff', 'Support', 'Ask a human to help', '/dashboard/support/ticket', ['request_handoff'], 'Request a mentor or support handoff with consent.'),
   cap('support.about', 'Support', 'About MarketSpase', '/dashboard/support/about/app', OPEN, 'Explain how the platform works.'),
   cap('settings.profile', 'Settings', 'Profile settings', '/dashboard/settings/profiles', OPEN, 'Review profile and security settings.'),
   cap('more.hub', 'More', 'More and account', '/dashboard/more', OPEN, 'Find account utilities and help.'),

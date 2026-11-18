@@ -141,3 +141,84 @@ test('an empty approved plan is rejected', async () => {
     action: { type: 'save_daily_plan', payload: { items: [] } },
   }), /at least one plan item/i);
 });
+
+const handoffDeps = ({ member = {}, mentor = null, ticketId = 'ticket-1' } = {}) => {
+  const calls = { tasks: [], messages: [], tickets: [] };
+  const people = new Map([
+    ['member-1', {
+      _id: 'member-1', name: 'Bola', surname: 'Ade', username: 'bola',
+      accountState: 'member', kycStatus: 'pending', partnerOf: 'mentor-1',
+      mentorContactPreference: 'whatsapp', mentorContactConsentAt: new Date('2026-11-01T10:00:00Z'),
+      createdAt: new Date('2026-11-10T10:00:00Z'),
+      ...member,
+    }],
+  ]);
+  if (mentor) people.set('mentor-1', { _id: 'mentor-1', ...mentor });
+  const executor = new OraActionExecutor({
+    partners: { findById: async (id) => people.get(String(id)) ?? null },
+    handoffs: {
+      ensureTask: async (input) => { calls.tasks.push(input); return { id: 'task-1' }; },
+    },
+    messages: {
+      create: async (input) => { calls.messages.push(input); return { id: 'message-1' }; },
+    },
+    submitTicket: {
+      execute: async (input) => { calls.tickets.push(input); return { id: ticketId }; },
+    },
+  });
+  return { executor, calls };
+};
+
+test('requests a consented mentor handoff and messages the mentor', async () => {
+  const { executor, calls } = handoffDeps({ mentor: { name: 'Ada', surname: 'Obi', username: 'ada' } });
+  const result = await executor.execute({
+    partnerId: 'member-1',
+    action: { type: 'request_handoff', payload: { target: 'mentor', reason: 'Needs help with activation' } },
+  });
+  assert.equal(result.target, 'mentor');
+  assert.equal(result.preference, 'whatsapp');
+  assert.equal(calls.tasks[0].mentorId, 'mentor-1');
+  assert.equal(calls.tasks[0].preference, 'whatsapp');
+  assert.equal(calls.messages[0].recipientId, 'mentor-1');
+  assert.match(calls.messages[0].body, /Needs help with activation/);
+});
+
+test('falls back to in-app contact when external consent is missing', async () => {
+  const { executor, calls } = handoffDeps({
+    member: { mentorContactConsentAt: null },
+    mentor: { name: 'Ada', surname: 'Obi', username: 'ada' },
+  });
+  const result = await executor.execute({
+    partnerId: 'member-1',
+    action: { type: 'request_handoff', payload: { target: 'mentor' } },
+  });
+  assert.equal(result.target, 'mentor');
+  assert.equal(result.preference, 'in_app');
+  assert.equal(result.consentAdjusted, true);
+  assert.equal(calls.tasks[0].preference, 'in_app');
+});
+
+test('routes prefer-not-now members to support instead of the mentor', async () => {
+  const { executor, calls } = handoffDeps({
+    member: { mentorContactPreference: 'prefer_not_now' },
+    mentor: { name: 'Ada', surname: 'Obi', username: 'ada' },
+  });
+  const result = await executor.execute({
+    partnerId: 'member-1',
+    action: { type: 'request_handoff', payload: { target: 'mentor', reason: 'Payment question' } },
+  });
+  assert.equal(result.target, 'support');
+  assert.equal(calls.tickets.length, 1);
+  assert.equal(calls.messages.length, 0);
+});
+
+test('creates a support ticket when no mentor is assigned', async () => {
+  const { executor, calls } = handoffDeps({ member: { partnerOf: null } });
+  const result = await executor.execute({
+    partnerId: 'member-1',
+    action: { type: 'request_handoff', payload: { target: 'mentor', reason: 'KYC rejected' } },
+  });
+  assert.equal(result.target, 'support');
+  assert.equal(result.ticketId, 'ticket-1');
+  assert.match(calls.tickets[0].description, /KYC rejected/);
+});

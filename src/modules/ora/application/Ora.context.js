@@ -20,9 +20,25 @@ const asDate = (v) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+const safe = (value) => Promise.resolve(value).catch(() => null);
+
 const fmtDay = (v) => {
   const d = asDate(v);
   return d ? d.toISOString().slice(0, 10) : 'soon';
+};
+
+const doneMilestone = (value) => value === true || value?.done === true;
+
+const journeyStageOf = ({ accountState, emailVerified, kycStatus, activationOrder, commissionRank }) => {
+  if (accountState === 'member') {
+    if (emailVerified === false) return 'new_member';
+    if (kycStatus === 'rejected') return 'kyc_rejected';
+    if (kycStatus === 'pending') return 'kyc_pending';
+    if (activationOrder && ['Pending', 'Paid'].includes(String(activationOrder.status))) return 'pre_activation';
+    return 'member';
+  }
+  const rank = String(commissionRank ?? 'Partner');
+  return ['Builder', 'Leader', 'Ambassador'].includes(rank) ? rank.toLowerCase() : 'partner';
 };
 
 export class OraContextAssembler {
@@ -38,6 +54,16 @@ export class OraContextAssembler {
   async assemble({ partnerId, now = new Date() } = {}) {
     const ctx = {
       displayName: 'there',
+      accountState: 'member',
+      journeyStage: 'member',
+      emailVerified: true,
+      kycStatus: 'not_started',
+      activatedAt: null,
+      activationOrder: null,
+      queue: null,
+      sponsor: null,
+      mentorContactPreference: 'in_app',
+      mentorContactConsentAt: null,
       commissionRank: 'Partner',
       commissionDepth: 1,
       placed: null,
@@ -45,13 +71,15 @@ export class OraContextAssembler {
       levelLabel: 'Partner',
       next: 'Builder',
       nextLabel: 'Builder',
+      nextRank: null,
       percent: 0,
       missing: [],
+      training: { ipo: false, qsg: false, smo: false, leadership: false },
       nextActions: [],
       prospects: { total: 0, overdue: [], hot: [] },
       pipeline: { total: 0, overdue: 0, hot: 0, byStage: {} },
       walletBalance: 0,
-      team: { directPartners: 0, recent: [] },
+      team: { directPartners: 0, activated: 0, members: 0, stuck: 0, recent: [] },
       campaigns: { total: 0, active: 0, pending: 0, remainingBudget: 0, items: [] },
       store: null,
       plan: { dateKey: lagosDateKey(now), items: [], source: null, savedAt: null },
@@ -60,18 +88,21 @@ export class OraContextAssembler {
       events: [],
       unread: 0,
     };
-    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders, todayPlan] = await Promise.all([
-      this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 }).catch(() => null),
-      this.goals?.execute({ partnerId, now }).catch(() => []),
-      this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS }).catch(() => null),
-      this.notifications?.unreadCount(partnerId).catch(() => 0),
-      this.partners?.findById(partnerId).catch(() => null),
-      this.network?.countChildren(partnerId).catch(() => 0),
-      this.network?.recentChildren(partnerId, 3).catch(() => []),
-      this.campaigns?.listMine(partnerId).catch(() => []),
-      this.store?.getMyStore(partnerId).catch(() => null),
-      this.storeOrders?.listPartnerOrders(partnerId, { limit: 5 }).catch(() => []),
-      this.plans?.get(partnerId, lagosDateKey(now)).catch(() => null),
+    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders, todayPlan, journeyState, activation, teamActivation] = await Promise.all([
+      safe(this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 })),
+      safe(this.goals?.execute({ partnerId, now })),
+      safe(this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS })),
+      safe(this.notifications?.unreadCount(partnerId)),
+      safe(this.partners?.findById(partnerId)),
+      safe(this.network?.countChildren(partnerId)),
+      safe(this.network?.recentChildren(partnerId, 3)),
+      safe(this.campaigns?.listMine(partnerId)),
+      safe(this.store?.getMyStore(partnerId)),
+      safe(this.storeOrders?.listPartnerOrders(partnerId, { limit: 5 })),
+      safe(this.plans?.get(partnerId, lagosDateKey(now))),
+      safe(this.journey?.execute?.({ partnerId, now, readOnly: true })),
+      safe(this.onboarding?.getStatus?.(partnerId)),
+      safe(this.network?.teamActivation?.(partnerId, { limit: 5, now })),
     ]);
 
     if (partner) {
@@ -88,6 +119,46 @@ export class OraContextAssembler {
       ctx.displayName = full || partner.username || 'there';
       ctx.walletBalance = Number(partner.balance ?? 0);
     }
+
+    const activationPartner = activation?.partner ?? null;
+    ctx.accountState = activationPartner?.accountState === 'member' || partner?.accountState === 'member'
+      ? 'member'
+      : 'partner';
+    ctx.emailVerified = activationPartner?.emailVerified ?? partner?.emailVerified ?? true;
+    ctx.kycStatus = activationPartner?.kycStatus ?? partner?.kycStatus ?? 'not_started';
+    ctx.activatedAt = activationPartner?.activatedAt ?? partner?.activatedAt ?? null;
+    ctx.activationOrder = activation?.activationOrder ?? null;
+    ctx.queue = activation?.queue ?? null;
+    ctx.sponsor = activation?.sponsor ?? null;
+    ctx.mentorContactPreference = activationPartner?.mentorContactPreference
+      ?? partner?.mentorContactPreference
+      ?? 'in_app';
+    ctx.mentorContactConsentAt = activationPartner?.mentorContactConsentAt
+      ?? partner?.mentorContactConsentAt
+      ?? null;
+    if (journeyState) {
+      ctx.percent = Number(journeyState.percent) || 0;
+      ctx.next = journeyState.next ?? ctx.next;
+      ctx.nextLabel = journeyState.nextLabel ?? ctx.nextLabel;
+      ctx.nextRank = journeyState.nextLabel ?? journeyState.next ?? ctx.nextRank;
+      ctx.missing = (journeyState.missing ?? [])
+        .map((item) => String(item?.title ?? item))
+        .slice(0, 5);
+      const milestones = journeyState.milestones ?? {};
+      ctx.training = {
+        ipo: doneMilestone(milestones.ipo),
+        qsg: doneMilestone(milestones.qsg),
+        smo: doneMilestone(milestones.smo),
+        leadership: doneMilestone(milestones.leadership),
+      };
+    }
+    ctx.journeyStage = journeyStageOf({
+      accountState: ctx.accountState,
+      emailVerified: ctx.emailVerified,
+      kycStatus: ctx.kycStatus,
+      activationOrder: ctx.activationOrder,
+      commissionRank: ctx.commissionRank,
+    });
     const list = prospects?.items ?? [];
     if (list.length > 0) {
       const byId = new Map(list.map((p) => [String(p.id ?? p._id), p]));
@@ -122,14 +193,26 @@ export class OraContextAssembler {
       location: String(e.location ?? '').slice(0, 60) || null,
     }));
     ctx.unread = Number(unread) || 0;
-    ctx.team = {
-      directPartners: Number(teamCount) || 0,
-      recent: (teamRecent ?? []).slice(0, 3).map((p) => ({
-        name: [p.name, p.surname].filter(Boolean).join(' ') || p.username || 'Partner',
-        username: p.username ?? '',
-        rank: p.commissionRank ?? 'Partner',
-      })),
-    };
+    if (teamActivation) {
+      ctx.team = {
+        ...teamActivation,
+        directPartners: Number(teamActivation.total) || 0,
+      };
+    } else {
+      ctx.team = {
+        directPartners: Number(teamCount) || 0,
+        activated: 0,
+        members: 0,
+        stuck: 0,
+        recent: (teamRecent ?? []).slice(0, 3).map((p) => ({
+          name: [p.name, p.surname].filter(Boolean).join(' ') || p.username || 'Partner',
+          username: p.username ?? '',
+          accountState: p.accountState === 'member' ? 'member' : 'partner',
+          kycStatus: p.kycStatus ?? 'not_started',
+          rank: p.commissionRank ?? 'Partner',
+        })),
+      };
+    }
     const campaignRows = Array.isArray(myCampaigns) ? myCampaigns : [];
     ctx.campaigns = {
       total: campaignRows.length,

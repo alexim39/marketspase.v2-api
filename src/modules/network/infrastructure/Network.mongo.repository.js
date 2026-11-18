@@ -84,6 +84,49 @@ export class MongoNetworkRepository {  async findNode(id, chain = 'all') {
       .lean();
     return docs.map((doc) => project(doc));
   }
+
+  /**
+   * Direct-team activation snapshot for coaching. Counts are bounded and the
+   * recent list is deliberately small; this is a prompt input, not a report.
+   */
+  async teamActivation(partnerId, { limit = 5, now = new Date() } = {}) {
+    const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
+    const filter = childFilter([String(partnerId)]);
+    const cutoff = new Date(now.getTime() - 7 * 86400000);
+    const [rows, total, activated, members, stuck, inactive] = await Promise.all([
+      PartnersModel.find(filter)
+        .select('name surname username accountState kycStatus activatedAt createdAt lastSeenAt')
+        .sort({ createdAt: -1 })
+        .limit(lim)
+        .lean(),
+      PartnersModel.countDocuments(filter),
+      PartnersModel.countDocuments({ ...filter, accountState: { $ne: 'member' } }),
+      PartnersModel.countDocuments({ ...filter, accountState: 'member' }),
+      PartnersModel.countDocuments({ ...filter, accountState: 'member', createdAt: { $lte: cutoff } }),
+      PartnersModel.countDocuments({
+        ...filter,
+        accountState: { $ne: 'member' },
+        $or: [{ lastSeenAt: { $lt: cutoff } }, { lastSeenAt: null }],
+      }),
+    ]);
+    return {
+      total: Number(total) || 0,
+      activated: Number(activated) || 0,
+      members: Number(members) || 0,
+      stuck: Number(stuck) || 0,
+      inactive: Number(inactive) || 0,
+      recent: (rows ?? []).map((row) => ({
+        id: String(row._id),
+        name: [row.name, row.surname].filter(Boolean).join(' ') || row.username || 'Partner',
+        username: row.username ?? '',
+        accountState: row.accountState === 'member' ? 'member' : 'partner',
+        kycStatus: row.kycStatus ?? 'not_started',
+        activatedAt: row.activatedAt ?? null,
+        createdAt: row.createdAt ?? null,
+        lastSeenAt: row.lastSeenAt ?? null,
+      })),
+    };
+  }
 }
 
 /**

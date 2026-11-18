@@ -5,3 +5,4 @@
  */
 export { default, buildOraRouter } from './interface/Ora.routes.js';
 export { buildSystemPrompt, startersForLevel, greetingFor } from './domain/Ora.persona.js';
+export { MARKETSPASE_ONE_LINER, formatPlatformKnowledge } from './domain/Ora.knowledge.js';

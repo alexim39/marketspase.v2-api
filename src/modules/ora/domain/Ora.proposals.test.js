@@ -22,6 +22,13 @@ test('supports capability proposals for opening an area', () => {
   }]);
 });
 
+test('supports consent-aware handoff proposals', () => {
+  const { proposals } = extractProposalBlock('I can ask your mentor to reach out.\n```actions\n[{"capability":"support.handoff","target":"mentor","reason":"Needs activation help","label":"Ask my mentor to reach out"}]\n```');
+  assert.equal(proposals[0].capability, 'support.handoff');
+  assert.equal(proposals[0].target, 'mentor');
+  assert.equal(proposals[0].reason, 'Needs activation help');
+});
+
 test('ignores malformed or oversized blocks', () => {
   assert.deepEqual(extractProposalBlock('No action').proposals, []);
   assert.deepEqual(extractProposalBlock('x\n```actions\nnot json\n```').proposals, []);

@@ -68,13 +68,13 @@ async function notifyExecuted(job, row, day) {
     if (row.email) {
       await mailTo(job, row.email, 'Your account has been deleted',
         `<p>Hi ${esc(who)},</p>`
-        + `<p>Your Diamond Project account was deleted on <strong>${esc(day)}</strong> as requested.</p>`
+        + `<p>Your MarketSpase account was deleted on <strong>${esc(day)}</strong> as requested.</p>`
         + `<p>Your profile was anonymized and your prospects, tickets and codes removed. Financial records are retained as required by law, and any remaining balance was forfeited to the ledger.</p>`);
     }
     if (upline?.email) {
       await mailTo(job, upline.email, `${who}’s account was deleted`,
         `<p>Hi ${esc(whoOf(upline))},</p>`
-        + `<p><strong>${esc(who)}</strong>’s Diamond Project account was deleted on <strong>${esc(day)}</strong> following their own request 30 days ago.</p>`
+        + `<p><strong>${esc(who)}</strong>’s MarketSpase account was deleted on <strong>${esc(day)}</strong> following their own request 30 days ago.</p>`
         + `<p>Their downline was reassigned before execution — no action needed.</p>`);
     }
     for (const email of await adminEmails(job)) {
@@ -118,7 +118,7 @@ export async function runErasureDueJob(deps = {}) {
         const day = String(row.eraseScheduledFor).slice(0, 10);
         await mailTo(job, row.email, 'Your account deletion is 2 days away',
           `<p>Hi ${esc(whoOf(row))},</p>`
-          + `<p>Your Diamond Project account will be deleted on <strong>${esc(day)}</strong>.</p>`
+          + `<p>Your MarketSpase account will be deleted on <strong>${esc(day)}</strong>.</p>`
           + `<p>Changed your mind? Sign in and cancel anytime before then in Settings → Delete my account.</p>`);
         out.reminded += 1;
       } catch (error) {

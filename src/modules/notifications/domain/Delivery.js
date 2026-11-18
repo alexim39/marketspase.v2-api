@@ -36,7 +36,7 @@ export const smsBody = (title, body) => {
 };
 
 export const pushPayload = ({ title, body, link }, appBaseUrl = '') => ({
-  title: String(title ?? 'Diamond Project').slice(0, 120),
+  title: String(title ?? 'MarketSpase').slice(0, 120),
   body: String(body ?? '').slice(0, 240),
   url: appBaseUrl ? `${appBaseUrl}${link ?? '/dashboard/notifications/center'}` : (link ?? '/dashboard/notifications/center'),
   tag: 'diamond-project',
@@ -79,7 +79,7 @@ const escapeHtml = (s) =>
 export const plainEmailHtml = (title, body, link = '/dashboard/notifications/center', baseUrl = 'https://c21fg.online') => {
   const url = toAbsoluteUrl(link, baseUrl);
   const action = url
-    ? `<p style="margin:1.4em 0 0.4em;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 28px;background-color:#a97f2c;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">${escapeHtml(title || 'Open Diamond Project')}</a></p>
+    ? `<p style="margin:1.4em 0 0.4em;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 28px;background-color:#a97f2c;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">${escapeHtml(title || 'Open MarketSpase')}</a></p>
   <p style="font-size:12px;color:#6e6e6e;word-break:break-all;">${escapeHtml(url)}</p>`
     : '';
   return `${paragraphs(body)}${action}`;

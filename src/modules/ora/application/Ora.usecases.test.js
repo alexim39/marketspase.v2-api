@@ -103,6 +103,46 @@ test('unknown ids are dropped', async () => {
   assert.deepEqual(out, []);
 });
 
+test('a handoff proposal becomes a consent-aware approval action', async () => {
+  const actions = actionStore();
+  const out = await materializeProposals({
+    partnerId: 'p1',
+    conversationId: 'c1',
+    snapshot,
+    actions,
+    proposals: [{
+      capability: 'support.handoff',
+      target: 'mentor',
+      reason: 'Needs activation help',
+      label: 'Ask my mentor to reach out',
+    }],
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].type, 'request_handoff');
+  assert.equal(out[0].requiresApproval, true);
+  assert.equal(out[0].payload.target, 'mentor');
+  assert.equal(out[0].payload.reason, 'Needs activation help');
+  assert.equal(actions.created.length, 1);
+});
+
+test('a human request still yields a support handoff when the model omits actions', async () => {
+  const actions = actionStore();
+  const ask = new AskOraUseCase({
+    conversations: fakeConversations(),
+    client: { complete: async () => 'I can help with that.' },
+    context: { assemble: async () => ({ ...snapshot, sponsor: null, mentorContactPreference: 'in_app' }) },
+    actions,
+  });
+  const turn = await ask.execute({
+    partnerId: 'p1',
+    message: 'I want to speak to a human about my activation.',
+  });
+  assert.equal(turn.actions.length, 1);
+  assert.equal(turn.actions[0].type, 'request_handoff');
+  assert.equal(turn.actions[0].payload.target, 'support');
+  assert.equal(actions.created.length, 1);
+});
+
 test('a daily plan proposal keeps the server payload and applies the model draft', async () => {
   const actions = actionStore();
   const planSnapshot = {

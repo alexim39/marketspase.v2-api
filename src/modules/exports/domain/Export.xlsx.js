@@ -20,7 +20,7 @@ const printable = (value) => {
  */
 export async function buildXlsx(sheetName, columns, rows) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Diamond Project';
+  workbook.creator = 'MarketSpase';
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(String(sheetName).slice(0, 31));
   sheet.columns = columns.map((c) => ({ header: c.header, key: c.header, width: 24 }));
