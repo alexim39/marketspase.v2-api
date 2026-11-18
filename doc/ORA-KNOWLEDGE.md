@@ -75,3 +75,11 @@ An unactivated account is never described as a Partner.
 - Activation, KYC and payment disputes always route to support.
 - Handoffs are audited, consent-gated and never claimed as complete before the
   member approves.
+
+## Usage window
+
+Each partner gets 25 Ora messages per 24-hour window. The window starts with the
+first counted message and is stored in MongoDB (`ora_usage_windows`), so page
+reloads, new browser sessions and API restarts do not reset the count. Failed
+provider calls release their reserved slot. The UI shows `used / 25 messages in
+24h` and the reset time when the limit is reached.

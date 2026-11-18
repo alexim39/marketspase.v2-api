@@ -14,7 +14,7 @@ import { GetOraPlanUseCase, SaveOraPlanUseCase } from '../application/Ora.plan.u
 import { OraContextAssembler } from '../application/Ora.context.js';
 import { OraActionExecutor } from '../application/Ora.actionExecutor.js';
 import { DeepSeekClient } from '../infrastructure/DeepSeek.client.js';
-import { MongoOraActionStore, MongoOraAnalyticsStore, MongoOraConversationStore, MongoOraPlanStore } from '../infrastructure/Ora.mongo.repository.js';
+import { MongoOraActionStore, MongoOraAnalyticsStore, MongoOraConversationStore, MongoOraPlanStore, MongoOraUsageStore } from '../infrastructure/Ora.mongo.repository.js';
 import { recordAudit } from '../../audit/index.js';
 import { GetMyProgressionUseCase } from '../../progression/application/Progression.usecases.js';
 import { MongoProgressionStore } from '../../progression/infrastructure/Progression.mongo.repository.js';
@@ -123,7 +123,13 @@ export const buildOraRouter = (deps = {}) => {
     submitTicket,
   });
   const ask = deps.ask ?? new AskOraUseCase({
-    conversations, client, context, analytics, actions: actionStore, dailyLimit: env.ora.dailyLimit,
+    conversations,
+    client,
+    context,
+    analytics,
+    actions: actionStore,
+    dailyLimit: env.ora.dailyLimit,
+    usageStore: deps.usageStore ?? new MongoOraUsageStore(),
   });
   const oraContext = new GetOraContextUseCase({ context });
   const getPlan = deps.getPlan ?? new GetOraPlanUseCase({ plans });
@@ -150,7 +156,7 @@ export const buildOraRouter = (deps = {}) => {
   }));
 
   router.get('/usage', asyncHandler(async (req, res) => {
-    const data = ask.usageFor(req.auth?.partnerId);
+    const data = await ask.usageFor(req.auth?.partnerId);
     res.status(200).json({ message: 'Ora usage retrieved successfully', data, success: true });
   }));
 

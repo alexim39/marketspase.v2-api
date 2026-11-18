@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AskOraUseCase, ApproveOraActionUseCase, materializeProposals } from './Ora.usecases.js';
+import { InMemoryOraUsageStore } from '../domain/Ora.usage.js';
 
 const snapshot = {
   opportunities: [
@@ -52,6 +53,14 @@ const askWithLimit = (dailyLimit) => new AskOraUseCase({
   client: { complete: async () => 'That is the next step.' },
   context: { assemble: async () => snapshot },
   dailyLimit,
+});
+
+const askWithStore = (usageStore, dailyLimit = 25) => new AskOraUseCase({
+  conversations: fakeConversations(),
+  client: { complete: async () => 'That is the next step.' },
+  context: { assemble: async () => snapshot },
+  dailyLimit,
+  usageStore,
 });
 
 test('materializes an opportunity into a persisted approval action', async () => {
@@ -250,9 +259,9 @@ test('chat responses carry the per-partner daily usage budget', async () => {
   assert.equal(first.usage.remaining, 24);
   assert.equal(first.usage.dateKey, '2026-11-07');
   assert.ok(new Date(first.usage.resetsAt).getTime() > now.getTime());
-  assert.deepEqual(usecase.usageFor('p1', now), first.usage);
-  assert.equal(usecase.usageFor('p2', now).used, 0);
-  assert.equal(usecase.usageFor('p2', now).remaining, 25);
+  assert.deepEqual(await usecase.usageFor('p1', now), first.usage);
+  assert.equal((await usecase.usageFor('p2', now)).used, 0);
+  assert.equal((await usecase.usageFor('p2', now)).remaining, 25);
 });
 
 test('the daily cap rejects the next message with usage details', async () => {
@@ -272,6 +281,51 @@ test('the daily cap rejects the next message with usage details', async () => {
       return true;
     },
   );
+});
+
+test('usage persists across page reloads and new use case instances', async () => {
+  const store = new InMemoryOraUsageStore();
+  const now = new Date('2026-11-07T10:00:00Z');
+
+  const first = askWithStore(store);
+  const out = await first.execute({ partnerId: 'p1', message: 'Hello Ora', now });
+  assert.equal(out.usage.used, 1);
+
+  const reloaded = askWithStore(store);
+  const usage = await reloaded.usageFor('p1', now);
+  assert.equal(usage.used, 1);
+  assert.equal(usage.remaining, 24);
+});
+
+test('usage expires after the 24-hour window', async () => {
+  const store = new InMemoryOraUsageStore();
+  const now = new Date('2026-11-07T10:00:00Z');
+  const later = new Date(now.getTime() + (24 * 60 * 60 * 1000) + 1);
+
+  const first = askWithStore(store);
+  await first.execute({ partnerId: 'p1', message: 'Hello Ora', now });
+  assert.equal((await first.usageFor('p1', later)).used, 0);
+
+  const second = askWithStore(store);
+  const out = await second.execute({ partnerId: 'p1', message: 'Hello again', now: later });
+  assert.equal(out.usage.used, 1);
+});
+
+test('a failed model call does not consume a message', async () => {
+  const store = new InMemoryOraUsageStore();
+  const now = new Date('2026-11-07T10:00:00Z');
+  const usecase = new AskOraUseCase({
+    conversations: fakeConversations(),
+    client: { complete: async () => { throw new Error('provider down'); } },
+    context: { assemble: async () => snapshot },
+    usageStore: store,
+  });
+
+  await assert.rejects(
+    usecase.execute({ partnerId: 'p1', message: 'Hello Ora', now }),
+    /provider down/,
+  );
+  assert.equal((await usecase.usageFor('p1', now)).used, 0);
 });
 
 test('approval claims once, executes once and returns the existing result afterwards', async () => {

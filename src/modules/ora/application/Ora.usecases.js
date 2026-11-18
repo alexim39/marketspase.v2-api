@@ -1,4 +1,5 @@
 import { AppError, ConflictException, ForbiddenException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
+import { InMemoryOraUsageStore } from '../domain/Ora.usage.js';
 import { buildSystemPrompt, greetingFor, startersForLevel } from '../domain/Ora.persona.js';
 import { extractProposalBlock } from '../domain/Ora.proposals.js';
 import { parsePlanDraft, planDraftFromReply } from '../domain/Ora.plans.js';
@@ -7,22 +8,9 @@ import { classifyTopic, summarizeAnalytics } from '../domain/Ora.analytics.js';
 
 /** Recent window sent to the model — bounds tokens per call. */
 export const HISTORY_WINDOW = 12;
-/** Per-partner daily message cap (cost control; in-memory, resets on restart). */
+/** Per-partner 24-hour message cap (cost control). */
 export const DEFAULT_DAILY_LIMIT = 25;
 export const MAX_PENDING_ACTIONS = 20;
-
-const dayKey = (now = new Date()) => {
-  const d = now instanceof Date ? now : new Date(now);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-/** Next local midnight, matching the `dayKey` rollover. */
-const nextDayStart = (now = new Date()) => {
-  const d = now instanceof Date ? new Date(now) : new Date(now);
-  if (Number.isNaN(d.getTime())) return nextDayStart(new Date());
-  d.setHours(24, 0, 0, 0);
-  return d;
-};
 
 const toHistory = (messages = []) => messages
   .filter((m) => (m.role === 'user' || m.role === 'assistant') && String(m.content ?? '').trim())
@@ -241,114 +229,124 @@ export const materializeProposals = async ({
 /** Core chat turn: rate-limit → history → context → model → parse → persist + track. */
 export class AskOraUseCase {
   /**
-   * @param {{conversations, client, context, analytics?, dailyLimit?, usage?}} deps
-   * (`usage` is a Map for tests; defaults to a module counter.)
+   * @param {{conversations, client, context, analytics?, dailyLimit?, usageStore?}} deps
+   * (`usageStore` defaults to the in-memory port for tests; production passes Mongo.)
    */
-  constructor({ conversations, client, context, analytics = null, actions = null, dailyLimit = DEFAULT_DAILY_LIMIT, usage = null }) {
+  constructor({ conversations, client, context, analytics = null, actions = null, dailyLimit = DEFAULT_DAILY_LIMIT, usageStore = null }) {
     const configured = Number(dailyLimit);
     Object.assign(this, { conversations, client, context, analytics, actions });
     this.dailyLimit = Number.isFinite(configured) && configured >= 0
       ? Math.floor(configured)
       : DEFAULT_DAILY_LIMIT;
-    this.usage = usage ?? new Map();
+    this.usageStore = usageStore ?? new InMemoryOraUsageStore();
   }
 
-  /** Current partner's daily budget, safe to expose to the UI. */
-  usageFor(partnerId, now = new Date()) {
-    const limit = this.dailyLimit;
-    const dateKey = dayKey(now);
-    const used = Math.max(0, Number(this.usage.get(`${partnerId}:${dateKey}`)) || 0);
-    return {
-      dateKey,
-      limit,
-      used,
-      remaining: Math.max(0, limit - used),
-      resetsAt: nextDayStart(now).toISOString(),
-    };
+  /** Current partner's 24-hour budget, safe to expose to the UI. */
+  async usageFor(partnerId, now = new Date()) {
+    const state = await this.usageStore.usage(partnerId, now);
+    return this.shapeUsage(state, now);
   }
 
   async execute({ partnerId, message, conversationId = null, now = new Date() }) {
     const text = String(message ?? '').trim();
     if (!text || text.length > 2000) throw new ValidationException('Message must be 1–2000 characters');
-    const key = `${partnerId}:${dayKey(now)}`;
-    const used = this.usage.get(key) ?? 0;
-    if (used >= this.dailyLimit) {
+    const reservation = await this.usageStore.consume(partnerId, this.dailyLimit, now);
+    if (!reservation.allowed) {
+      const usage = await this.usageFor(partnerId, now);
       throw new AppError(
-        'Daily Ora limit reached — please continue tomorrow',
+        '24-hour Ora limit reached — please try again when your window resets',
         429,
         'ORA_RATE_LIMITED',
-        { usage: this.usageFor(partnerId, now) },
-        'Your daily Ora limit resets at midnight.',
+        { usage },
+        'Your Ora window resets 24 hours after its first message.',
       );
     }
-    let convo = null;
-    if (conversationId) {
-      convo = await this.conversations.findById(conversationId);
-      if (!convo) throw new NotFoundException('Conversation not found');
-      if (String(convo.partnerId) !== String(partnerId)) throw new ForbiddenException('Not your conversation');
-    } else {
-      convo = await this.conversations.create(partnerId, titleOf(text));
-    }
-    const started = Date.now();
-    const history = toHistory(convo.messages ?? []);
-    const snapshot = await this.context.assemble({ partnerId, now });
-    let raw;
     try {
-      raw = await this.client.complete({
-        system: buildSystemPrompt(snapshot),
-        messages: [...history, { role: 'user', content: text }],
-      });
-    } catch (error) {
-      const lastReply = [...(convo.messages ?? [])]
-        .reverse()
-        .find((m) => m.role === 'assistant' && String(m.content ?? '').trim());
-      if ((error?.code === 'AI_DOWN' || error?.code === 'ORA_PROVIDER_ERROR') && lastReply) {
-        return {
-          conversationId: convo.id,
-          reply: lastReply.content,
-          actions: [],
-          degraded: true,
-          warning: 'AI_DOWN_USING_LAST_PICKS',
-          usage: this.usageFor(partnerId, now),
-        };
+      let convo = null;
+      if (conversationId) {
+        convo = await this.conversations.findById(conversationId);
+        if (!convo) throw new NotFoundException('Conversation not found');
+        if (String(convo.partnerId) !== String(partnerId)) throw new ForbiddenException('Not your conversation');
+      } else {
+        convo = await this.conversations.create(partnerId, titleOf(text));
       }
+      const started = Date.now();
+      const history = toHistory(convo.messages ?? []);
+      const snapshot = await this.context.assemble({ partnerId, now });
+      let raw;
+      try {
+        raw = await this.client.complete({
+          system: buildSystemPrompt(snapshot),
+          messages: [...history, { role: 'user', content: text }],
+        });
+      } catch (error) {
+        const lastReply = [...(convo.messages ?? [])]
+          .reverse()
+          .find((m) => m.role === 'assistant' && String(m.content ?? '').trim());
+        if ((error?.code === 'AI_DOWN' || error?.code === 'ORA_PROVIDER_ERROR') && lastReply) {
+          await this.usageStore.release(partnerId, reservation.windowStart).catch(() => null);
+          return {
+            conversationId: convo.id,
+            reply: lastReply.content,
+            actions: [],
+            degraded: true,
+            warning: 'AI_DOWN_USING_LAST_PICKS',
+            usage: await this.usageFor(partnerId, now),
+          };
+        }
+        throw error;
+      }
+      const { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
+      const proposals = parsedProposals.length > 0 ? parsedProposals : fallbackProposals(text, snapshot);
+      let actions = await materializeProposals({
+        partnerId,
+        conversationId: convo.id,
+        snapshot,
+        proposals,
+        reply,
+        actions: this.actions,
+      });
+      if (actions.length === 0) {
+        const fallback = fallbackProposals(text, snapshot);
+        if (fallback.length > 0) {
+          actions = await materializeProposals({
+            partnerId,
+            conversationId: convo.id,
+            snapshot,
+            proposals: fallback,
+            reply,
+            actions: this.actions,
+          });
+        }
+      }
+      await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });
+      await this.conversations.appendMessage(convo.id, { role: 'assistant', content: reply, at: new Date() });
+      // Analytics never fail the turn — fire and forget.
+      if (this.analytics) {
+        this.analytics.recordEvent({
+          partnerId, conversationId: convo.id, topic: classifyTopic(text),
+          messageChars: text.length, replyChars: reply.length,
+          latencyMs: Date.now() - started, at: new Date(),
+        }).catch(() => null);
+      }
+      return { conversationId: convo.id, reply, actions, usage: await this.usageFor(partnerId, now) };
+    } catch (error) {
+      await this.usageStore.release(partnerId, reservation.windowStart).catch(() => null);
       throw error;
     }
-    const { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
-    const proposals = parsedProposals.length > 0 ? parsedProposals : fallbackProposals(text, snapshot);
-    let actions = await materializeProposals({
-      partnerId,
-      conversationId: convo.id,
-      snapshot,
-      proposals,
-      reply,
-      actions: this.actions,
-    });
-    if (actions.length === 0) {
-      const fallback = fallbackProposals(text, snapshot);
-      if (fallback.length > 0) {
-        actions = await materializeProposals({
-          partnerId,
-          conversationId: convo.id,
-          snapshot,
-          proposals: fallback,
-          reply,
-          actions: this.actions,
-        });
-      }
-    }
-    await this.conversations.appendMessage(convo.id, { role: 'user', content: text, at: now });
-    await this.conversations.appendMessage(convo.id, { role: 'assistant', content: reply, at: new Date() });
-    this.usage.set(key, used + 1);
-    // Analytics never fail the turn — fire and forget.
-    if (this.analytics) {
-      this.analytics.recordEvent({
-        partnerId, conversationId: convo.id, topic: classifyTopic(text),
-        messageChars: text.length, replyChars: reply.length,
-        latencyMs: Date.now() - started, at: new Date(),
-      }).catch(() => null);
-    }
-    return { conversationId: convo.id, reply, actions, usage: this.usageFor(partnerId, now) };
+  }
+
+  shapeUsage(state, now) {
+    const limit = this.dailyLimit;
+    const used = Math.max(0, Number(state?.used) || 0);
+    return {
+      dateKey: state?.dateKey ?? now.toISOString().slice(0, 10),
+      limit,
+      used,
+      remaining: Math.max(0, limit - used),
+      resetsAt: state?.resetsAt ?? new Date(now.getTime() + 86400000).toISOString(),
+      windowHours: 24,
+    };
   }
 }
 

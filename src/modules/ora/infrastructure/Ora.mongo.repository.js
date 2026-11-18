@@ -344,3 +344,107 @@ export class MongoOraAnalyticsStore {
     }));
   }
 }
+
+const ORA_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const oraUsageWindowSchema = new mongoose.Schema(
+  {
+    partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
+    windowStart: { type: Date, required: true, index: true },
+    count: { type: Number, default: 0, min: 0 },
+  },
+  { timestamps: false, collection: 'ora_usage_windows' },
+);
+oraUsageWindowSchema.index({ partnerId: 1, windowStart: 1 }, { unique: true });
+oraUsageWindowSchema.index({ windowStart: 1 }, { expireAfterSeconds: 2 * 24 * 60 * 60 });
+
+export const OraUsageWindowModel =
+  mongoose.models['Ora-usage-window'] ?? mongoose.model('Ora-usage-window', oraUsageWindowSchema);
+
+const shapedUsage = (row, now) => {
+  const start = row?.windowStart ? new Date(row.windowStart) : null;
+  return {
+    used: Math.max(0, Number(row?.count) || 0),
+    windowStart: start,
+    windowHours: 24,
+    dateKey: (start ?? now).toISOString().slice(0, 10),
+    resetsAt: new Date((start ?? now).getTime() + ORA_USAGE_WINDOW_MS).toISOString(),
+  };
+};
+
+/**
+ * Persistent 24-hour usage windows. A window starts with the first counted
+ * message; concurrent sends are guarded by an atomic count-below-limit update.
+ */
+export class MongoOraUsageStore {
+  async usage(partnerId, now = new Date()) {
+    const cutoff = new Date(now.getTime() - ORA_USAGE_WINDOW_MS);
+    const row = await OraUsageWindowModel.findOne({
+      partnerId,
+      windowStart: { $gt: cutoff },
+    }).sort({ windowStart: -1 }).lean();
+    return shapedUsage(row, now);
+  }
+
+  async consume(partnerId, limit, now = new Date()) {
+    const max = Number(limit) || 0;
+    if (max <= 0) return { allowed: false, ...shapedUsage(null, now) };
+    const cutoff = new Date(now.getTime() - ORA_USAGE_WINDOW_MS);
+    const bumped = await OraUsageWindowModel.findOneAndUpdate(
+      {
+        partnerId,
+        windowStart: { $gt: cutoff },
+        count: { $lt: max },
+      },
+      { $inc: { count: 1 } },
+      { new: true, sort: { windowStart: -1 } },
+    ).lean();
+    if (bumped) return { allowed: true, ...shapedUsage(bumped, now) };
+
+    const active = await OraUsageWindowModel.findOne({
+      partnerId,
+      windowStart: { $gt: cutoff },
+    }).sort({ windowStart: -1 }).lean();
+    if (active) return { allowed: false, ...shapedUsage(active, now) };
+
+    try {
+      const created = await OraUsageWindowModel.create({
+        partnerId,
+        windowStart: now,
+        count: 1,
+      });
+      return { allowed: true, ...shapedUsage(created.toObject(), now) };
+    } catch (error) {
+      if (Number(error?.code) !== 11000) throw error;
+      const retried = await OraUsageWindowModel.findOneAndUpdate(
+        {
+          partnerId,
+          windowStart: { $gt: cutoff },
+          count: { $lt: max },
+        },
+        { $inc: { count: 1 } },
+        { new: true, sort: { windowStart: -1 } },
+      ).lean();
+      if (retried) return { allowed: true, ...shapedUsage(retried, now) };
+      const existing = await OraUsageWindowModel.findOne({
+        partnerId,
+        windowStart: { $gt: cutoff },
+      }).sort({ windowStart: -1 }).lean();
+      return { allowed: false, ...shapedUsage(existing, now) };
+    }
+  }
+
+  async release(partnerId, windowStart) {
+    if (!windowStart) return;
+    const start = new Date(windowStart);
+    if (Number.isNaN(start.getTime())) return;
+    const row = await OraUsageWindowModel.findOneAndUpdate(
+      { partnerId, windowStart: start, count: { $gt: 0 } },
+      { $inc: { count: -1 } },
+      { new: true },
+    ).lean();
+    if (row && Number(row.count) <= 0) {
+      await OraUsageWindowModel.deleteOne({ _id: row._id }).catch(() => null);
+    }
+  }
+}

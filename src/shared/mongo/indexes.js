@@ -93,6 +93,8 @@ export const INDEXES = [
   { collection: 'ora-conversations', keys: { partnerId: 1, updatedAt: -1 }, options: {} },
   { collection: 'ora-actions', keys: { partnerId: 1, status: 1, createdAt: -1 }, options: {} },
   { collection: 'ora-plans', keys: { partnerId: 1, dateKey: 1 }, options: { unique: true } },
+  { collection: 'ora_usage_windows', keys: { partnerId: 1, windowStart: 1 }, options: { unique: true } },
+  { collection: 'ora_usage_windows', keys: { windowStart: 1 }, options: { expireAfterSeconds: 172800 } },
   { collection: 'bonus_seed_state', keys: { key: 1 }, options: { unique: true, name: 'key_1' } },
   { collection: 'progressions', keys: { 'ipo.confirmedBy': 1, 'ipo.confirmedAt': 1 }, options: {} },
   { collection: 'progressions', keys: { 'qsg.confirmedBy': 1, 'qsg.confirmedAt': 1 }, options: {} },

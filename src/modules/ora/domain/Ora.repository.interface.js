@@ -18,6 +18,12 @@ export class OraAnalyticsStore {
   async eventsFor(partnerId, since) { throw new Error('Not implemented'); }
 }
 
+export class OraUsageStore {
+  async usage(partnerId, now = new Date()) { throw new Error('Not implemented'); }
+  async consume(partnerId, limit, now = new Date()) { throw new Error('Not implemented'); }
+  async release(partnerId, windowStart) { throw new Error('Not implemented'); }
+}
+
 export class OraClient {
   /** @returns {Promise<string>} assistant reply text */
   async complete({ system, messages }) { throw new Error('Not implemented'); }
