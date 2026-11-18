@@ -9,6 +9,9 @@ import {
   CancelCampaignUseCase, DeleteBroadcastUseCase, EstimateAudienceUseCase,
   GetCampaignUseCase, RetryCampaignUseCase, ScheduleCampaignUseCase,
 } from '../application/Broadcast.campaign.js';
+import { DraftBroadcastUseCase } from '../application/Broadcast.draft.js';
+import { DeepSeekClient } from '../../ora/infrastructure/DeepSeek.client.js';
+import { env } from '../../../shared/config/env.js';
 import { NotifyUseCase } from '../../notifications/application/NotificationsCenter.usecases.js';
 import { MongoStoredNotificationStore } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
 import { recordAudit } from '../../audit/index.js';
@@ -22,6 +25,8 @@ const SendSchema = z.object({
 
 const AudienceSchema = z.object({
   mode: z.enum(['all', 'segment', 'picked']).optional().default('all'),
+  source: z.enum(['platform', 'customers']).optional().default('platform'),
+  accountState: z.enum(['all', 'member', 'partner']).optional().default('all'),
   segment: z.object({
     role: z.string().trim().max(40).optional(),
     active: z.boolean().optional(),
@@ -51,6 +56,22 @@ const CampaignSchema = z.object({
   confirmSpend: z.boolean().optional(),
 });
 
+const DraftSchema = z.object({
+  purpose: z.enum(['announcement', 'promotion', 'reminder', 'welcome', 'update']).optional().default('announcement'),
+  tone: z.enum(['friendly', 'professional', 'urgent', 'celebratory']).optional().default('friendly'),
+  kind: z.enum(['system', 'marketing']).optional().default('marketing'),
+  audience: AudienceSchema.optional(),
+  channels: z.object({
+    inApp: z.boolean().optional(),
+    email: z.boolean().optional(),
+    sms: z.boolean().optional(),
+  }).optional(),
+  current: z.object({
+    title: z.string().trim().max(140).optional(),
+    body: z.string().trim().max(2000).optional(),
+  }).optional(),
+});
+
 /** Manual wiring — explicit for onboarding; pass fakes in tests. */
 export const buildBroadcastRouter = (deps = {}) => {
   const notifyStore = deps.stored ?? new MongoStoredNotificationStore();
@@ -60,6 +81,9 @@ export const buildBroadcastRouter = (deps = {}) => {
   const list = deps.list ?? new ListBroadcastsUseCase({});
   const estimate = deps.estimate ?? new EstimateAudienceUseCase({});
   const schedule = deps.schedule ?? new ScheduleCampaignUseCase({});
+  const draft = deps.draft ?? new DraftBroadcastUseCase({
+    client: deps.draftClient ?? new DeepSeekClient({ ...env.ora }),
+  });
   const detail = deps.detail ?? new GetCampaignUseCase({});
   const cancel = deps.cancel ?? new CancelCampaignUseCase({});
   const retry = deps.retry ?? new RetryCampaignUseCase({});
@@ -70,6 +94,9 @@ export const buildBroadcastRouter = (deps = {}) => {
     skip: z.coerce.number().int().min(0).optional(),
     status: z.enum(['sending', 'sent', 'scheduled', 'failed', 'cancelled']).optional(),
     kind: z.enum(['system', 'marketing']).optional(),
+    channel: z.enum(['sms', 'email', 'inApp']).optional(),
+    source: z.enum(['platform', 'customers']).optional(),
+    accountState: z.enum(['member', 'partner']).optional(),
     q: z.string().trim().max(120).optional(),
   });
   const CampaignIdParam = z.object({ id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id') });
@@ -96,11 +123,41 @@ export const buildBroadcastRouter = (deps = {}) => {
 
   router.get('/', validate({ query: HistoryQuery }), asyncHandler(async (req, res) => {
     const q = req.validated?.query ?? req.query;
-    const data = await list.execute({ limit: q.limit, skip: q.skip, status: q.status, kind: q.kind, q: q.q });
+    const data = await list.execute({
+      limit: q.limit,
+      skip: q.skip,
+      status: q.status,
+      kind: q.kind,
+      q: q.q,
+      channel: q.channel,
+      source: q.source,
+      accountState: q.accountState,
+    });
     res.status(200).json({ message: 'Broadcasts retrieved successfully', data, success: true });
   }));
 
-  // v2 campaigns: audience estimate (zero sends — drives the confirm screen).
+  // Admin copywriter: returns a draft only; nothing is queued.
+  router.post('/draft', validate({ body: DraftSchema }), asyncHandler(async (req, res) => {
+    const body = req.validated?.body ?? req.body;
+    const data = await draft.execute({
+      purpose: body.purpose,
+      tone: body.tone,
+      kind: body.kind,
+      audience: body.audience ?? { mode: 'all', source: 'platform', accountState: 'all' },
+      channels: body.channels ?? { inApp: true },
+      current: body.current ?? {},
+    });
+    void recordAudit({
+      actorId: req.auth?.partnerId,
+      action: 'broadcast.draft',
+      targetType: 'broadcast',
+      targetId: null,
+      detail: { purpose: body.purpose, tone: body.tone, source: body.audience?.source ?? 'platform' },
+    });
+    res.status(200).json({ message: 'Ora draft ready', data, success: true });
+  }));
+
+  // v2 campaigns: audience estimate (zero sends - drives the confirm screen).
   router.post('/campaigns/estimate', validate({ body: CampaignSchema }), asyncHandler(async (req, res) => {
     const body = req.validated?.body ?? req.body;
     const data = await estimate.execute({

@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 const ROUTERS = [
   './modules/audit/index.js',
   './modules/broadcast/index.js',
+  './modules/admin-ora/index.js',
   './modules/training/index.js',
   './modules/training/interface/AdminTraining.routes.js',
   './modules/identity-access/index.js',

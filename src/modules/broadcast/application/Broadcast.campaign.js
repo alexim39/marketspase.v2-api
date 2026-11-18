@@ -1,9 +1,10 @@
 import { ConflictException, NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import {
-  BROADCAST_CAP, createCampaignInput, estimateSmsSpend, smsPages,
+  BROADCAST_CAP, createAudienceInput, createCampaignInput, estimateSmsSpend, smsPages,
 } from '../domain/Broadcast.js';
 import { BroadcastModel } from '../infrastructure/Broadcast.mongo.model.js';
 import { PartnersModel } from '../../../apps/partner/models/partner.model.js';
+import { StoreCustomerLeadModel } from '../../stores/infrastructure/Store.models.js';
 import { resolvePreferences } from '../../notifications/domain/StoredNotifications.js';
 import { resolveChannels, plainEmailHtml } from '../../notifications/domain/Delivery.js';
 import { NotificationPreferenceModel, StoredNotificationModel } from '../../notifications/infrastructure/StoredNotifications.mongo.repository.js';
@@ -18,23 +19,68 @@ const safeMember = (d) => ({
   name: [d.name, d.surname].filter(Boolean).join(' ') || d.username,
   email: d.email ?? null,
   phone: d.phone ?? null,
+  source: 'platform',
+});
+
+const safeCustomer = (d) => ({
+  id: String(d._id),
+  name: String(d.name ?? '').trim() || 'Customer',
+  email: d.email ?? null,
+  phone: d.phone ?? null,
+  source: 'customers',
 });
 
 /**
- * Turn an audience spec into a concrete member list (bounded by
- * BROADCAST_CAP). Suspended partners never receive broadcasts — their
- * inbox is unreachable and off-app sends would be pure spend.
+ * Turn an audience spec into a concrete recipient list (bounded by
+ * BROADCAST_CAP). Platform audiences use `partners`; customer audiences use
+ * consented `store_customer_leads`. Suspended partners never receive
+ * platform broadcasts. Customers are always consent-gated.
  */
-export const resolveAudience = async ({ partners }, audience, cap = BROADCAST_CAP) => {
+export const resolveAudience = async (
+  { partners, customerLeads = StoreCustomerLeadModel },
+  audience = {},
+  cap = BROADCAST_CAP,
+) => {
   const lim = cap + 1;
+  const source = audience.source === 'customers' ? 'customers' : 'platform';
   let docs;
+
+  if (source === 'customers') {
+    if (audience.mode === 'picked') {
+      throw new ValidationException('Customer audiences do not support hand-picked selection');
+    }
+    docs = await customerLeads
+      .find({ consentToContact: true })
+      .select('name email phone consentToContact')
+      .sort({ lastCheckoutAt: -1, _id: 1 })
+      .limit(lim)
+      .lean();
+    const eligible = (docs ?? []).filter((d) => d.consentToContact === true);
+    const capped = eligible.length > cap;
+    return {
+      members: eligible.slice(0, cap).map(safeCustomer),
+      capped,
+      total: Math.min(eligible.length, cap),
+      source,
+    };
+  }
+
+  const accountState = ['member', 'partner'].includes(audience.accountState)
+    ? audience.accountState
+    : 'all';
+  const accountFilter = accountState === 'member'
+    ? { accountState: 'member' }
+    : accountState === 'partner'
+      ? { accountState: { $ne: 'member' } }
+      : {};
+
   if (audience.mode === 'picked') {
     docs = await partners
-      .find({ _id: { $in: audience.ids.slice(0, lim) } })
+      .find({ _id: { $in: audience.ids.slice(0, lim) }, ...accountFilter })
       .select(MEMBER_FIELDS)
       .lean();
   } else {
-    const filter = {};
+    const filter = { ...accountFilter };
     if (audience.mode === 'segment') {
       const seg = audience.segment ?? {};
       if (seg.role) filter.role = new RegExp(`^${seg.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
@@ -56,7 +102,12 @@ export const resolveAudience = async ({ partners }, audience, cap = BROADCAST_CA
   // Suspended filter for picked mode (explicit ids still respect lockout).
   const eligible = (docs ?? []).filter((d) => d.suspendedAt === undefined || d.suspendedAt === null);
   const capped = eligible.length > cap;
-  return { members: eligible.slice(0, cap).map(safeMember), capped, total: Math.min(eligible.length, cap) };
+  return {
+    members: eligible.slice(0, cap).map(safeMember),
+    capped,
+    total: Math.min(eligible.length, cap),
+    source,
+  };
 };
 
 const prefsMap = async (prefModel, ids) => {
@@ -71,9 +122,16 @@ const prefsMap = async (prefModel, ids) => {
  * email additionally requires an immediate digest (batched-digest members
  * chose not to be mailed one-offs).
  */
-export const splitChannels = (members, prefs, kind, channels) => {
+export const splitChannels = (members, prefs, kind, channels, source = 'platform') => {
   const out = { inApp: [], email: [], sms: [] };
   for (const m of members) {
+    if (source === 'customers') {
+      // Customers have no inbox and no platform preference rows. Their
+      // consent flag is applied by resolveAudience before this split.
+      if (channels.email && m.email) out.email.push(m);
+      if (channels.sms && m.phone) out.sms.push(m);
+      continue;
+    }
     if (channels.inApp) {
       if (kind === 'system') out.inApp.push(m);
       else if (resolveChannels({ prefs: prefs.get(m.id), category: 'marketing' }).inApp) out.inApp.push(m);
@@ -94,21 +152,27 @@ export const splitChannels = (members, prefs, kind, channels) => {
 
 /** POST estimate — audience counts + gateway-spend preview, zero sends. */
 export class EstimateAudienceUseCase {
-  /** @param {{partners, prefs}} deps */
-  constructor({ partners, prefs } = {}) {
+  /** @param {{partners, prefs, customerLeads}} deps */
+  constructor({ partners, prefs, customerLeads } = {}) {
     Object.assign(this, {
       partners: partners ?? PartnersModel,
       prefs: prefs ?? NotificationPreferenceModel,
+      customerLeads: customerLeads ?? StoreCustomerLeadModel,
     });
   }
 
   async execute({ audience, channels, kind = 'system', smsBody = '' }) {
-    const { members, capped } = await resolveAudience({ partners: this.partners }, audience);
+    const normalisedAudience = createAudienceInput(audience ?? {});
+    const { members, capped, source } = await resolveAudience(
+      { partners: this.partners, customerLeads: this.customerLeads },
+      normalisedAudience,
+    );
     const map = await prefsMap(this.prefs, members.map((m) => m.id));
-    const split = splitChannels(members, map, kind, channels);
+    const split = splitChannels(members, map, kind, channels, source);
     return {
       total: members.length,
       capped,
+      source,
       inApp: split.inApp.length,
       email: split.email.length,
       sms: split.sms.length,
@@ -153,11 +217,12 @@ export class ScheduleCampaignUseCase {
  * brakes, not a wallet charge. Failures counted per channel, never thrown.
  */
 export class RunBroadcastDueUseCase {
-  /** @param {{broadcasts, partners, prefs, notify, mail, sms, appBaseUrl, batch?}} deps */
-  constructor({ broadcasts, partners, prefs, notify, mail, sms, appBaseUrl = null, batch = 5 } = {}) {
+  /** @param {{broadcasts, partners, customerLeads, prefs, notify, mail, sms, appBaseUrl, batch?}} deps */
+  constructor({ broadcasts, partners, customerLeads, prefs, notify, mail, sms, appBaseUrl = null, batch = 5 } = {}) {
     Object.assign(this, {
       broadcasts: broadcasts ?? BroadcastModel,
       partners: partners ?? PartnersModel,
+      customerLeads: customerLeads ?? StoreCustomerLeadModel,
       prefs: prefs ?? NotificationPreferenceModel,
       notify,
       mail: mail ?? sendEmail,
@@ -182,7 +247,7 @@ export class RunBroadcastDueUseCase {
         const stats = await this.fire(claimed);
         await this.broadcasts.updateOne(
           { _id: claimed._id },
-          { $set: { status: 'sent', stats, recipientCount: stats.total } },
+          { $set: { status: 'sent', stats, recipientCount: stats.total, estimatedSmsSpend: stats.estimatedSmsSpend } },
         ).catch(() => null);
         result.sent += 1;
       } catch (error) {
@@ -208,13 +273,18 @@ export class RunBroadcastDueUseCase {
       kind: row.kind ?? 'system',
       audience: row.audience ?? { mode: 'all' },
     };
-    const { members, capped } = await resolveAudience({ partners: this.partners }, input.audience);
+    const { members, capped, source } = await resolveAudience(
+      { partners: this.partners, customerLeads: this.customerLeads },
+      input.audience,
+    );
     const map = await prefsMap(this.prefs, members.map((m) => m.id));
-    const split = splitChannels(members, map, input.kind, input.channels);
+    const split = splitChannels(members, map, input.kind, input.channels, source);
     const broadcastId = String(row._id);
     const stats = {
       total: members.length,
       capped,
+      source,
+      accountState: input.audience?.accountState ?? 'all',
       inApp: { sent: 0, failed: 0 },
       email: { sent: 0, failed: 0 },
       sms: { sent: 0, failed: 0 },

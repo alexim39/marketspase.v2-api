@@ -142,7 +142,82 @@ test('resolveAudience segments by role and picked ids', async () => {
   assert.deepEqual(picked.members.map((x) => x.id), ['u2']);
 });
 
-// --- estimate + opt-out -------------------------------------------------------
+test('resolveAudience filters platform accounts by activation state', async () => {
+  const partners = fakePartners([
+    m({ _id: 'u1', accountState: 'member' }),
+    m({ _id: 'u2', accountState: 'partner' }),
+    m({ _id: 'u3' }),
+  ]);
+  const members = await resolveAudience({ partners }, { mode: 'all', source: 'platform', accountState: 'member' }, 10);
+  assert.deepEqual(members.members.map((x) => x.id), ['u1']);
+  const activated = await resolveAudience({ partners }, { mode: 'all', source: 'platform', accountState: 'partner' }, 10);
+  assert.deepEqual(activated.members.map((x) => x.id).sort(), ['u2', 'u3']);
+});
+
+test('resolveAudience uses consented customers only and never in-app', async () => {
+  const customerLeads = {
+    find: (filter) => {
+      const rows = [
+        { _id: 'c1', name: 'Chika', email: 'chika@x.test', phone: '08030000001', consentToContact: true },
+        { _id: 'c2', name: 'No Consent', email: 'no@x.test', phone: '08030000002', consentToContact: false },
+      ].filter((r) => r.consentToContact === filter.consentToContact);
+      return {
+        select: () => ({
+          sort: () => ({
+            limit: (n) => ({ lean: async () => rows.slice(0, n) }),
+          }),
+        }),
+      };
+    },
+  };
+  const out = await resolveAudience({ customerLeads }, { mode: 'all', source: 'customers' }, 10);
+  assert.equal(out.members.length, 1);
+  assert.equal(out.members[0].name, 'Chika');
+  assert.equal(out.source, 'customers');
+
+  const campaign = domain.createCampaignInput({
+    title: 'Customer update',
+    body: 'Thanks for shopping with us.',
+    channels: { inApp: true, email: true, sms: true },
+    audience: { mode: 'all', source: 'customers' },
+  });
+  assert.deepEqual(campaign.channels, { inApp: false, email: true, sms: true });
+  assert.equal(campaign.audience.source, 'customers');
+  assert.throws(() => domain.createCampaignInput({
+    title: 'Customer update',
+    body: 'Thanks for shopping with us.',
+    channels: { inApp: true },
+    audience: { mode: 'all', source: 'customers' },
+  }), /email or SMS/);
+});
+
+test('customer audience estimates split email and SMS by consent', async () => {
+  const customerLeads = {
+    find: () => ({
+      select: () => ({
+        sort: () => ({
+          limit: (n) => ({ lean: async () => [
+            { _id: 'c1', name: 'Chika', email: 'chika@x.test', phone: '08030000001', consentToContact: true },
+          ].slice(0, n) }),
+        }),
+      }),
+    }),
+  };
+  const est = new EstimateAudienceUseCase({ partners: fakePartners([]), prefs: fakePrefs([]), customerLeads });
+  const out = await est.execute({
+    audience: { mode: 'all', source: 'customers' },
+    channels: { inApp: true, email: true, sms: true },
+    kind: 'marketing',
+    smsBody: 'Hi there',
+  });
+  assert.equal(out.total, 1);
+  assert.equal(out.inApp, 0);
+  assert.equal(out.email, 1);
+  assert.equal(out.sms, 1);
+  assert.equal(out.source, 'customers');
+});
+
+
 
 test('marketing honours opt-outs, system reaches everyone', async () => {
   const a = m({ _id: 'u1' });

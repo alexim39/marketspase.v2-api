@@ -103,5 +103,25 @@ describe('ListBroadcastsUseCase', () => {
     const res = await uc.execute({});
     assert.equal(res.total, 1);
     assert.equal(res.items[0].title, 'T');
+    assert.equal(res.items[0].source, 'platform');
+    assert.equal(res.items[0].accountState, 'all');
+  });
+
+  it('builds additive channel, source and activation filters', async () => {
+    let seen = null;
+    const broadcasts = {
+      find: (filter) => {
+        seen = filter;
+        return { sort: () => ({ skip: () => ({ limit: () => ({ lean: async () => [] }) }) }) };
+      },
+      countDocuments: async () => 0,
+    };
+    const uc = new ListBroadcastsUseCase({ broadcasts });
+    await uc.execute({ channel: 'sms', source: 'customers', accountState: 'partner' });
+    assert.deepEqual(seen.$and, [
+      { 'channels.sms': true },
+      { 'audience.source': 'customers' },
+      { 'audience.accountState': 'partner' },
+    ]);
   });
 });

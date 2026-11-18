@@ -43,6 +43,7 @@ import AdminTrainingRouter from './src/modules/training/interface/AdminTraining.
 import DepositRouter from './src/modules/billing/interface/Deposit.routes.js';
 import AuditRouter from './src/modules/audit/index.js';
 import BroadcastRouter from './src/modules/broadcast/index.js';
+import AdminOraRouter from './src/modules/admin-ora/index.js';
 import CommunityRouter from './src/modules/community/index.js';
 import MarketingRouter from './src/modules/marketing/index.js';
 import EventsRouter from './src/modules/events/index.js';
@@ -209,6 +210,7 @@ app.use('/v1/admin/audit', AuditRouter);
 app.use('/v1/admin/jobs', JobHealthRouter);
 app.use('/v1/admin/recycle-bin', RecycleBinRouter);
 app.use('/v1/admin/broadcast', BroadcastRouter);
+app.use('/v1/admin/ora', AdminOraRouter);
 app.use('/v1/community', CommunityRouter);
 app.use('/v1/weekly-videos', buildWeeklyVideoRouter());
 app.use('/v1/admin/weekly-videos', buildAdminWeeklyVideoRouter());

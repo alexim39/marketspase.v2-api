@@ -9,16 +9,43 @@ const messageSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const moderationNoteSchema = new mongoose.Schema(
+  {
+    note: { type: String, required: true, maxlength: 1000 },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
+const moderationSchema = new mongoose.Schema(
+  {
+    flagged: { type: Boolean, default: false, index: true },
+    flagReason: { type: String, default: '', maxlength: 300 },
+    flaggedAt: { type: Date, default: null },
+    flaggedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    hidden: { type: Boolean, default: false, index: true },
+    hiddenAt: { type: Date, default: null },
+    hiddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    hiddenReason: { type: String, default: '', maxlength: 300 },
+    notes: { type: [moderationNoteSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const conversationSchema = new mongoose.Schema(
   {
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', required: true, index: true },
     title: { type: String, default: 'New conversation', maxlength: 120 },
     messages: { type: [messageSchema], default: [] },
     pinned: { type: Boolean, default: false },
+    moderation: { type: moderationSchema, default: () => ({}) },
   },
   { timestamps: { createdAt: true, updatedAt: true } },
 );
 conversationSchema.index({ partnerId: 1, updatedAt: -1 });
+conversationSchema.index({ 'moderation.flagged': 1, updatedAt: -1 });
+conversationSchema.index({ 'moderation.hidden': 1, updatedAt: -1 });
 
 const oraEventSchema = new mongoose.Schema(
   {
@@ -51,15 +78,17 @@ export class MongoOraConversationStore {
     return shaped((await OraConversationModel.create({ partnerId, title: clean })).toObject());
   }
 
-  async findById(id) {
+  async findById(id, { includeHidden = false } = {}) {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    return shaped(await OraConversationModel.findById(id).lean());
+    const filter = { _id: id };
+    if (!includeHidden) filter['moderation.hidden'] = { $ne: true };
+    return shaped(await OraConversationModel.findOne(filter).lean());
   }
 
   async listByPartner(partnerId, opts = 20) {
     const { limit = 20, q = '' } = typeof opts === 'number' ? { limit: opts } : (opts ?? {});
     const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
-    const filter = { partnerId };
+    const filter = { partnerId, 'moderation.hidden': { $ne: true } };
     const needle = String(q ?? '').trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (needle) filter.title = { $regex: needle, $options: 'i' };
     const docs = await OraConversationModel.find(filter)

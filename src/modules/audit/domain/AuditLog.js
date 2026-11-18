@@ -62,6 +62,7 @@ export const AUDIT_ACTIONS = Object.freeze([
   'moderation.dismiss',
   'content.restore',
   'broadcast.send',
+  'broadcast.draft',
   'broadcast.campaign.queue',  'broadcast.campaign.cancel',
   'broadcast.campaign.retry',
   'broadcast.delete',
@@ -104,6 +105,12 @@ export const AUDIT_ACTIONS = Object.freeze([
   'weekly_video.comment.show',
   'ora.action.execute',
   'ora.action.skip',
+  'ora.view',
+  'ora.flag',
+  'ora.note',
+  'ora.hide',
+  'ora.restore',
+  'ora.export',
 ]);
 
 const str = (v, max) => {

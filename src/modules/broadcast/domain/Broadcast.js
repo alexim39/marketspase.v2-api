@@ -44,6 +44,10 @@ const isoDate = (v, field) => {
 /** Audience spec — pure; the resolver turns it into a member list. */
 export const createAudienceInput = (input = {}) => {
   const mode = BROADCAST_AUDIENCES.includes(input?.mode) ? input.mode : 'all';
+  const source = input?.source === 'customers' ? 'customers' : 'platform';
+  const accountState = ['member', 'partner'].includes(input?.accountState)
+    ? input.accountState
+    : 'all';
   const seg = input?.segment ?? {};
   const segment = {
     role: seg.role === undefined || seg.role === null || String(seg.role).trim() === ''
@@ -58,19 +62,32 @@ export const createAudienceInput = (input = {}) => {
     ? [...new Set(input.ids.map((id) => String(id ?? '').trim()).filter((id) => /^[a-fA-F0-9]{24}$/.test(id)))].slice(0, BROADCAST_CAP + 1)
     : [];
   if (mode === 'picked' && ids.length === 0) throw new ValidationException('Pick at least one member');
-  return { mode, segment, ids };
+  if (source === 'customers' && mode !== 'all') {
+    throw new ValidationException('Customer audiences support all consented customers only');
+  }
+  return { mode, source, accountState, segment, ids };
 };
 
 /** Full campaign input — title/body/link shared with v1 in-app semantics. */
 export const createCampaignInput = (input = {}) => {
   const base = createBroadcastInput(input);
+  const audience = createAudienceInput(input?.audience);
   const channels = {
     inApp: input?.channels === undefined ? true : bool(input.channels.inApp),
     email: input?.channels === undefined ? false : bool(input.channels.email),
     sms: input?.channels === undefined ? false : bool(input.channels.sms),
   };
+  if (audience.source === 'customers') {
+    // Store customers have no platform inbox. Keep customer sends on
+    // consent-based email/SMS only.
+    channels.inApp = false;
+  }
   if (!channels.inApp && !channels.email && !channels.sms) {
-    throw new ValidationException('Enable at least one channel');
+    throw new ValidationException(
+      audience.source === 'customers'
+        ? 'Choose email or SMS for a customer broadcast'
+        : 'Enable at least one channel',
+    );
   }
   const kind = BROADCAST_KINDS.includes(input?.kind) ? input.kind : 'system';
   const subject = input?.subject === undefined || input?.subject === null || String(input.subject).trim() === ''
@@ -90,7 +107,7 @@ export const createCampaignInput = (input = {}) => {
     smsBody,
     channels,
     kind,
-    audience: createAudienceInput(input?.audience),
+    audience,
     sendAt,
   };
 };

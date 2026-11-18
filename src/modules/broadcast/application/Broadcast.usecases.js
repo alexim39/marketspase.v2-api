@@ -74,12 +74,31 @@ export class ListBroadcastsUseCase {
     this.broadcasts = broadcasts ?? BroadcastModel;
   }
 
-  async execute({ limit = 25, skip = 0, status = null, kind = null, q = null } = {}) {
+  async execute({ limit = 25, skip = 0, status = null, kind = null, q = null, channel = null, source = null, accountState = null } = {}) {
     const lim = Math.min(Math.max(Number(limit) || 25, 1), 100);
     const sk = Math.max(Number(skip) || 0, 0);
     const filter = {};
     if (['sending', 'sent', 'scheduled', 'failed', 'cancelled'].includes(status)) filter.status = status;
     if (['system', 'marketing'].includes(kind)) filter.kind = kind;
+    const and = [];
+    if (['sms', 'email', 'inApp'].includes(channel)) {
+      and.push({ [`channels.${channel}`]: true });
+    }
+    if (source === 'customers') {
+      and.push({ 'audience.source': 'customers' });
+    } else if (source === 'platform') {
+      and.push({
+        $or: [
+          { 'audience.source': 'platform' },
+          { audience: null },
+          { 'audience.source': { $exists: false } },
+        ],
+      });
+    }
+    if (['member', 'partner'].includes(accountState)) {
+      and.push({ 'audience.accountState': accountState });
+    }
+    if (and.length) filter.$and = and;
     const needle = String(q ?? '').trim().slice(0, 120);
     if (needle) {
       const rx = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -107,6 +126,9 @@ export class ListBroadcastsUseCase {
         stats: d.stats ?? null,
         sendAt: d.sendAt ?? null,
         estimatedSmsSpend: d.estimatedSmsSpend ?? null,
+        audience: d.audience ?? { mode: 'all', source: 'platform', accountState: 'all' },
+        source: d.audience?.source ?? 'platform',
+        accountState: d.audience?.accountState ?? 'all',
       })),
       total,
       limit: lim,
