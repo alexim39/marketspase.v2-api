@@ -537,6 +537,18 @@ describe('SMS service', () => {
     assert.ok(partner.suggestions.some((row) => row.intent === 'follow_up'));
   });
 
+  it('uses inactivity when drafting follow-ups', async () => {
+    const prospect = kit.state.prospects.rows.find((row) => row._id === P_MERCY);
+    prospect.communications = [{ date: new Date(Date.now() - 8 * 86400000), followUpDate: null }];
+    const prospectSuggestions = await kit.service.suggest(ACTOR, { type: 'prospect', id: P_MERCY });
+    assert.ok(prospectSuggestions.suggestions.some((row) => /few days since we last spoke/.test(row.body)));
+
+    const partner = kit.state.partners.rows.find((row) => row._id === D_JOHN);
+    partner.lastSeenAt = new Date(Date.now() - 10 * 86400000);
+    const partnerSuggestions = await kit.service.suggest(ACTOR, { type: 'partner', id: D_JOHN });
+    assert.ok(partnerSuggestions.suggestions.some((row) => /not been active in the app/.test(row.body)));
+  });
+
   it('normalises opt-out numbers and applies them to future quotes', async () => {
     const added = await kit.service.addSuppression(ACTOR, { phone: '0803 123 4567', reason: 'Asked by phone' });
     assert.equal(added.phone, '2348031234567');

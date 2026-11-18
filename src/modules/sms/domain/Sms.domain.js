@@ -114,8 +114,10 @@ export const suggestionsForProspect = (prospect, actor = {}, now = Date.now()) =
   } else if (stage === 'Contacted' || stage === 'Interested') {
     rows.push(suggestion(
       'follow_up',
-      lastDays !== null ? 'Gentle follow-up' : 'Keep the conversation going',
-      'Hi {{first_name}}, just following up on our conversation. I would be happy to answer any questions you have. - {{my_name}}',
+      lastDays !== null && lastDays >= 5 ? 'It has been a few days' : 'Keep the conversation going',
+      lastDays !== null && lastDays >= 5
+        ? 'Hi {{first_name}}, it has been a few days since we last spoke. I wanted to check in and see if you had any questions. - {{my_name}}'
+        : 'Hi {{first_name}}, just following up on our conversation. I would be happy to answer any questions you have. - {{my_name}}',
     ));
     rows.push(suggestion(
       'invitation',
@@ -171,8 +173,10 @@ export const suggestionsForPartner = (partner, actor = {}, now = Date.now()) => 
   } else {
     rows.push(suggestion(
       'follow_up',
-      'Team check-in',
-      'Hi {{first_name}}, checking in on your first steps. Is there anything you need help with this week? - {{my_name}}',
+      ctx.lastSeenDays !== null && ctx.lastSeenDays >= 7 ? 'Re-engage after a quiet week' : 'Team check-in',
+      ctx.lastSeenDays !== null && ctx.lastSeenDays >= 7
+        ? 'Hi {{first_name}}, I noticed you have not been active in the app this week. Is there anything I can help you with? - {{my_name}}'
+        : 'Hi {{first_name}}, checking in on your first steps. Is there anything you need help with this week? - {{my_name}}',
     ));
     rows.push(suggestion(
       'reminder',
