@@ -69,6 +69,22 @@ export const recipientContext = (type, doc, actor = {}) => {
       phone: doc?.prospectPhone ?? '',
     };
   }
+  if (type === 'customer_lead') {
+    return {
+      firstName: firstNameOf(doc?.name),
+      fullName: String(doc?.name ?? '').trim(),
+      myName: actor.name ?? 'your MarketSpase partner',
+      storeLink: actor.storeLink ?? '',
+      leadPage: actor.leadPage ?? '',
+      status: doc?.status ?? 'New',
+      paidOrders: Number(doc?.paidOrders ?? 0),
+      totalSpent: Number(doc?.totalSpentKobo ?? 0) / 100,
+      lastOrderDays: daysSince(doc?.lastPaidAt),
+      lastCheckoutDays: daysSince(doc?.lastCheckoutAt),
+      consent: doc?.consentToContact === true,
+      phone: doc?.phone ?? '',
+    };
+  }
   return {
     firstName: firstNameOf(doc?.name),
     fullName: `${doc?.name ?? ''} ${doc?.surname ?? ''}`.trim(),
@@ -153,6 +169,43 @@ export const suggestionsForProspect = (prospect, actor = {}, now = Date.now()) =
       'Hi {{first_name}}, it has been a while. I wanted to check in and see how you are doing. - {{my_name}}',
     ));
   }
+  return rows.slice(0, 3);
+};
+
+export const suggestionsForCustomerLead = (lead, actor = {}, now = Date.now()) => {
+  const ctx = recipientContext('customer_lead', lead, actor);
+  const rows = [];
+  // The store conversation is the warmest place to introduce the business:
+  // they already trust the partner enough to buy something.
+  rows.push(suggestion(
+    'opportunity',
+    'Introduce the business opportunity',
+    'Hi {{first_name}}, thanks for shopping with me. I also help people start a simple online business from their phone. Want the details? - {{my_name}}',
+  ));
+  if (!ctx.paidOrders) {
+    rows.push(suggestion(
+      'welcome',
+      'Checkout follow-up',
+      'Hi {{first_name}}, thanks for stopping by my store. If you need help completing your order or choosing the right product, just reply. - {{my_name}}',
+    ));
+  } else if (ctx.lastOrderDays !== null && ctx.lastOrderDays >= 30) {
+    rows.push(suggestion(
+      'reorder',
+      'Reorder check-in',
+      'Hi {{first_name}}, it has been a while since your last order. Would you like me to help you restock or recommend something similar? - {{my_name}}',
+    ));
+  } else {
+    rows.push(suggestion(
+      'follow_up',
+      'Thank-you follow-up',
+      'Hi {{first_name}}, thank you for your recent order. I hope you are enjoying it. Reply if you need anything. - {{my_name}}',
+    ));
+  }
+  rows.push(suggestion(
+    'invitation',
+    'Invite to explore',
+    'Hi {{first_name}}, I have a simple way to earn from your phone by sharing products people already buy. Would you be open to a quick look? - {{my_name}}',
+  ));
   return rows.slice(0, 3);
 };
 

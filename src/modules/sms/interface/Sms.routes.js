@@ -7,7 +7,7 @@ import { sendSuccess } from '../../../shared/http/sendSuccess.js';
 import { smsService } from '../application/Sms.service.js';
 
 const RecipientSchema = z.object({
-  type: z.enum(['prospect', 'partner']),
+  type: z.enum(['prospect', 'partner', 'customer_lead']),
   id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid recipient id'),
 });
 const RecipientsSchema = z.array(RecipientSchema).min(1).max(500);
@@ -21,7 +21,10 @@ const SendSchema = z.object({
 });
 
 const QuoteSchema = z.object({ recipients: RecipientsSchema, body: z.string().trim().min(3).max(2000) });
-const SuggestSchema = z.object({ type: z.enum(['prospect', 'partner']), id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/) });
+const SuggestSchema = z.object({
+  type: z.enum(['prospect', 'partner', 'customer_lead']),
+  id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/),
+});
 const TemplateSchema = z.object({ name: z.string().trim().min(2).max(80), body: z.string().trim().min(3).max(459) });
 const SuppressionSchema = z.object({ phone: z.string().trim().min(7).max(20), reason: z.string().trim().max(200).optional() });
 
@@ -31,13 +34,22 @@ export const buildSmsRouter = (deps = {}) => {
   router.use(requireAuth);
 
   router.get('/recipients', validate({ query: z.object({
-    type: z.enum(['prospects', 'partners']).optional(),
+    type: z.enum(['prospects', 'partners', 'customer_leads']).optional(),
     q: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    skip: z.coerce.number().int().min(0).optional(),
+    id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/).optional(),
   }) }), asyncHandler(async (req, res) => {
     const query = req.validated?.query ?? req.query;
+    const type = query.type === 'partners'
+      ? 'partners'
+      : query.type === 'customer_leads' ? 'customer_leads' : 'prospects';
     const data = await service.recipients(req.auth.partnerId, {
-      type: query.type === 'partners' ? 'partners' : 'prospects',
+      type,
       q: query.q ?? '',
+      limit: query.limit,
+      skip: query.skip,
+      id: query.id ?? '',
     });
     return sendSuccess(res, { message: 'SMS recipients retrieved', data });
   }));

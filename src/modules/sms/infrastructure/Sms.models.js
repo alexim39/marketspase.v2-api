@@ -31,7 +31,7 @@ campaignSchema.index({ status: 1, scheduledAt: 1 });
 const recipientSchema = new mongoose.Schema({
   campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'SmsCampaign', required: true, index: true },
   partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
-  recipientType: { type: String, enum: ['prospect', 'partner'], required: true },
+  recipientType: { type: String, enum: ['prospect', 'partner', 'customer_lead'], required: true },
   recipientId: { type: String, required: true },
   name: { type: String, default: '' },
   phone: { type: String, required: true },

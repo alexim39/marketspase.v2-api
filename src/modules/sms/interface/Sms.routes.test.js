@@ -145,7 +145,34 @@ describe('SMS routes', () => {
     assert.equal(res.status, 200);
     const call = calls.findLast((row) => row[0] === 'recipients');
     assert.equal(call[1], PARTNER_ID);
-    assert.deepEqual(call[2], { type: 'partners', q: 'jo' });
+    assert.deepEqual(call[2], { type: 'partners', q: 'jo', limit: undefined, skip: undefined, id: '' });
+  });
+
+  it('passes customer-lead type, pagination and lookup filters through', async () => {
+    const res = await request(server, `/recipients?type=customer_leads&limit=25&skip=50&id=${RECIPIENT_ID}`);
+    assert.equal(res.status, 200);
+    const call = calls.findLast((row) => row[0] === 'recipients');
+    assert.deepEqual(call[2], { type: 'customer_leads', q: '', limit: 25, skip: 50, id: RECIPIENT_ID });
+  });
+
+  it('accepts a customer lead as a recipient and suggestion target', async () => {
+    const send = await request(server, '/send', {
+      method: 'POST',
+      body: {
+        idempotencyKey: 'test-key-customer',
+        recipients: [{ type: 'customer_lead', id: RECIPIENT_ID }],
+        body: 'Hi {{first_name}}, thanks for shopping.',
+      },
+    });
+    assert.equal(send.status, 201);
+
+    const suggest = await request(server, '/suggest', {
+      method: 'POST',
+      body: { type: 'customer_lead', id: RECIPIENT_ID },
+    });
+    assert.equal(suggest.status, 200);
+    const call = calls.findLast((row) => row[0] === 'suggest');
+    assert.equal(call[2].type, 'customer_lead');
   });
 
   it('creates a send and returns 201', async () => {

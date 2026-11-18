@@ -81,6 +81,9 @@ export class ListActivationBoardUseCase {
       const snapshot = snapshotMap.get(pid) ?? {};
       const joinedAt = labels[pid]?.joinedAt ?? snapshot.createdAt ?? null;
       const daysSinceJoin = dayDiff(joinedAt, now);
+      const activatedAt = snapshot.activatedAt ?? null;
+      const accountState = snapshot.accountState === 'partner' || activatedAt ? 'partner' : 'member';
+      const isActivated = accountState === 'partner';
       const profileDone = hasText(snapshot.phone)
         && hasText(snapshot.address?.street)
         && hasText(snapshot.address?.city)
@@ -133,6 +136,9 @@ export class ListActivationBoardUseCase {
         member: labels[pid] ? { username: labels[pid].username, name: labels[pid].name } : null,
         level,
         levelLabel: LEVEL_LABELS[level] ?? 'Partner',
+        accountState,
+        activatedAt,
+        isActivated,
         depth,
         relation: depth <= 1 ? 'Direct' : `Level ${depth}`,
         joinedAt,

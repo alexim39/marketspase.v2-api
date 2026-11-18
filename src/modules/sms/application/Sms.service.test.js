@@ -12,22 +12,29 @@ const D_JOHN = '507f1f77bcf86cd799439021';
 const D_NO_CONTACT = '507f1f77bcf86cd799439022';
 const D_OTHER = '507f1f77bcf86cd799439023';
 const D_SMS_OFF = '507f1f77bcf86cd799439024';
+const C_LEAD = '507f1f77bcf86cd799439051';
+const C_NO_CONSENT = '507f1f77bcf86cd799439052';
+const C_OTHER = '507f1f77bcf86cd799439053';
 const SUPPRESSION = '507f1f77bcf86cd799439031';
 
 const clone = (value) => structuredClone(value);
 
-const matches = (row, filter = {}) => Object.entries(filter).every(([key, expected]) => {
-  const actual = row[key];
-  if (expected === null) return actual === null || actual === undefined;
-  if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
-    if ('$in' in expected) return expected.$in.map(String).includes(String(actual));
-    if ('$gte' in expected) return Number(actual) >= Number(expected.$gte);
-    if ('$lte' in expected) return new Date(actual).getTime() <= new Date(expected.$lte).getTime();
-    if ('$ne' in expected) return String(actual) !== String(expected.$ne);
-  }
-  if (expected instanceof Date) return new Date(actual).getTime() === expected.getTime();
-  return String(actual) === String(expected);
-});
+const matches = (row, filter = {}) => {
+  if (Array.isArray(filter.$or) && !filter.$or.some((sub) => matches(row, sub))) return false;
+  return Object.entries(filter).filter(([key]) => key !== '$or').every(([key, expected]) => {
+    const actual = row[key];
+    if (expected === null) return actual === null || actual === undefined;
+    if (expected instanceof RegExp) return expected.test(String(actual ?? ''));
+    if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
+      if ('$in' in expected) return expected.$in.map(String).includes(String(actual));
+      if ('$gte' in expected) return Number(actual) >= Number(expected.$gte);
+      if ('$lte' in expected) return new Date(actual).getTime() <= new Date(expected.$lte).getTime();
+      if ('$ne' in expected) return String(actual) !== String(expected.$ne);
+    }
+    if (expected instanceof Date) return new Date(actual).getTime() === expected.getTime();
+    return String(actual) === String(expected);
+  });
+};
 
 const applyUpdate = (row, update = {}) => {
   for (const [key, value] of Object.entries(update.$set ?? {})) row[key] = clone(value);
@@ -273,10 +280,45 @@ const basePartners = (balance = 500) => [
   },
 ];
 
+const baseCustomerLeads = () => [
+  {
+    _id: C_LEAD,
+    partnerId: ACTOR,
+    name: 'Chika Customer',
+    phone: '08037770001',
+    consentToContact: true,
+    status: 'Contacted',
+    paidOrders: 2,
+    totalSpentKobo: 500000,
+    lastCheckoutAt: new Date(Date.now() - 10 * 86400000),
+    lastPaidAt: new Date(Date.now() - 8 * 86400000),
+  },
+  {
+    _id: C_NO_CONSENT,
+    partnerId: ACTOR,
+    name: 'No Consent Customer',
+    phone: '08037770002',
+    consentToContact: false,
+    status: 'New',
+    paidOrders: 0,
+    lastCheckoutAt: new Date(Date.now() - 3 * 86400000),
+  },
+  {
+    _id: C_OTHER,
+    partnerId: OTHER,
+    name: 'Another Store Customer',
+    phone: '08037770003',
+    consentToContact: true,
+    status: 'New',
+    paidOrders: 1,
+  },
+];
+
 const world = ({ balance = 500 } = {}) => {
   const state = {
     partners: new FakeModel(basePartners(balance)),
     prospects: new FakeModel(baseProspects()),
+    customerLeads: new FakeModel(baseCustomerLeads()),
     campaigns: new FakeModel(),
     recipients: new FakeModel(),
     templates: new FakeModel(),
@@ -526,6 +568,59 @@ describe('SMS service', () => {
     assert.equal(result.recovered, 1);
     assert.equal(kit.state.campaigns.rows[0].status, 'sent');
     assert.equal(kit.state.recipients.rows[0].status, 'sent');
+  });
+
+  it('paginates and searches recipient lists on the server', async () => {
+    const first = await kit.service.recipients(ACTOR, { type: 'prospects', limit: 2, skip: 0 });
+    assert.equal(first.total, 3);
+    assert.equal(first.items.length, 2);
+    assert.equal(first.hasMore, true);
+
+    const second = await kit.service.recipients(ACTOR, { type: 'prospects', limit: 2, skip: 2 });
+    assert.equal(second.items.length, 1);
+    assert.equal(second.hasMore, false);
+
+    const search = await kit.service.recipients(ACTOR, { type: 'prospects', q: 'Mercy' });
+    assert.equal(search.total, 1);
+    assert.equal(search.items[0].name, 'Mercy Lebo');
+  });
+
+  it('lists and sends to consented customer leads', async () => {
+    const list = await kit.service.recipients(ACTOR, { type: 'customer_leads' });
+    const rows = Object.fromEntries(list.items.map((row) => [row.id, row]));
+    assert.equal(rows[C_LEAD].eligible, true);
+    assert.equal(rows[C_NO_CONSENT].eligible, false);
+    assert.equal(rows[C_NO_CONSENT].reason, 'No contact consent');
+    assert.equal(rows[C_OTHER], undefined);
+
+    const quote = await kit.service.quote(ACTOR, {
+      recipients: [{ type: 'customer_lead', id: C_LEAD }],
+      body: 'Hi {{first_name}}, thanks for your order.',
+    });
+    assert.equal(quote.recipients, 1);
+    assert.equal(quote.previews[0].body, 'Hi Chika, thanks for your order.');
+
+    const campaign = await kit.service.send(ACTOR, {
+      idempotencyKey: 'customer-lead-1',
+      recipients: [{ type: 'customer_lead', id: C_LEAD }],
+      body: 'Hi {{first_name}}, thanks for your order.',
+    });
+    await kit.service.processCampaign(campaign.id);
+    const lead = kit.state.customerLeads.rows.find((row) => row._id === C_LEAD);
+    assert.equal(kit.state.campaigns.rows[0].status, 'sent');
+    assert.equal(lead.lastOutreachChannel, 'sms');
+    assert.equal(lead.outreachCount, 1);
+  });
+
+  it('suggests the business opportunity for customer leads', async () => {
+    const suggestion = await kit.service.suggest(ACTOR, { type: 'customer_lead', id: C_LEAD });
+    assert.ok(suggestion.suggestions.some((row) => row.intent === 'opportunity'));
+    assert.ok(suggestion.suggestions[0].body.includes('simple online business'));
+  });
+
+  it('includes the business opportunity system template', async () => {
+    const templates = await kit.service.templates(ACTOR);
+    assert.ok(templates.some((row) => row.name === 'Business opportunity' && row.system));
   });
 
   it('suggests copy from the prospect stage and partner activation state', async () => {

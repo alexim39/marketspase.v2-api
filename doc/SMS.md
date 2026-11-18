@@ -1,18 +1,19 @@
 # SMS Center
 
-Partner-funded direct SMS for prospects and direct downline partners. This is
-separate from the admin Broadcast campaign, Ora follow-up SMS, and the
-mentor-handoff welcome message; those flows keep their existing sender,
-funding and preferences.
+Partner-funded direct SMS for prospects, store customers and direct downline
+partners. This is separate from the admin Broadcast campaign, Ora follow-up
+SMS, and the mentor-handoff welcome message; those flows keep their existing
+sender, funding and preferences.
 
 ## Product rules
 
-- **Audience:** the signed-in partner's own prospects plus partners whose
-  `partnerOf` is the signed-in partner. There is no arbitrary phone-number
-  sending.
-- **Consent:** prospects must have `consentToContact: true`. Partners are
-  excluded when `mentorContactPreference` is `prefer_not_now` or their
-  notification receive setting is `off`.
+- **Audience:** the signed-in partner's own prospects, customers captured by
+  their store, plus partners whose `partnerOf` is the signed-in partner. There
+  is no arbitrary phone-number sending.
+- **Consent:** prospects and store customers must have
+  `consentToContact: true`. Partners are excluded when
+  `mentorContactPreference` is `prefer_not_now` or their notification receive
+  setting is `off`.
 - **Opt-outs:** `sms_suppressions` is scoped per sender. A suppressed number is
   removed from recipient lists and rejected during quote/send.
 - **Pricing:** ₦10 per page. A page is 160 GSM characters, capped at 3 pages
@@ -47,6 +48,12 @@ funding and preferences.
 | `sms_templates` | Partner-saved templates; system templates live in code |
 | `sms_suppressions` | Per-sender SMS opt-outs |
 
+Sending to a store customer lead also stamps `lastOutreachAt`,
+`lastOutreachChannel: "sms"` and increments `outreachCount` on
+`store_customer_leads`, so the Customer leads page reflects the contact.
+The built-in templates include **Business opportunity** for introducing the
+business after a store purchase.
+
 Campaign statuses: `scheduled`, `sending`, `sent`, `partial`, `failed`,
 `cancelled`. Recipient statuses: `queued`, `sending`, `sent`, `failed`,
 `cancelled`.
@@ -64,7 +71,7 @@ the session (`req.auth.partnerId`), never from the request body.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/sms/recipients?type=prospects\|partners&q=` | Eligible and skipped contacts with reasons |
+| `GET` | `/v1/sms/recipients?type=prospects\|partners\|customer_leads&q=&limit=&skip=&id=` | Paginated, searchable contacts with eligibility reasons |
 | `POST` | `/v1/sms/suggest` | Ora copy suggestions for one selected contact |
 | `POST` | `/v1/sms/quote` | Authoritative pages, cost, shortfall and previews |
 | `POST` | `/v1/sms/send` | Charge the wallet, create the campaign, queue/schedule it |
@@ -82,7 +89,8 @@ the session (`req.auth.partnerId`), never from the request body.
   "idempotencyKey": "4c0f8e7a-2e9e-4f38-9f8d-1e7e9d7a2b11",
   "recipients": [
     { "type": "prospect", "id": "507f1f77bcf86cd799439011" },
-    { "type": "partner", "id": "507f1f77bcf86cd799439021" }
+    { "type": "partner", "id": "507f1f77bcf86cd799439021" },
+    { "type": "customer_lead", "id": "507f1f77bcf86cd799439051" }
   ],
   "body": "Hi {{first_name}}, this is {{my_name}}. Is now still a good time?",
   "scheduledAt": "2026-12-01T09:00:00.000Z"
@@ -133,18 +141,22 @@ node --test src/modules/sms/interface/Sms.routes.test.js
 ```
 
 Covered: page pricing after personalisation, consent and opt-outs, direct-team
-scope, wallet debit and ledger, insufficient balance, idempotency, provider
-failure refunds, retry re-debit, scheduling, cancellation refunds, due-job
-processing, Ora suggestions, route auth/validation.
+scope, store-customer scope, server-side recipient pagination/search, wallet
+debit and ledger, insufficient balance, idempotency, provider failure refunds,
+retry re-debit, scheduling, cancellation refunds, due-job processing, Ora
+suggestions, route auth/validation.
 
 ## UI
 
 `/dashboard/messages/sms` (`SmsCenterComponent`) has Compose, History,
-Templates and Opt-outs tabs. It calls `/quote` on a debounce so the displayed
-cost reflects the rendered message, shows skipped recipients with the reason,
-and offers an "as sent" preview. Entry points:
+Templates and Opt-outs tabs. Compose has Prospects, Partners and Customers
+lists, each loaded in 50-row pages with server-side search and a **Load more**
+button. It calls `/quote` on a debounce so the displayed cost reflects the
+rendered message, shows skipped recipients with the reason, and offers an
+"as sent" preview. Entry points:
 
 - Messages header: **SMS**
 - Prospect detail: **Send SMS** (`?prospect=<id>`)
+- Customer lead row/detail: **Send SMS** (`?customerLead=<id>`)
 - Partner dossier: **Send SMS** (`?partner=<id>`)
-- Sidebar: **SMS Center**
+- Sidebar: **More -> SMS Center**

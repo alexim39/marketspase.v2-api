@@ -9,6 +9,7 @@ import { ProspectModel } from '../../../apps/prospect/models/prospect.model.js';
 import { TransactionModel } from '../../../apps/transaction/models/transaction.model.js';
 import { MongoProspectRepository } from '../../crm/infrastructure/Prospect.mongo.repository.js';
 import { LogCommunicationUseCase } from '../../crm/application/Prospect.communications.js';
+import { StoreCustomerLeadModel } from '../../stores/infrastructure/Store.models.js';
 import { buildSmsSender } from '../../notifications/infrastructure/SmsSender.js';
 import {
   SmsCampaignModel,
@@ -25,6 +26,7 @@ import {
   recipientContext,
   renderedSms,
   smsPages,
+  suggestionsForCustomerLead,
   suggestionsForPartner,
   suggestionsForProspect,
 } from '../domain/Sms.domain.js';
@@ -55,11 +57,24 @@ const SMS_SYSTEM_TEMPLATES = [
     name: 'Welcome',
     body: 'Hi {{first_name}}, welcome to the team. I am checking in to make sure you have everything you need for your first steps. - {{my_name}}',
   },
+  {
+    id: 'opportunity',
+    name: 'Business opportunity',
+    body: 'Hi {{first_name}}, I have a simple online business idea you can start from your phone. Would you like me to send the details? - {{my_name}}',
+  },
 ];
 
 const systemTemplates = () => SMS_SYSTEM_TEMPLATES.map((row) => ({ ...row, system: true }));
 
 const validId = (id) => /^[a-fA-F0-9]{24}$/.test(String(id ?? ''));
+
+const escapeRegex = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const dayDiff = (value, now = Date.now()) => {
+  const at = new Date(value ?? 0).getTime();
+  if (!Number.isFinite(at) || at <= 0) return null;
+  return Math.max(0, Math.floor((now - at) / 86400000));
+};
 
 const displayName = (row) => `${row?.name ?? row?.prospectName ?? ''} ${row?.surname ?? row?.prospectSurname ?? ''}`.trim();
 
@@ -95,6 +110,7 @@ export class SmsService {
     sms = null,
     partners = PartnersModel,
     prospects = ProspectModel,
+    customerLeads = StoreCustomerLeadModel,
     transactions = TransactionModel,
     campaigns = SmsCampaignModel,
     recipients = SmsRecipientModel,
@@ -106,6 +122,7 @@ export class SmsService {
     this.sms = sms ?? buildSmsSender(env.sms);
     this.partners = partners;
     this.prospects = prospects;
+    this.customerLeads = customerLeads;
     this.transactions = transactions;
     this.campaignStore = campaigns;
     this.recipientStore = recipients;
@@ -194,18 +211,38 @@ export class SmsService {
     return { deleted: true };
   }
 
-  async recipients(partnerId, { type = 'prospects', q = '' } = {}) {
+  async recipients(partnerId, { type = 'prospects', q = '', limit = 50, skip = 0, id = '' } = {}) {
     const partner = await this.partners.findById(partnerId).lean();
     if (!partner) throw new NotFoundException('Partner not found');
     const wallet = Number(partner.balance ?? 0);
+    const page = paginate(limit, skip);
     const suppressions = new Set((await this.suppressionStore.find({ partnerId }).select('phone').lean()).map((r) => r.phone));
-    const query = String(q ?? '').trim().toLowerCase();
+    const query = String(q ?? '').trim();
+    const selectedId = validId(id) ? String(id) : '';
+    const rx = query ? new RegExp(escapeRegex(query), 'i') : null;
     const actor = actorFor(partner);
+    const kind = type === 'partners' || type === 'customer_leads' ? type : 'prospects';
+    const pageResult = (items, total) => ({
+      type: kind,
+      items,
+      total,
+      limit: page.limit,
+      skip: page.skip,
+      hasMore: page.skip + items.length < total,
+      walletBalance: wallet,
+      actor,
+    });
 
-    if (type === 'partners') {
-      const rows = await this.partners.find({ partnerOf: partnerId })
-        .select('name surname username phone accountState commissionRank activatedAt lastSeenAt createdAt settings mentorContactPreference')
-        .sort({ updatedAt: -1 }).limit(500).lean();
+    if (kind === 'partners') {
+      const filter = { partnerOf: partnerId };
+      if (selectedId) filter._id = selectedId;
+      if (rx) filter.$or = [{ name: rx }, { surname: rx }, { username: rx }, { phone: rx }];
+      const [rows, total] = await Promise.all([
+        this.partners.find(filter)
+          .select('name surname username phone accountState commissionRank activatedAt lastSeenAt createdAt settings mentorContactPreference')
+          .sort({ updatedAt: -1 }).skip(page.skip).limit(page.limit).lean(),
+        this.partners.countDocuments(filter),
+      ]);
       const items = rows.map((row) => {
         const name = displayName(row) || row.username || 'Partner';
         const phone = normalizeRecipientPhone(row.phone);
@@ -224,17 +261,57 @@ export class SmsService {
             rank: row.commissionRank ?? 'Partner',
             state: row.accountState ?? 'member',
             activated: Boolean(row.activatedAt),
-            lastSeenDays: row.lastSeenAt ? Math.floor((Date.now() - new Date(row.lastSeenAt).getTime()) / 86400000) : null,
-            joinedDays: row.createdAt ? Math.floor((Date.now() - new Date(row.createdAt).getTime()) / 86400000) : null,
+            lastSeenDays: dayDiff(row.lastSeenAt),
+            joinedDays: dayDiff(row.createdAt),
           },
         };
-      }).filter((row) => !query || `${row.name} ${row.username}`.toLowerCase().includes(query));
-      return { type, items, walletBalance: wallet, actor };
+      });
+      return pageResult(items, total);
     }
 
-    const rows = await this.prospects.find({ partnerId })
-      .select('prospectName prospectSurname prospectPhone status communications relationship priority consentToContact createdAt updatedAt')
-      .sort({ updatedAt: -1 }).limit(500).lean();
+    if (kind === 'customer_leads') {
+      const filter = { partnerId };
+      if (selectedId) filter._id = selectedId;
+      if (rx) filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { city: rx }, { state: rx }];
+      const [rows, total] = await Promise.all([
+        this.customerLeads.find(filter).sort({ lastCheckoutAt: -1 }).skip(page.skip).limit(page.limit).lean(),
+        this.customerLeads.countDocuments(filter),
+      ]);
+      const items = rows.map((row) => {
+        const name = String(row.name ?? '').trim() || 'Customer';
+        const phone = normalizeRecipientPhone(row.phone);
+        const consented = row.consentToContact === true;
+        const suppressed = phone && suppressions.has(phone);
+        const eligible = Boolean(phone && consented && !suppressed);
+        return {
+          id: String(row._id),
+          type: 'customer_lead',
+          name,
+          username: '',
+          phoneMasked: maskPhone(phone),
+          eligible,
+          reason: !phone ? 'No phone number' : suppressed ? 'Opted out of SMS' : !consented ? 'No contact consent' : null,
+          context: {
+            status: row.status ?? 'New',
+            paidOrders: Number(row.paidOrders ?? 0),
+            totalSpent: Number(row.totalSpentKobo ?? 0) / 100,
+            lastOrderDays: dayDiff(row.lastPaidAt),
+            lastCheckoutDays: dayDiff(row.lastCheckoutAt),
+          },
+        };
+      });
+      return pageResult(items, total);
+    }
+
+    const filter = { partnerId };
+    if (selectedId) filter._id = selectedId;
+    if (rx) filter.$or = [{ prospectName: rx }, { prospectSurname: rx }, { prospectPhone: rx }, { prospectEmail: rx }];
+    const [rows, total] = await Promise.all([
+      this.prospects.find(filter)
+        .select('prospectName prospectSurname prospectPhone status communications relationship priority consentToContact createdAt updatedAt')
+        .sort({ updatedAt: -1 }).skip(page.skip).limit(page.limit).lean(),
+      this.prospects.countDocuments(filter),
+    ]);
     const items = rows.map((row) => {
       const name = displayName(row) || 'Prospect';
       const phone = normalizeRecipientPhone(row.prospectPhone);
@@ -256,13 +333,11 @@ export class SmsService {
           relationship: row.relationship ?? 'Prospect',
           lastTouchAt: last?.date ?? null,
           followUpDate: last?.followUpDate ?? null,
-          daysInStage: row.status?.stageEnteredAt
-            ? Math.floor((Date.now() - new Date(row.status.stageEnteredAt).getTime()) / 86400000)
-            : null,
+          daysInStage: dayDiff(row.status?.stageEnteredAt ?? row.updatedAt ?? row.createdAt),
         },
       };
-    }).filter((row) => !query || row.name.toLowerCase().includes(query));
-    return { type, items, walletBalance: wallet, actor };
+    });
+    return pageResult(items, total);
   }
 
   async suggest(partnerId, { type, id }) {
@@ -274,6 +349,15 @@ export class SmsService {
       const row = await this.partners.findOne({ _id: id, partnerOf: partnerId }).lean();
       if (!row) throw new NotFoundException('Partner not found');
       return { recipient: { id, type, name: displayName(row) || row.username }, suggestions: suggestionsForPartner(row, actor) };
+    }
+    if (type === 'customer_lead') {
+      if (!validId(id)) throw new ValidationException('Invalid customer');
+      const row = await this.customerLeads.findOne({ _id: id, partnerId }).lean();
+      if (!row) throw new NotFoundException('Customer lead not found');
+      return {
+        recipient: { id, type: 'customer_lead', name: String(row.name ?? '').trim() || 'Customer' },
+        suggestions: suggestionsForCustomerLead(row, actor),
+      };
     }
     if (!validId(id)) throw new ValidationException('Invalid prospect');
     const row = await this.prospects.findOne({ _id: id, partnerId }).lean();
@@ -287,7 +371,7 @@ export class SmsService {
     }
     const unique = new Map();
     for (const row of recipients) {
-      const type = row?.type === 'partner' ? 'partner' : 'prospect';
+      const type = row?.type === 'partner' ? 'partner' : row?.type === 'customer_lead' ? 'customer_lead' : 'prospect';
       const id = String(row?.id ?? '');
       if (!validId(id)) continue;
       unique.set(`${type}:${id}`, { type, id });
@@ -304,10 +388,13 @@ export class SmsService {
     const ineligible = [];
     const prospectIds = [];
     const partnerIds = [];
+    const customerLeadIds = [];
     for (const entry of unique.values()) {
-      (entry.type === 'prospect' ? prospectIds : partnerIds).push(entry.id);
+      if (entry.type === 'prospect') prospectIds.push(entry.id);
+      else if (entry.type === 'partner') partnerIds.push(entry.id);
+      else customerLeadIds.push(entry.id);
     }
-    const [prospectRows, partnerRows] = await Promise.all([
+    const [prospectRows, partnerRows, customerLeadRows] = await Promise.all([
       prospectIds.length
         ? this.prospects.find({ _id: { $in: prospectIds }, partnerId }).lean()
         : Promise.resolve([]),
@@ -316,9 +403,13 @@ export class SmsService {
           .select('name surname username phone accountState commissionRank activatedAt lastSeenAt createdAt settings mentorContactPreference')
           .lean()
         : Promise.resolve([]),
+      customerLeadIds.length
+        ? this.customerLeads.find({ _id: { $in: customerLeadIds }, partnerId }).lean()
+        : Promise.resolve([]),
     ]);
     const prospectsById = new Map(prospectRows.map((row) => [String(row._id), row]));
     const partnersById = new Map(partnerRows.map((row) => [String(row._id), row]));
+    const customerLeadsById = new Map(customerLeadRows.map((row) => [String(row._id), row]));
 
     for (const entry of unique.values()) {
       if (entry.type === 'prospect') {
@@ -332,6 +423,17 @@ export class SmsService {
         else if (suppressions.has(phone)) reason = 'Opted out of SMS';
         if (reason) ineligible.push({ ...entry, name, reason });
         else resolved.push({ ...entry, doc: row, name, phone, context: recipientContext('prospect', row, actor) });
+      } else if (entry.type === 'customer_lead') {
+        const row = customerLeadsById.get(entry.id);
+        if (!row) { ineligible.push({ ...entry, name: 'Unknown customer', reason: 'Not in your customer leads' }); continue; }
+        const name = String(row.name ?? '').trim() || 'Customer';
+        const phone = normalizeRecipientPhone(row.phone);
+        let reason = null;
+        if (!phone) reason = 'No phone number';
+        else if (row.consentToContact !== true) reason = 'No contact consent';
+        else if (suppressions.has(phone)) reason = 'Opted out of SMS';
+        if (reason) ineligible.push({ ...entry, name, reason });
+        else resolved.push({ ...entry, doc: row, name, phone, context: recipientContext('customer_lead', row, actor) });
       } else {
         const row = partnersById.get(entry.id);
         if (!row) { ineligible.push({ ...entry, name: 'Unknown partner', reason: 'Not in your direct team' }); continue; }
@@ -625,6 +727,18 @@ export class SmsService {
     } catch { /* logging must never fail delivery status */ }
   }
 
+  async logCustomerLeadSms(recipient) {
+    try {
+      await this.customerLeads.updateOne(
+        { _id: recipient.recipientId, partnerId: recipient.partnerId },
+        {
+          $set: { lastOutreachAt: new Date(), lastOutreachChannel: 'sms' },
+          $inc: { outreachCount: 1 },
+        },
+      );
+    } catch { /* logging must never fail delivery status */ }
+  }
+
   async processCampaign(id) {
     if (!validId(id)) return null;
     const campaign = await this.campaignStore.findOneAndUpdate(
@@ -650,6 +764,8 @@ export class SmsService {
           );
           if (recipient.recipientType === 'prospect') {
             await this.logProspectSms(recipient, recipient.renderedBody);
+          } else if (recipient.recipientType === 'customer_lead') {
+            await this.logCustomerLeadSms(recipient);
           }
         } catch (error) {
           const message = String(error?.message ?? error).slice(0, 500);
