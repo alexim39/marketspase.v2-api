@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MARKETSPASE_ALTERNATIVE,
   MARKETSPASE_ONE_LINER,
   formatHandoffGuide,
   formatObjectionGuide,
@@ -13,6 +14,25 @@ test('the canonical MarketSpase one-liner is the approved wording', () => {
     MARKETSPASE_ONE_LINER,
     'MarketSpase is an AI-based, product-backed online business. The platform brings the interest, I plan the work and prepare the busywork, and you approve the next move. You can start free and decide on activation later.',
   );
+});
+
+test('the fuller alternative keeps the approved positioning without overclaiming', () => {
+  assert.match(MARKETSPASE_ALTERNATIVE, /digital network marketing platform powered by AI/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /time they already spend online/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /product-backed business/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /skip the chasing/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /no cold calls/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /no forced inventory or repeat buying/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /plans the work, prepares the busywork and operates after your approval/i);
+  assert.match(MARKETSPASE_ALTERNATIVE, /stay the CEO/i);
+  assert.doesNotMatch(MARKETSPASE_ALTERNATIVE, /Ora runs your business|you just approve/i);
+});
+
+test('platform knowledge offers one short and one fuller explanation', () => {
+  const facts = formatPlatformKnowledge();
+  assert.match(facts, /One line:/);
+  assert.match(facts, /Fuller alternative:/);
+  assert.match(facts, /Do not use both explanations in one reply/);
 });
 
 test('platform knowledge carries the offer, activation, member journey and costs', () => {

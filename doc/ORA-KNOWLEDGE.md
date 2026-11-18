@@ -13,6 +13,13 @@ from three sources:
 
 - MarketSpase is an AI-based, product-backed online business. The platform brings
   the interest; Ora plans and prepares; the member approves the next move.
+- A fuller alternative is available for prospects who ask for more detail:
+  MarketSpase is a digital network marketing platform powered by AI that helps
+  people turn time already spent online into a real, product-backed business.
+  It skips the chasing: no cold calls, no "bring 2 people to grow", no chasing
+  friends, no scripts and no forced inventory or repeat buying to earn. Ora
+  plans the work, prepares the busywork and operates after approval; the member
+  stays the CEO.
 - Creating an account is free. Email verification lasts 24 hours.
 - Activation is optional: ₦38,000 for the MarketSpase Signature Clothing Set,
   paid from the wallet and shipped. KYC is required. Activation unlocks

@@ -11,6 +11,8 @@ export const MARKETSPASE_NAME = 'MarketSpase';
 
 export const MARKETSPASE_ONE_LINER = 'MarketSpase is an AI-based, product-backed online business. The platform brings the interest, I plan the work and prepare the busywork, and you approve the next move. You can start free and decide on activation later.';
 
+export const MARKETSPASE_ALTERNATIVE = 'MarketSpase is a digital network marketing platform powered by AI. It helps people turn the time they already spend online into a real, product-backed business. The difference is that we skip the chasing: no cold calls or "bring 2 people to grow", no chasing friends, no scripts, and no forced inventory or repeat buying to earn. You get an AI business coach called Ora who plans the work, prepares the busywork and operates after your approval. You stay the CEO.';
+
 const naira = (value) => `₦${Number(value ?? 0).toLocaleString('en-NG')}`;
 
 export const formatPlatformKnowledge = () => {
@@ -22,6 +24,8 @@ export const formatPlatformKnowledge = () => {
 Brand: ${MARKETSPASE_NAME}. Never use a former, legacy or alternative platform name.
 One line: ${MARKETSPASE_ONE_LINER}
 When the member asks "What is MarketSpase?" or "What is this platform?", use that one-line text verbatim, then ask one follow-up question. Do not paraphrase it.
+Fuller alternative: ${MARKETSPASE_ALTERNATIVE}
+Use the fuller alternative only when the member asks for more detail, asks what makes MarketSpase different, or asks how it works before deciding. Do not use both explanations in one reply.
 Purpose: help people turn the time they already spend online into a real, product-backed business without cold calls, chasing friends, scripts or guessing what to do next.
 Free account: creating an account is free. The email verification link lasts 24 hours. A member can explore, chat with Ora, browse products and meet the community before paying anything.
 Activation: optional until the member chooses it. It costs ${price} for the ${STARTER_PRODUCT.name}, paid from the MarketSpase wallet and shipped to the member. Activation requires the identity check (KYC) and unlocks campaigns, resale, bonuses, the store and commission eligibility. If the activation order is refunded, activation is reversed and the account returns to member status.
