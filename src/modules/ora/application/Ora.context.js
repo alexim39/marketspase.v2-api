@@ -88,14 +88,12 @@ export class OraContextAssembler {
       events: [],
       unread: 0,
     };
-    const [prospects, goals, events, unread, partner, teamCount, teamRecent, myCampaigns, myStore, storeOrders, todayPlan, journeyState, activation, teamActivation] = await Promise.all([
+    const [prospects, goals, events, unread, partner, myCampaigns, myStore, storeOrders, todayPlan, journeyState, activation, teamActivation] = await Promise.all([
       safe(this.prospects?.findByPartnerId(partnerId, { limit: PROSPECT_SCAN_LIMIT, skip: 0 })),
       safe(this.goals?.execute({ partnerId, now })),
       safe(this.events?.execute({ viewerId: partnerId, limit: MAX_EVENTS })),
       safe(this.notifications?.unreadCount(partnerId)),
       safe(this.partners?.findById(partnerId)),
-      safe(this.network?.countChildren(partnerId)),
-      safe(this.network?.recentChildren(partnerId, 3)),
       safe(this.campaigns?.listMine(partnerId)),
       safe(this.store?.getMyStore(partnerId)),
       safe(this.storeOrders?.listPartnerOrders(partnerId, { limit: 5 })),
@@ -104,6 +102,14 @@ export class OraContextAssembler {
       safe(this.onboarding?.getStatus?.(partnerId)),
       safe(this.network?.teamActivation?.(partnerId, { limit: 5, now })),
     ]);
+    let fallbackTeamCount = 0;
+    let fallbackTeamRecent = [];
+    if (!teamActivation) {
+      [fallbackTeamCount, fallbackTeamRecent] = await Promise.all([
+        safe(this.network?.countChildren(partnerId)),
+        safe(this.network?.recentChildren(partnerId, 3)),
+      ]);
+    }
 
     if (partner) {
       const rank = RANKS.includes(partner.commissionRank) ? partner.commissionRank : 'Partner';
@@ -200,11 +206,12 @@ export class OraContextAssembler {
       };
     } else {
       ctx.team = {
-        directPartners: Number(teamCount) || 0,
+        directPartners: Number(fallbackTeamCount) || 0,
         activated: 0,
         members: 0,
         stuck: 0,
-        recent: (teamRecent ?? []).slice(0, 3).map((p) => ({
+        inactive: 0,
+        recent: (fallbackTeamRecent ?? []).slice(0, 3).map((p) => ({
           name: [p.name, p.surname].filter(Boolean).join(' ') || p.username || 'Partner',
           username: p.username ?? '',
           accountState: p.accountState === 'member' ? 'member' : 'partner',
