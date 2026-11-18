@@ -4,7 +4,8 @@ import { validate } from '../../../shared/http/validate.js';
 import { requireAuth } from '../../../shared/http/requireAuth.js';
 import { requireRole } from '../../identity-access/interface/RequireRole.js';
 import { asyncHandler } from '../../../shared/http/asyncHandler.js';
-import { SendBroadcastUseCase, ListBroadcastsUseCase } from '../application/Broadcast.usecases.js';
+import { sendSuccess } from '../../../shared/http/sendSuccess.js';
+import { SendBroadcastUseCase, ListBroadcastsUseCase, BroadcastSummaryUseCase } from '../application/Broadcast.usecases.js';
 import {
   CancelCampaignUseCase, DeleteBroadcastUseCase, EstimateAudienceUseCase,
   GetCampaignUseCase, RetryCampaignUseCase, ScheduleCampaignUseCase,
@@ -79,6 +80,7 @@ export const buildBroadcastRouter = (deps = {}) => {
     notify: deps.notify ?? new NotifyUseCase({ stored: notifyStore }),
   });
   const list = deps.list ?? new ListBroadcastsUseCase({});
+  const summary = deps.summary ?? new BroadcastSummaryUseCase({});
   const estimate = deps.estimate ?? new EstimateAudienceUseCase({});
   const schedule = deps.schedule ?? new ScheduleCampaignUseCase({});
   const draft = deps.draft ?? new DraftBroadcastUseCase({
@@ -98,6 +100,9 @@ export const buildBroadcastRouter = (deps = {}) => {
     source: z.enum(['platform', 'customers']).optional(),
     accountState: z.enum(['member', 'partner']).optional(),
     q: z.string().trim().max(120).optional(),
+  });
+  const SummaryQuery = z.object({
+    days: z.coerce.number().int().min(1).max(365).optional().default(30),
   });
   const CampaignIdParam = z.object({ id: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id') });
 
@@ -119,6 +124,12 @@ export const buildBroadcastRouter = (deps = {}) => {
       detail: { delivered: data.delivered, capped: data.capped },
     });
     res.status(200).json({ message: `Broadcast sent to ${data.delivered} members${data.capped ? ' (capped)' : ''}`, data, success: true });
+  }));
+
+  // Delivery performance across recent campaigns.
+  router.get('/summary', validate({ query: SummaryQuery }), asyncHandler(async (req, res) => {
+    const data = await summary.execute({ days: req.validated?.query?.days ?? 30 });
+    return sendSuccess(res, { data });
   }));
 
   router.get('/', validate({ query: HistoryQuery }), asyncHandler(async (req, res) => {

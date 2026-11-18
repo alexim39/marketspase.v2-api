@@ -10,6 +10,7 @@ import { MongoCompensationRepository } from '../../compensation/infrastructure/C
 import {
   CreateActivationOrderUseCase,
   FulfillActivationOrderUseCase,
+  GetActivationSummaryUseCase,
   GetOnboardingStatusUseCase,
   ListAdminActivationOrdersUseCase,
   ListKycSubmissionsUseCase,
@@ -100,6 +101,7 @@ export const buildAdminOnboardingRouter = (deps = {}) => {
   const repo = deps.repo ?? new MongoOnboardingRepository();
   const commissions = deps.commissions ?? new MongoCompensationRepository();
   const listOrders = deps.listAdminOrders ?? new ListAdminActivationOrdersUseCase({ repo });
+  const summary = deps.summary ?? new GetActivationSummaryUseCase({ repo });
   const fulfilOrder = deps.fulfilOrder ?? new FulfillActivationOrderUseCase({ repo, commissions });
   const refundOrder = deps.refundOrder ?? new RefundActivationOrderUseCase({
     repo,
@@ -113,6 +115,11 @@ export const buildAdminOnboardingRouter = (deps = {}) => {
 
   const router = express.Router();
   router.use(auth, admin);
+
+  router.get('/summary', asyncHandler(async (_req, res) => {
+    const data = await summary.execute();
+    return sendSuccess(res, { data });
+  }));
 
   router.get('/orders', validate({ query: OrderQuerySchema }), asyncHandler(async (req, res) => {
     const result = await listOrders.execute(req.validated.query);

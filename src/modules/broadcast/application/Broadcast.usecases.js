@@ -67,7 +67,77 @@ export class SendBroadcastUseCase {
   }
 }
 
-/** GET (admin) — broadcast history, newest first, filterable for scale. */
+/** GET (admin) — aggregate delivery performance across recent campaigns. */
+export class BroadcastSummaryUseCase {
+  constructor({ broadcasts } = {}) {
+    this.broadcasts = broadcasts ?? BroadcastModel;
+  }
+
+  async execute({ days = 30 } = {}) {
+    const windowDays = Math.min(Math.max(Number(days) || 30, 1), 365);
+    const from = new Date(Date.now() - windowDays * 86400000);
+    const rows = await this.broadcasts
+      .find({ createdAt: { $gte: from } })
+      .select('status stats audience createdAt')
+      .sort({ createdAt: -1 })
+      .limit(2000)
+      .lean();
+    const summary = {
+      campaigns: rows.length,
+      sent: 0,
+      scheduled: 0,
+      sending: 0,
+      failed: 0,
+      cancelled: 0,
+      inAppSent: 0,
+      inAppFailed: 0,
+      emailSent: 0,
+      emailFailed: 0,
+      smsSent: 0,
+      smsFailed: 0,
+      smsSpend: 0,
+      platform: 0,
+      customers: 0,
+      members: 0,
+      partners: 0,
+    };
+    for (const row of rows) {
+      if (row.status && Object.hasOwn(summary, row.status)) summary[row.status] += 1;
+      const stats = row.stats ?? {};
+      summary.inAppSent += Number(stats.inApp?.sent) || 0;
+      summary.inAppFailed += Number(stats.inApp?.failed) || 0;
+      summary.emailSent += Number(stats.email?.sent) || 0;
+      summary.emailFailed += Number(stats.email?.failed) || 0;
+      summary.smsSent += Number(stats.sms?.sent) || 0;
+      summary.smsFailed += Number(stats.sms?.failed) || 0;
+      summary.smsSpend += Number(stats.estimatedSmsSpend) || 0;
+      if (row.audience?.source === 'customers') summary.customers += 1;
+      else summary.platform += 1;
+      if (row.audience?.accountState === 'member') summary.members += 1;
+      if (row.audience?.accountState === 'partner') summary.partners += 1;
+    }
+    return {
+      windowDays,
+      campaigns: summary.campaigns,
+      status: {
+        sent: summary.sent,
+        scheduled: summary.scheduled,
+        sending: summary.sending,
+        failed: summary.failed,
+        cancelled: summary.cancelled,
+      },
+      delivery: {
+        inApp: { sent: summary.inAppSent, failed: summary.inAppFailed },
+        email: { sent: summary.emailSent, failed: summary.emailFailed },
+        sms: { sent: summary.smsSent, failed: summary.smsFailed },
+      },
+      smsSpend: summary.smsSpend,
+      audiences: { platform: summary.platform, customers: summary.customers },
+      activation: { members: summary.members, partners: summary.partners },
+    };
+  }
+}
+
 export class ListBroadcastsUseCase {
   /** @param {{broadcasts}} deps */
   constructor({ broadcasts } = {}) {

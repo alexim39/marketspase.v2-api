@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SendBroadcastUseCase, ListBroadcastsUseCase } from './Broadcast.usecases.js';
+import { SendBroadcastUseCase, ListBroadcastsUseCase, BroadcastSummaryUseCase } from './Broadcast.usecases.js';
 import { BROADCAST_CAP, createBroadcastInput } from '../domain/Broadcast.js';
 
 const fakeBroadcasts = () => {
@@ -123,5 +123,46 @@ describe('ListBroadcastsUseCase', () => {
       { 'audience.source': 'customers' },
       { 'audience.accountState': 'partner' },
     ]);
+  });
+});
+
+describe('BroadcastSummaryUseCase', () => {
+  it('totals delivery, audience and activation status', async () => {
+    const rows = [
+      {
+        status: 'sent',
+        stats: {
+          inApp: { sent: 3, failed: 1 },
+          email: { sent: 2, failed: 0 },
+          sms: { sent: 1, failed: 1 },
+          estimatedSmsSpend: 20,
+        },
+        audience: { source: 'platform', accountState: 'member' },
+      },
+      {
+        status: 'failed',
+        stats: { inApp: { sent: 0, failed: 2 }, estimatedSmsSpend: 0 },
+        audience: { source: 'customers', accountState: 'all' },
+      },
+    ];
+    const broadcasts = {
+      find: () => ({
+        select: () => ({
+          sort: () => ({
+            limit: () => ({ lean: async () => rows }),
+          }),
+        }),
+      }),
+    };
+    const out = await new BroadcastSummaryUseCase({ broadcasts }).execute({ days: 30 });
+    assert.equal(out.campaigns, 2);
+    assert.equal(out.status.sent, 1);
+    assert.equal(out.status.failed, 1);
+    assert.deepEqual(out.delivery.inApp, { sent: 3, failed: 3 });
+    assert.equal(out.delivery.email.sent, 2);
+    assert.equal(out.delivery.sms.failed, 1);
+    assert.equal(out.smsSpend, 20);
+    assert.deepEqual(out.audiences, { platform: 1, customers: 1 });
+    assert.deepEqual(out.activation, { members: 1, partners: 0 });
   });
 });

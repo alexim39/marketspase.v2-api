@@ -103,6 +103,16 @@ export class ListAdminActivationOrdersUseCase {
   }
 }
 
+export class GetActivationSummaryUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute(query = {}) {
+    return this.repo.activationSummary(query);
+  }
+}
+
 export class FulfillActivationOrderUseCase {
   constructor({ repo, commissions = null, audit = recordAudit }) {
     this.repo = repo;

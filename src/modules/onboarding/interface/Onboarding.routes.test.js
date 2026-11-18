@@ -69,6 +69,16 @@ app.use('/v1/admin/onboarding', buildAdminOnboardingRouter({
   listKyc: {
     execute: async () => ({ data: [], meta: { page: 1, limit: 25, total: 0, pages: 1 } }),
   },
+  summary: {
+    execute: async () => ({
+      accounts: { total: 7, members: 3, partners: 4 },
+      kyc: { pending: 1, verified: 5, rejected: 1 },
+      orders: { paid: 2, fulfilled: 4 },
+      queue: { queued: 2, allocated: 3 },
+      aging: { queueOver3Days: 1, queueOver7Days: 0, queueOver14Days: 0, paidOver3Days: 1, paidOver7Days: 0 },
+      funnel: [{ stage: 'Accounts', count: 7 }, { stage: 'Activated', count: 4 }],
+    }),
+  },
 }));
 app.use(errorMiddleware);
 
@@ -203,5 +213,16 @@ describe('onboarding routes', () => {
     assert.equal(response.status, 200);
     assert.equal(body.data[0].status, 'Paid');
     assert.equal(body.meta.page, 2);
+  });
+
+  it('serves the activation funnel and queue aging summary', async () => {
+    const response = await fetch(`${baseUrl}/v1/admin/onboarding/summary`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.accounts.total, 7);
+    assert.equal(body.data.kyc.pending, 1);
+    assert.equal(body.data.aging.queueOver3Days, 1);
+    assert.equal(body.data.funnel[1].stage, 'Activated');
   });
 });

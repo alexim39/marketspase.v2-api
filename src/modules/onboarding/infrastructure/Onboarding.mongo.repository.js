@@ -417,6 +417,57 @@ export class MongoOnboardingRepository {
     return orders.map(publicOrder);
   }
 
+  async activationSummary({ now = new Date() } = {}) {
+    const day = 86400000;
+    const cut3 = new Date(now.getTime() - 3 * day);
+    const cut7 = new Date(now.getTime() - 7 * day);
+    const cut14 = new Date(now.getTime() - 14 * day);
+    const [
+      members, partners,
+      kycPending, kycVerified, kycRejected,
+      ordersPaid, ordersFulfilled,
+      queueQueued, queueAllocated,
+      queue3, queue7, queue14, paid3, paid7,
+    ] = await Promise.all([
+      PartnersModel.countDocuments({ accountState: 'member' }),
+      PartnersModel.countDocuments({ accountState: { $ne: 'member' } }),
+      KycSubmissionModel.countDocuments({ status: 'pending' }),
+      KycSubmissionModel.countDocuments({ status: 'verified' }),
+      KycSubmissionModel.countDocuments({ status: 'rejected' }),
+      ActivationOrderModel.countDocuments({ status: 'Paid' }),
+      ActivationOrderModel.countDocuments({ status: 'Fulfilled' }),
+      ActivationQueueEntryModel.countDocuments({ status: 'queued' }),
+      ActivationQueueEntryModel.countDocuments({ status: 'allocated' }),
+      ActivationQueueEntryModel.countDocuments({ status: 'queued', enteredAt: { $lte: cut3 } }),
+      ActivationQueueEntryModel.countDocuments({ status: 'queued', enteredAt: { $lte: cut7 } }),
+      ActivationQueueEntryModel.countDocuments({ status: 'queued', enteredAt: { $lte: cut14 } }),
+      ActivationOrderModel.countDocuments({ status: 'Paid', createdAt: { $lte: cut3 } }),
+      ActivationOrderModel.countDocuments({ status: 'Paid', createdAt: { $lte: cut7 } }),
+    ]);
+    const memberCount = Number(members) || 0;
+    const partnerCount = Number(partners) || 0;
+    return {
+      generatedAt: now,
+      accounts: { total: memberCount + partnerCount, members: memberCount, partners: partnerCount },
+      kyc: { pending: Number(kycPending) || 0, verified: Number(kycVerified) || 0, rejected: Number(kycRejected) || 0 },
+      orders: { paid: Number(ordersPaid) || 0, fulfilled: Number(ordersFulfilled) || 0 },
+      queue: { queued: Number(queueQueued) || 0, allocated: Number(queueAllocated) || 0 },
+      aging: {
+        queueOver3Days: Number(queue3) || 0,
+        queueOver7Days: Number(queue7) || 0,
+        queueOver14Days: Number(queue14) || 0,
+        paidOver3Days: Number(paid3) || 0,
+        paidOver7Days: Number(paid7) || 0,
+      },
+      funnel: [
+        { stage: 'Accounts', count: memberCount + partnerCount },
+        { stage: 'KYC verified', count: Number(kycVerified) || 0 },
+        { stage: 'Activated', count: partnerCount },
+        { stage: 'Order fulfilled', count: Number(ordersFulfilled) || 0 },
+      ],
+    };
+  }
+
   async listAdminOrders({ status, page = 1, limit = 25 } = {}) {
     const size = Math.min(Math.max(Number(limit) || 25, 1), 100);
     const current = Math.max(Number(page) || 1, 1);
