@@ -23,6 +23,7 @@ import { runCompensationReconcileJob } from './compensation-reconcile.js';
 import { runPayoutReconcileJob } from './payout-reconcile.js';
 import { runStoreOrderExpiryJob, runStoreEscrowReleaseJob, runStoreAutoDeliverJob } from './store-orders.js';
 import { runOutboxDueJob } from './outbox-delivery.js';
+import { runSmsCampaignDueJob } from '../modules/sms/application/Sms.worker.js';
 import { runRankGroupSyncJob } from './rank-group-sync.js';
 import { runProgressionDemotionJob } from './progression-demotion.js';
 import { runWeeklyVideoDueJob } from './weekly-video-due.js';
@@ -94,6 +95,7 @@ export function scheduleJobs() {
   cron.schedule('0 9 * * *', run('dormant-nudge', () => runDormantNudgeJob()));
   cron.schedule('0 19 * * *', run('digests', () => runDigestJob()));
   cron.schedule('* * * * *', run('broadcast-due', () => runBroadcastDueJob()));
+  cron.schedule('* * * * *', run('sms-campaign-due', () => withJobHealth(JobRunModel, 'sms-campaign-due', () => runSmsCampaignDueJob())));
   cron.schedule('*/15 * * * *', run('growth-campaign-allocation', () => withJobHealth(JobRunModel, 'growth-campaign-allocation', () => runGrowthAllocationDueJob())));
   cron.schedule('*/15 * * * *', run('event-rsvp-reminders', () => runEventRsvpDueJob()));
   cron.schedule('30 3 * * *', run('erasure-due', () => runErasureDueJob()));
@@ -109,7 +111,7 @@ export function scheduleJobs() {
   cron.schedule('15 4 1 * *', run('progression-demotion', () => withJobHealth(JobRunModel, 'progression-demotion', () => runProgressionDemotionJob()), 30 * 60 * 1000));
   cron.schedule('*/5 * * * *', run('weekly-video-due', () => withJobHealth(JobRunModel, 'weekly-video-due', () => runWeeklyVideoDueJob()), 10 * 60 * 1000));
   cron.schedule('10 * * * *', run('weekly-video-reminder', () => withJobHealth(JobRunModel, 'weekly-video-reminder', () => runWeeklyVideoReminderJob()), 30 * 60 * 1000));
-  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, broadcasts due every minute, growth campaign partner allocation every 15 minutes, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, mentor handoff reminders hourly at :25, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, weekly video due every 5 minutes, weekly video reminders hourly at :10, outbox delivery every 20 seconds');
+  console.log('[jobs] scheduled with distributed leases: nightly team snapshots at 02:00, daily brief at 06:30, weekly review Mondays at 07:00, birthdays at 08:00, dormant nudge at 09:00, digests at 19:00, broadcasts due every minute, SMS campaigns due every minute, growth campaign partner allocation every 15 minutes, self-erasure sweep at 03:30, rank group reconciliation at 02:45, mentor bonus hourly at :15, mentor handoff reminders hourly at :25, compensation reconcile hourly at :45, payout reconcile every 10 minutes, store order expiry every 5 minutes, store escrow release every 15 minutes, weekly video due every 5 minutes, weekly video reminders hourly at :10, outbox delivery every 20 seconds');
 }
 
 export { runBirthdayJob } from './birthday.js';
@@ -127,6 +129,7 @@ export { runCompensationReconcileJob } from './compensation-reconcile.js';
 export { runPayoutReconcileJob } from './payout-reconcile.js';
 export { runStoreOrderExpiryJob, runStoreEscrowReleaseJob, runStoreAutoDeliverJob } from './store-orders.js';
 export { runOutboxDueJob } from './outbox-delivery.js';
+export { runSmsCampaignDueJob } from '../modules/sms/application/Sms.worker.js';
 export { runProgressionDemotionJob } from './progression-demotion.js';
 export { runWeeklyVideoDueJob } from './weekly-video-due.js';
 export { runWeeklyVideoReminderJob } from './weekly-video-reminder.js';

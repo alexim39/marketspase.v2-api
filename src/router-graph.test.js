@@ -25,6 +25,7 @@ const ROUTERS = [
   './modules/marketing/index.js',
   './modules/events/index.js',
   './modules/ora/index.js',
+  './modules/sms/index.js',
   './modules/settings/index.js',
   './modules/messaging/index.js',
   './modules/progression/index.js',

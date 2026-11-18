@@ -33,6 +33,7 @@ export const EXPECTED_EVERY_MIN = {
   'store-order-expiry': 30,
   'store-escrow-release': 60,
   'outbox-delivery': 5,
+  'sms-campaign-due': 5,
   'weekly-video-due': 10,
   'weekly-video-reminder': 90,
 };
