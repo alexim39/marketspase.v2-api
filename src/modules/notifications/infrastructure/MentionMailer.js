@@ -23,11 +23,13 @@ export class MentionMailer {
 
   /** @param {{authorName, excerpt, sourceType}} input @returns {{subject, html}} */
   buildMention({ authorName, excerpt, sourceType }) {
+    const author = String(authorName ?? '').trim() || 'Someone';
+    const source = String(sourceType ?? '').trim() || 'post';
     return {
-      subject: `${authorName} mentioned you on MarketSpase`,
+      subject: `${author} mentioned you on MarketSpase`,
       html: `
       <p>Hi there,</p>
-      <p><strong>${escapeHtml(authorName)}</strong> mentioned you in a ${escapeHtml(sourceType)}:</p>
+      <p><strong>${escapeHtml(author)}</strong> mentioned you in a ${escapeHtml(source)}:</p>
       <blockquote>${escapeHtml(excerpt)}</blockquote>
       <p><a href="${appBaseUrl()}/dashboard/community">View it in Community</a></p>
       <p style="color:#888;font-size:12px;">You get this because community email is on and your digest is immediate. Change anytime in Notification settings.</p>

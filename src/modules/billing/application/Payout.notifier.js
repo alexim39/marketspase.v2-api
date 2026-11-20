@@ -22,6 +22,7 @@ export const notifyPayoutOutcome = async ({
   accountName = null,
 }) => {
   const amount = money(amountNgn);
+  const ref = String(reference ?? '').trim() || 'n/a';
   const destination = [bank, accountName].filter(Boolean).join(' · ');
   const title = outcome === 'paid'
     ? 'Withdrawal paid'
@@ -33,11 +34,11 @@ export const notifyPayoutOutcome = async ({
           ? 'Withdrawal on the way'
           : 'Withdrawal requested';
   const body = outcome === 'paid'
-    ? `${amount} was sent to ${destination || 'your bank account'} (ref ${reference}).`
+    ? `${amount} was sent to ${destination || 'your bank account'} (ref ${ref}).`
     : outcome === 'refunded'
       ? `${amount} could not be paid and was refunded to your wallet.${reason ? ` ${reason}` : ''}`
       : outcome === 'reversed'
-        ? `Your bank reversed the ${amount} payout (ref ${reference}). Please contact support so we can review it.`
+        ? `Your bank reversed the ${amount} payout (ref ${ref}). Please contact support so we can review it.`
         : payoutMode === 'automatic'
           ? `${amount} is on its way to ${destination || 'your bank account'}. You will be notified when it settles.`
           : `${amount} to ${destination || 'your bank account'} is pending review.`;
@@ -51,7 +52,7 @@ export const notifyPayoutOutcome = async ({
       body,
       icon: 'payments',
       link: '/dashboard/wallet/history',
-      key: `withdrawal:${reference}:${outcome}`,
+      key: `withdrawal:${ref}:${outcome}`,
     });
   } catch { /* notification is best-effort */ }
 

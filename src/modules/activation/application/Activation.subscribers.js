@@ -22,10 +22,13 @@ export const buildActivationHandlers = ({ stored, notify, delivery = null, partn
         return { status: 'skipped', reason: 'already-sent' };
       }
       const member = await partners?.findById(partnerId).catch(() => null);
+      // Live profile wins: an event payload can be partial, and a missing
+      // name must never turn the welcome into "... , undefined!".
+      const resolvedName = String(memberName ?? '').trim() || displayNameOf(member, 'there');
       const item = {
         category: 'system',
         priority: 'high',
-        title: `Welcome to MarketSpase, ${memberName}!`,
+        title: `Welcome to MarketSpase, ${resolvedName}!`,
         body: 'Complete your profile, take the IPO course, add your first prospect and set your first goal — your Daily Action Center guides you daily.',
         icon: 'celebration',
         link: '/dashboard',
@@ -39,7 +42,7 @@ export const buildActivationHandlers = ({ stored, notify, delivery = null, partn
         recipientId: partnerId,
         contact: { email: member?.email ?? null, phone: member?.phone ?? null },
         item,
-        email: buildWelcome({ memberName }),
+        email: buildWelcome({ memberName: resolvedName }),
         emailPolicy: 'force',
       });
       const reached = report.inApp === 'created' || report.inApp === 'deduped' || report.email === true;

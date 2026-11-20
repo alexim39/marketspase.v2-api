@@ -80,11 +80,11 @@ export const ownerEmailTemplate = (surveyData) => {
         </tr>
         <tr>
           <td style="padding: 8px 0;"><strong>Country:</strong></td>
-          <td style="padding: 8px 0;">${surveyData.country}</td>
+          <td style="padding: 8px 0;">${surveyData.country ?? ''}</td>
         </tr>
         <tr>
           <td style="padding: 8px 0;"><strong>State:</strong></td>
-          <td style="padding: 8px 0;">${surveyData.state}</td>
+          <td style="padding: 8px 0;">${surveyData.state ?? ''}</td>
         </tr>
         <tr>
           <td style="padding: 8px 0;"><strong>Via page:</strong></td>
@@ -121,7 +121,7 @@ export const partnerOwnerEmailTemplate = (surveyData) => `
     </header>
     <main style="padding: 20px;">
       <h2>Partner Survey Submission</h2>
-      <p>A partner named <strong>${surveyData.name.toUpperCase()} </strong> with phone number <strong>${surveyData.phoneNumber}</strong> submitted the partner survey.</p>
+      <p>A partner named <strong>${String(surveyData?.name ?? '').toUpperCase() || 'A PARTNER'} </strong> with phone number <strong>${surveyData?.phoneNumber ?? ''}</strong> submitted the partner survey.</p>
       <p>This is just for your information.</p>
     </main>
   </div>

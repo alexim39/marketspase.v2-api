@@ -24,6 +24,12 @@ describe('brandEmail', () => {
     );
     assert.doesNotMatch(brandEmail({ title: 'T', body: 'B' }), /Open MarketSpase<\/a>/);
   });
+
+  it('never renders the literal word undefined when the body is missing', () => {
+    const html = brandEmail({ title: 'T' });
+    assert.doesNotMatch(html, />undefined</i);
+    assert.match(html, /<div style="line-height:1\.6;"><\/div>/);
+  });
 });
 
 describe('paragraphs', () => {
@@ -68,6 +74,37 @@ describe('sendEmail transport', () => {
     assert.match(res.error ?? '', /disabled/i);
     delete process.env.MAIL_DISABLED;
     Object.assign(process.env, keep);
+  });
+
+  it('refuses to send a message whose body is missing', async () => {
+    delete process.env.MAIL_DISABLED;
+    const { sendEmail, __resetEmailTransporter } = await import('./emailService.js');
+    __resetEmailTransporter();
+    const res = await sendEmail('a@x.test', 'Hi', undefined);
+    assert.equal(res.sent, false);
+    assert.match(res.error ?? '', /body/i);
+  });
+
+  it('refuses a subjectless message and whitespace-only bodies', async () => {
+    delete process.env.MAIL_DISABLED;
+    const { sendEmail, __resetEmailTransporter } = await import('./emailService.js');
+    __resetEmailTransporter();
+    const noSubject = await sendEmail('a@x.test', '   ', '<p>body</p>');
+    assert.equal(noSubject.sent, false);
+    assert.match(noSubject.error ?? '', /subject/i);
+
+    const blankBody = await sendEmail('a@x.test', 'Hi', '   ');
+    assert.equal(blankBody.sent, false);
+    assert.match(blankBody.error ?? '', /body/i);
+  });
+
+  it('refuses a mail whose only content is the word undefined', async () => {
+    delete process.env.MAIL_DISABLED;
+    const { sendEmail, __resetEmailTransporter } = await import('./emailService.js');
+    __resetEmailTransporter();
+    const res = await sendEmail('a@x.test', 'Hi', 'undefined');
+    assert.equal(res.sent, false);
+    assert.match(res.error ?? '', /body/i);
   });
 
   it('defaults to port 465 implicit TLS and honors explicit overrides', async () => {

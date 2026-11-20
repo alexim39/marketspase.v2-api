@@ -66,11 +66,32 @@ export const sendEmail = async (email, subject, htmlContent, options = {}) => {
   if (['true', '1', 'yes'].includes(String(process.env.MAIL_DISABLED ?? '').toLowerCase())) {
     return { sent: false, error: 'Email is disabled (MAIL_DISABLED)' };
   }
+  const subjectText = String(subject ?? '').trim();
+  const bodyText = htmlContent === undefined || htmlContent === null ? '' : String(htmlContent);
+  // A missing body used to reach brandEmail as `${undefined}` and arrive as a
+  // nearly empty email whose only content was the word "undefined". Block it
+  // here (the single mail choke point) and log the caller's stack so the bad
+  // producer can be found instead of silently mailing garbage.
+  const visibleText = bodyText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!subjectText || !visibleText || /^undefined$/i.test(visibleText)) {
+    const missing = !subjectText && !visibleText
+      ? 'subject and body'
+      : !subjectText
+        ? 'subject'
+        : 'body';
+    const message = `Email not sent to ${email}: missing ${missing}`;
+    if (process.env.NODE_ENV === 'test' || process.env.NODE_TEST_CONTEXT) {
+      console.error(message);
+    } else {
+      console.error(message, new Error('email-content-guard').stack);
+    }
+    return { sent: false, error: `Email ${missing} is required` };
+  }
   const html = options.plain
-    ? htmlContent
+    ? bodyText
     : brandEmail({
-      title: options.title ?? subject,
-      body: htmlContent,
+      title: options.title ?? subjectText,
+      body: bodyText,
       actionUrl: options.actionUrl ?? null,
       actionLabel: options.actionLabel ?? 'Open MarketSpase',
     });
@@ -78,7 +99,7 @@ export const sendEmail = async (email, subject, htmlContent, options = {}) => {
     await getTransporter().sendMail({
       from: fromAddress(),
       to: email,
-      subject,
+      subject: subjectText,
       html,
     });
     console.log(`Email sent to ${email}`);

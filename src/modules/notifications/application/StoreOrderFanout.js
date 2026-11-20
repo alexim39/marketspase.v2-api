@@ -16,6 +16,7 @@ export class StoreOrderFanoutUseCase {
     try {
       const partner = await this.partners.findById(partnerId).catch(() => null);
       const customer = String(customerName ?? '').trim() || 'A customer';
+      const reference = String(orderNumber ?? '').trim() || 'your order';
       const amount = Number(total ?? 0).toLocaleString('en-NG');
       const report = await this.delivery.deliver({
         recipientId: partnerId,
@@ -23,7 +24,7 @@ export class StoreOrderFanoutUseCase {
         item: {
           category: 'system',
           priority: 'high',
-          title: `New paid store order ${orderNumber}`,
+          title: `New paid store order ${reference}`,
           body: `${customer} paid ${currency} ${amount}. Start processing, add tracking and mark delivery to release escrow.`,
           icon: 'shopping_bag',
           link: '/dashboard/products/store-orders',
@@ -33,10 +34,10 @@ export class StoreOrderFanoutUseCase {
 
       let emailed = false;
       if (this.mail && customerEmail) {
-        const subject = `Your MarketSpase Store order ${orderNumber} is confirmed`;
+        const subject = `Your MarketSpase Store order ${reference} is confirmed`;
         const html = `
           <p>Hi ${escapeHtml(customer)},</p>
-          <p>Thank you — your order <strong>${escapeHtml(orderNumber)}</strong> from
+          <p>Thank you — your order <strong>${escapeHtml(reference)}</strong> from
             <strong>${escapeHtml(storeName || 'your MarketSpase partner')}</strong> is confirmed.</p>
           <p>Total paid: <strong>${escapeHtml(currency)} ${escapeHtml(amount)}</strong>.</p>
           ${trackingUrl ? `<p><a href="${escapeHtml(trackingUrl)}">Track your order and delivery status</a></p>` : ''}
@@ -66,12 +67,13 @@ export class StoreOrderFanoutUseCase {
   }) {
     try {
       const customer = String(customerName ?? '').trim() || 'A customer';
+      const orderRef = String(orderNumber ?? reference ?? '').trim() || 'your order';
       const report = await this.delivery.deliver({
         recipientId: partnerId,
         item: {
           category: 'system',
           priority: 'high',
-          title: `Return requested for ${orderNumber}`,
+          title: `Return requested for ${orderRef}`,
           body: `${customer} requested a return: ${reason || 'no reason supplied'}. Review it in Store orders.`,
           icon: 'assignment_return',
           link: '/dashboard/products/store-orders',
@@ -93,10 +95,11 @@ export class StoreOrderFanoutUseCase {
     if (!this.mail || !customerEmail) return { status: 'skipped', reason: 'no-email' };
     try {
       const label = status === 'approved' ? 'approved' : 'declined';
-      const subject = `Your MarketSpase Store return for ${orderNumber} was ${label}`;
+      const reference = String(orderNumber ?? '').trim() || 'your order';
+      const subject = `Your MarketSpase Store return for ${reference} was ${label}`;
       const html = `
         <p>Hi ${escapeHtml(String(customerName ?? '').trim() || 'there')},</p>
-        <p>Your return request for order <strong>${escapeHtml(orderNumber)}</strong> was ${label}.</p>
+        <p>Your return request for order <strong>${escapeHtml(reference)}</strong> was ${label}.</p>
         ${reason ? `<p>Reason given: ${escapeHtml(reason)}</p>` : ''}
         ${note ? `<p>Partner note: ${escapeHtml(note)}</p>` : ''}
         <p>If it was approved, the partner will confirm when the item is received. MarketSpase then processes any refund.</p>
@@ -119,14 +122,15 @@ export class StoreOrderFanoutUseCase {
     if (!this.mail || !customerEmail) return { status: 'skipped', reason: 'no-email' };
     const label = status === 'shipped' ? 'shipped' : 'delivered';
     try {
-      const subject = `Your MarketSpase Store order ${orderNumber} was ${label}`;
+      const reference = String(orderNumber ?? '').trim() || 'your order';
+      const subject = `Your MarketSpase Store order ${reference} was ${label}`;
       const shippingLine = [
         courier ? `Courier: ${courier}.` : '',
         trackingNumber ? `Tracking number: ${trackingNumber}.` : '',
       ].filter(Boolean).join(' ');
       const html = `
         <p>Hi ${escapeHtml(String(customerName ?? '').trim() || 'there')},</p>
-        <p>Your order <strong>${escapeHtml(orderNumber)}</strong> from
+        <p>Your order <strong>${escapeHtml(reference)}</strong> from
           <strong>${escapeHtml(storeName || 'your MarketSpase partner')}</strong> was ${label}.</p>
         ${shippingLine ? `<p>${escapeHtml(shippingLine)}</p>` : ''}
         ${trackingLink ? `<p><a href="${escapeHtml(trackingLink)}">Open the courier tracking link</a></p>` : ''}
@@ -158,6 +162,7 @@ export class StoreOrderFanoutUseCase {
     try {
       const partner = await this.partners.findById(partnerId).catch(() => null);
       const customer = String(customerName ?? '').trim() || 'A customer';
+      const reference = String(orderNumber ?? '').trim() || 'your order';
       const amount = Number(total ?? 0).toLocaleString('en-NG');
       const report = await this.delivery.deliver({
         recipientId: partnerId,
@@ -165,7 +170,7 @@ export class StoreOrderFanoutUseCase {
         item: {
           category: 'system',
           priority: 'medium',
-          title: `Store order refunded: ${orderNumber}`,
+          title: `Store order refunded: ${reference}`,
           body: `${customer}'s order was refunded (${currency} ${amount}). Review the order and adjust stock if the item was returned.`,
           icon: 'undo',
           link: '/dashboard/products/store-orders',
@@ -175,10 +180,10 @@ export class StoreOrderFanoutUseCase {
 
       let emailed = false;
       if (this.mail && customerEmail) {
-        const subject = `Your MarketSpase Store order ${orderNumber} was refunded`;
+        const subject = `Your MarketSpase Store order ${reference} was refunded`;
         const html = `
           <p>Hi ${escapeHtml(customer)},</p>
-          <p>Your order <strong>${escapeHtml(orderNumber)}</strong> has been refunded.</p>
+          <p>Your order <strong>${escapeHtml(reference)}</strong> has been refunded.</p>
           <p><strong>${escapeHtml(currency)} ${escapeHtml(amount)}</strong> is being returned to your original payment method.</p>
           ${reason ? `<p>Reason: ${escapeHtml(reason)}</p>` : ''}
           ${refundReference ? `<p>Provider reference: ${escapeHtml(refundReference)}</p>` : ''}

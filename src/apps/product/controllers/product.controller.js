@@ -1299,9 +1299,9 @@ export const Savecart = async (req, res) => {
       const emailSubject = `Product order ${orderNumber}`;
       const emailMessage = `
           <h1>New product order</h1>
-          <p>Order ${orderNumber} has been paid from the wallet.</p>
-          <p>Buyer: ${shipping.fullName} (${shipping.phone})</p>
-          <p>Deliver to: ${shipping.street}, ${shipping.city}, ${shipping.state}, ${shipping.country}</p>
+          <p>Order ${orderNumber ?? 'unknown'} has been paid from the wallet.</p>
+          <p>Buyer: ${shipping?.fullName ?? 'Unknown'} (${shipping?.phone ?? 'no phone'})</p>
+          <p>Deliver to: ${shipping?.street ?? ''}, ${shipping?.city ?? ''}, ${shipping?.state ?? ''}, ${shipping?.country ?? ''}</p>
       `;
       for (const email of ['ago.fnc@gmail.com']) {
         await sendEmail(email, emailSubject, emailMessage);

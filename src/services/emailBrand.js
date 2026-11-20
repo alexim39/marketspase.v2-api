@@ -34,6 +34,9 @@ export const paragraphs = (text) => {
  */
 export const brandEmail = ({ title, body, actionUrl = null, actionLabel = 'Open MarketSpase' }) => {
   const safeTitle = escapeHtml(title);
+  // Never let a missing body reach the template: `${undefined}` would render
+  // the literal word "undefined" in the inbox.
+  const safeBody = body === undefined || body === null ? '' : String(body);
   const action = actionUrl
     ? `<a href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:12px 28px;background-color:#667eea;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;margin:1.2em 0;">${escapeHtml(actionLabel)}</a>`
     : '';
@@ -46,7 +49,7 @@ export const brandEmail = ({ title, body, actionUrl = null, actionLabel = 'Open 
     </div>
     <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;padding:28px 24px;color:#111827;">
       <h2 style="margin:0 0 12px;color:#14122b;">${safeTitle}</h2>
-      <div style="line-height:1.6;">${body}</div>
+      <div style="line-height:1.6;">${safeBody}</div>
       ${action}
     </div>
     <p style="text-align:center;color:#6b7280;font-size:12px;margin:16px 0 0;">
