@@ -73,6 +73,47 @@ Keep a realistic rhythm. Three to five useful posts a week, one live or story se
     ],
   },
   {
+    title: 'Recruiting Machine: the 19-minute overview',
+    summary: 'Why recruiting creates leverage and the six-step process that makes it repeatable.',
+    youtubeId: 'm1jU_e8ogok',
+    durationSec: 1150,
+    body: `Recruiting is how a network-marketing business creates leverage. Your own hours are fixed; a team of people who can serve customers and invite others multiplies what one person can do. That is why recruiting is a skill worth learning, not a favour you ask of friends.
+
+This overview gives you the big picture before the detailed lessons. The process has six steps. Generate leads through content, referrals and real conversations. Ask a short, honest question that gives the person permission to say no. Qualify before you present so you spend your time with people who are serious. Present the product, plan, people and process simply. Follow up with a reason and a clear next step. Then launch the new partner properly and lead the people who want to build.
+
+The order matters, but consistency matters more. A simple process repeated every week beats an occasional burst of activity. Keep your pipeline visible, track the activity you control and keep your claims honest. Recruiting is not about pushing people into a decision; it is about giving the right people enough clarity to make one.`,
+    takeaways: [
+      'Recruiting creates leverage because a team can serve more people than you can alone.',
+      'Use the six-step process: lead, ask, qualify, present, follow up, launch and lead.',
+      'Consistency with a simple process beats occasional bursts of activity.',
+      'Give people clarity and permission to decide — never pressure or hype.',
+    ],
+    transcript:
+      'Video summary (not verbatim) — Frazer Brookes explains why recruiting creates leverage and walks through a practical six-step recruiting process for network marketing. This lesson gives the big-picture overview before the course goes deeper into content, mindset, daily activity and three-way calls.',
+    quiz: [
+      {
+        q: 'Why does recruiting create leverage?',
+        options: ['It guarantees income', 'A team can serve more people than one person alone', 'It removes the need for products'],
+        answer: 1,
+      },
+      {
+        q: 'What comes immediately after generating a lead?',
+        options: ['Ask the question or invite', 'Launch them as a partner', 'Ask for a testimonial'],
+        answer: 0,
+      },
+      {
+        q: 'Why qualify before presenting?',
+        options: ['To separate serious prospects from curious ones', 'To make the presentation longer', 'To avoid asking questions'],
+        answer: 0,
+      },
+      {
+        q: 'What completes the recruiting process?',
+        options: ['Launching and leading the new partner', 'Sending one link', 'Waiting for the prospect to chase you'],
+        answer: 0,
+      },
+    ],
+  },
+  {
     title: 'The 2026 recruiter mindset',
     summary: 'What top recruiters do differently: standards, activity and a process they can teach.',
     youtubeId: 'XoN4QYode8U',
