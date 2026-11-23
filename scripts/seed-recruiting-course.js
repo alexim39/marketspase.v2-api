@@ -200,6 +200,49 @@ Follow up with a reason and a next step. Set a time to review the information, a
     ],
   },
   {
+    title: '5 steps to an unlimited prospect list',
+    summary: 'Build and keep expanding a live candidate list — without waiting for people to come to you.',
+    youtubeId: 'YJBB8lFn3Yw',
+    durationSec: 880,
+    body: `The biggest recruiting problem is rarely a lack of people. It is a list that stops growing. A one-time list of friends and family runs out quickly; a living candidate list gives you a steady supply of conversations. Eric Worre's five steps make that habit practical.
+
+Step one is the Active Candidate List. Keep a current list of people you could genuinely talk to, with enough context to start a human conversation. It is not a list of people to pressure; it is a working pipeline. Step two is to keep expanding it. Every customer, referral, content reply, community conversation and new relationship can add a name. Make adding people a daily habit, not a monthly panic.
+
+Step three is raising your awareness. Opportunities to meet people are around you every day, but most people walk past them because they are distracted or waiting for a perfect moment. Step four is not pre-judging. You do not know who is open to a product, a side income or a conversation. Give people the dignity of deciding for themselves. Step five is networking with purpose: build real relationships, follow up and connect people without an immediate pitch.
+
+In MarketSpase, put every name into the pipeline with a source, a next action and a date. Respect consent, avoid spam and review the list weekly. The goal is not a bigger list for its own sake; it is a reliable flow of quality conversations you can serve.`,
+    takeaways: [
+      'A prospect list is a living asset, not a one-time exercise.',
+      'Expand it daily through customers, content, referrals and real conversations.',
+      'Raise your awareness and stop pre-judging who might be open.',
+      'Put every name in the CRM with a next action and respect consent.',
+    ],
+    transcript:
+      'Video summary (not verbatim) — Eric Worre shares five steps for never running out of prospects: maintain an active candidate list, constantly expand it, raise your awareness, stop pre-judging people and network with purpose. This lesson applies those steps to the MarketSpase pipeline, daily list-building habits and consent-aware follow-up.',
+    quiz: [
+      {
+        q: 'What is the first step to unlimited prospects?',
+        options: ['Wait for referrals', 'Maintain an Active Candidate List', 'Send one bulk message'],
+        answer: 1,
+      },
+      {
+        q: 'Why should the list keep expanding?',
+        options: ['So you always have quality people to talk to', 'So you can spam more people', 'So you can avoid follow-up'],
+        answer: 0,
+      },
+      {
+        q: 'What does “do not pre-judge” mean?',
+        options: ['Decide for people before they answer', 'Give people the chance to decide for themselves', 'Only talk to people who look successful'],
+        answer: 1,
+      },
+      {
+        q: 'What should happen after you add a name in MarketSpase?',
+        options: ['Record a source, next action and date — with consent', 'Add them to every group', 'Forget them until they contact you'],
+        answer: 0,
+      },
+    ],
+  },
+  {
     title: 'Find, add, message: the daily recruiting engine',
     summary: 'Turn recruiting into a daily habit: find the right people, connect with context and start conversations.',
     youtubeId: '1eWkeNDmQj4',
