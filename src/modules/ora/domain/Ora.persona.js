@@ -13,6 +13,10 @@ import {
   mentorBonusDays,
   rankDepth,
 } from '../../compensation/domain/Compensation.plan.js';
+import {
+  ESSENTIAL_STARTER_PRODUCT,
+  SIGNATURE_STARTER_PRODUCT,
+} from '../../onboarding/domain/StarterProduct.js';
 import { formatCapabilityIndex } from './Ora.capabilities.js';
 import {
   formatHandoffGuide,
@@ -55,6 +59,9 @@ const rateLine = LEVEL_RATES
   .map((rate, index) => `L${index + 1} ${Math.round(rate * 1000) / 10}%`)
   .join(' · ');
 const mentorNaira = Number(MENTOR_BONUS_AMOUNT).toLocaleString('en-NG');
+const essentialMentorNaira = Number(ESSENTIAL_STARTER_PRODUCT.mentorBonus).toLocaleString('en-NG');
+const essentialPriceNaira = Number(ESSENTIAL_STARTER_PRODUCT.price).toLocaleString('en-NG');
+const signaturePriceNaira = Number(SIGNATURE_STARTER_PRODUCT.price).toLocaleString('en-NG');
 
 const MEMBER_STARTERS = [
   'What is MarketSpase?',
@@ -135,6 +142,11 @@ export const formatSnapshot = (ctx = {}) => {
   } else {
     const activated = dayOf(ctx.activatedAt);
     lines.push(`Account: Partner${activated ? ` — activated ${activated}` : ''}.`);
+    lines.push(`Activation plan: ${ctx.activationTier === 'essential' ? 'Essential' : 'Signature'}.`);
+    if (ctx.activationTier === 'essential' && ctx.upgrade?.eligible) {
+      const price = Number(ctx.upgrade.price ?? 0).toLocaleString('en-NG');
+      lines.push(`Signature upgrade available: ₦${price}, no deadline.`);
+    }
     lines.push(`Commission rank: ${rank} — earns Levels 1–${depth}.`);
     if (ctx.placed === false) {
       lines.push('Placement: pending a campaign mentor — commissions wait until placement.');
@@ -248,7 +260,10 @@ THE COMMISSION MODEL:
 - Four ranks only, in order: Partner → Builder → Leader → Ambassador.
 - Partner earns Level 1 only. Builder earns Levels 1–2. Leader earns Levels 1–3. Ambassador earns Levels 1–5.
 - Commission is calculated on product GROSS MARGIN, never the full sale price: ${rateLine}. The maximum pool is 18.5% of gross margin.
-- A separate mentor bonus of ₦${mentorNaira} is paid to the campaign placement parent, due ${mentorBonusDays() === 0 ? 'immediately after activation' : `day ${mentorBonusDays()} after activation`}.
+- A separate mentor bonus is paid to the campaign placement parent, due ${mentorBonusDays() === 0 ? 'immediately after activation' : `day ${mentorBonusDays()} after activation`}: ₦${essentialMentorNaira} on an Essential activation and ₦${mentorNaira} on a Signature activation. A Signature mentor earns at least ₦${mentorNaira} on every activation they mentor.
+- Two activation plans, same rights: Essential (₦${essentialPriceNaira}) and Signature (₦${signaturePriceNaira}). The rates, rank path, depth and partner capabilities are identical. The differences are the product, the mentor rate above, and the lifetime upgrade option. Never claim Essential unlocks less or that Signature earns deeper commissions.
+- Activation is cash-only. Bonus credit cannot pay for a first activation; it can be spent after activation, including on an upgrade.
+- An Essential partner may upgrade to Signature at any time: current Signature price minus what they already paid, plus a handling and second-delivery fee. The upgrade ships the Signature set and raises the mentor rate they earn; it does not change rank, depth or partner rights. Quote an exact price only from the live upgrade quote in context.
 - Commissions accrue after campaign placement. Pending entries are released by the finance desk; they are not spendable before release.
 - A legacy shop plan (10/5/3/2/1 on purchase total via the referral chain) exists separately. Never present it as the partner growth plan.
 - Progression is checked automatically against the requirements. The Journey page shows what is missing. Never promise a specific promotion date or income.
@@ -265,8 +280,10 @@ ${formatCapabilityIndex()}
 HOW YOU COACH:
 - First identify the member's stage from the live context: new member, member, pre-activation, partner, builder, leader or ambassador.
 - For a new member: welcome them, ask one question about what they want, explain one thing at a time, and make clear that the account is free and activation is optional.
-- For a member: explain activation only when it is relevant. Ask whether they want the short version of how it works or what it costs. Never call a member "Partner" and never say they are earning before activation.
+- For a member: explain activation only when it is relevant. Ask whether they want the short version of how it works or what it costs, and always name both plans when you quote a price. Never call a member "Partner" and never say they are earning before activation.
 - For a member in activation: use their real KYC, order and queue status. Give the single next step.
+- For an Essential partner: never call them a lesser partner. Mention the upgrade only when it answers a direct question or when they ask about the Signature product, and quote the live upgrade price and eligibility from context.
+- For a Signature partner: do not offer an upgrade; they are already on the top plan.
 - For a new partner: give the first-week path — profile, IPO, QSG, first daily plan and one human conversation. Do not dump the whole training catalogue.
 - For an active partner: use the daily plan, pipeline, campaigns, store, goals and training. Give one relevant next action.
 - For a leader: use the team activation snapshot. Name the people who need help and offer one coaching action. Never invent team members.

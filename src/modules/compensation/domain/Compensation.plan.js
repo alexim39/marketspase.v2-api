@@ -18,6 +18,17 @@ export const MENTOR_BONUS_EXPIRY_DAYS = 90;
  */
 export const mentorBonusDays = () => 0;
 
+/**
+ * Option A mentor rate. An Essential mentor earns the recruit's plan amount;
+ * a Signature mentor earns at least the Signature rate on every activation
+ * they mentor. This is the recurring benefit of upgrading.
+ */
+export const mentorBonusForTier = (planAmount, mentorTier) => {
+  const base = Math.max(Number(planAmount) || 0, 0);
+  if (mentorTier === 'essential') return base;
+  return Math.max(base, Math.max(Number(MENTOR_BONUS_AMOUNT) || 0, 0));
+};
+
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 export const rankDepth = (rank) => RANK_DEPTH[rank] ?? RANK_DEPTH.Partner;

@@ -1,15 +1,35 @@
 import mongoose from 'mongoose';
 
+const starterProductImageSchema = new mongoose.Schema(
+  {
+    url: { type: String, required: true, trim: true },
+    alt: { type: String, default: '', trim: true },
+    order: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
+);
+
 const starterProductSchema = new mongoose.Schema(
   {
     sku: { type: String, required: true, unique: true, trim: true },
+    tier: {
+      type: String,
+      enum: ['essential', 'signature'],
+      default: 'signature',
+      index: true,
+    },
     name: { type: String, required: true, trim: true },
     description: { type: String, default: '', trim: true },
     price: { type: Number, required: true, min: 0 },
     currency: { type: String, default: 'NGN', trim: true },
     shippingCost: { type: Number, default: 0, min: 0 },
     cogs: { type: Number, default: 0, min: 0 },
+    /** Fixed mentor bonus for this plan; null falls back to the env rate. */
+    mentorBonus: { type: Number, default: null, min: 0 },
+    /** Amount credited toward a Signature upgrade when this plan is bought. */
+    upgradeCredit: { type: Number, default: 0, min: 0 },
     imageUrl: { type: String, default: '', trim: true },
+    images: { type: [starterProductImageSchema], default: [] },
     active: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },
@@ -32,6 +52,26 @@ const activationOrderSchema = new mongoose.Schema(
     },
     productName: { type: String, required: true, trim: true },
     sku: { type: String, required: true, trim: true },
+    tier: {
+      type: String,
+      enum: ['essential', 'signature'],
+      default: 'signature',
+      index: true,
+    },
+    kind: {
+      type: String,
+      enum: ['activation', 'upgrade'],
+      default: 'activation',
+      index: true,
+    },
+    /** Set on an upgrade order: the activation order it upgrades. */
+    upgradeOfOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ActivationOrder',
+      default: null,
+    },
+    /** Plan-level mentor bonus snapshot (null = env default). */
+    mentorBonusAmount: { type: Number, default: null, min: 0 },
     amount: { type: Number, required: true, min: 0 },
     currency: { type: String, default: 'NGN', trim: true },
     cogs: { type: Number, default: 0, min: 0 },
@@ -86,6 +126,12 @@ const activationQueueEntrySchema = new mongoose.Schema(
       enum: ['queued', 'allocated', 'cancelled'],
       default: 'queued',
       index: true,
+    },
+    /** Reporting tag only: both plans share the same FIFO queue. */
+    tier: {
+      type: String,
+      enum: ['essential', 'signature'],
+      default: 'signature',
     },
     enteredAt: { type: Date, default: Date.now, index: true },
     allocatedAt: { type: Date, default: null },

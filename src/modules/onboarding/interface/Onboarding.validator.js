@@ -39,8 +39,15 @@ export const CreateActivationOrderSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(100).optional(),
 });
 
+export const CreateUpgradeOrderSchema = z.object({
+  shipping: shippingSchema,
+  idempotencyKey: z.string().trim().min(8).max(100).optional(),
+});
+
 export const OrderQuerySchema = z.object({
   status: z.enum(['Paid', 'Fulfilled', 'Refunded', 'Cancelled']).optional(),
+  tier: z.enum(['essential', 'signature']).optional(),
+  kind: z.enum(['activation', 'upgrade']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });

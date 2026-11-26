@@ -365,3 +365,21 @@ test('approval claims once, executes once and returns the existing result afterw
   assert.equal(second.status, 'executed');
   assert.equal(state.executions, 1);
 });
+
+test('a stale one-plan answer is replaced with the two-plan facts', async () => {
+  const usecase = new AskOraUseCase({
+    conversations: fakeConversations(),
+    client: {
+      complete: async () => 'MarketSpase has one activation plan: the ₦38,000 Signature Clothing Set. There is no separate starter package or tier to choose from.',
+    },
+    context: { assemble: async () => snapshot },
+  });
+
+  const out = await usecase.execute({ partnerId: 'p1', message: 'how many plans does MarketSpase have?' });
+
+  assert.match(out.reply, /two activation plans/i);
+  assert.match(out.reply, /₦12,500/);
+  assert.match(out.reply, /₦38,000/);
+  assert.doesNotMatch(out.reply, /has one activation plan/i);
+  assert.doesNotMatch(out.reply, /no separate starter package/i);
+});

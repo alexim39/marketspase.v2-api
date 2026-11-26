@@ -51,6 +51,29 @@ test('platform knowledge carries the offer, activation, member journey and costs
   assert.doesNotMatch(facts, /Diamond Project/);
 });
 
+test('activation plan facts are non-negotiable and cannot collapse to one plan', () => {
+  const facts = formatPlatformKnowledge();
+  assert.match(facts, /ACTIVATION PLANS — EXACTLY TWO \(NON-NEGOTIABLE\)/);
+  assert.match(facts, /Essential is ₦12,500/);
+  assert.match(facts, /Signature is ₦38,000/);
+  assert.match(facts, /Never say there is one plan/);
+  assert.match(facts, /never say there is no starter package or tier/i);
+  assert.match(facts, /If an earlier message in this conversation says one plan/i);
+});
+
+test('platform knowledge explains both plans, the cash-only rule and the lifetime upgrade', () => {
+  const facts = formatPlatformKnowledge();
+  assert.match(facts, /Essential Clothing Set/);
+  assert.match(facts, /Signature Clothing Set/);
+  assert.match(facts, /₦12,500/);
+  assert.match(facts, /₦38,000/);
+  assert.match(facts, /₦800/);
+  assert.match(facts, /cash; bonus credit unlocks after activation/i);
+  assert.match(facts, /upgrade to Signature at any time/i);
+  assert.match(facts, /no deadline/i);
+  assert.match(facts, /does not change rank, commission depth or partner rights/i);
+});
+
 test('objection guide covers the high-frequency new-member questions', () => {
   const guide = formatObjectionGuide();
   for (const phrase of [

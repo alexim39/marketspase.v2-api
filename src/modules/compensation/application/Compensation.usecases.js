@@ -11,6 +11,16 @@ export class RecordActivationCompensationUseCase {
   }
 }
 
+export class RecordUpgradeCompensationUseCase {
+  constructor({ repo }) {
+    this.repo = repo;
+  }
+
+  execute(payload) {
+    return this.repo.recordUpgrade(payload);
+  }
+}
+
 export class RecordAllocationCompensationUseCase {
   constructor({ repo, events = domainEvents, audit = recordAudit }) {
     this.repo = repo;

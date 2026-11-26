@@ -134,6 +134,10 @@ export class OraContextAssembler {
     ctx.kycStatus = activationPartner?.kycStatus ?? partner?.kycStatus ?? 'not_started';
     ctx.activatedAt = activationPartner?.activatedAt ?? partner?.activatedAt ?? null;
     ctx.activationOrder = activation?.activationOrder ?? null;
+    ctx.activationTier = activationPartner?.activationTier
+      ?? partner?.activationTier
+      ?? 'signature';
+    ctx.upgrade = activation?.upgrade ?? null;
     ctx.queue = activation?.queue ?? null;
     ctx.sponsor = activation?.sponsor ?? null;
     ctx.mentorContactPreference = activationPartner?.mentorContactPreference

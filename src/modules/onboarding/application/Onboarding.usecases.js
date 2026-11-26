@@ -18,15 +18,26 @@ export class ListStarterProductsUseCase {
 
   async execute() {
     const products = await this.repo.listProducts();
-    return products.map((product) => ({
-      id: String(product._id),
-      sku: product.sku,
-      name: product.name,
-      description: product.description,
-      price: product.price,
-      currency: product.currency,
-      imageUrl: product.imageUrl,
-    }));
+    return products.map((product) => {
+      const images = Array.isArray(product.images) && product.images.length > 0
+        ? product.images
+          .slice()
+          .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+          .map((image) => ({ url: image.url, alt: image.alt ?? '' }))
+        : (product.imageUrl ? [{ url: product.imageUrl, alt: product.name }] : []);
+      return {
+        id: String(product._id),
+        sku: product.sku,
+        tier: product.tier === 'essential' ? 'essential' : 'signature',
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        currency: product.currency,
+        imageUrl: product.imageUrl,
+        images,
+        upgradeCredit: Math.max(Number(product.upgradeCredit) || 0, 0),
+      };
+    });
   }
 }
 
@@ -69,12 +80,41 @@ export class CreateActivationOrderUseCase {
         orderId: result.order.id,
         orderNumber: result.order.orderNumber,
         productId: String(productId),
+        productName: result.order.productName,
+        tier: result.order.tier ?? 'signature',
         amount: result.order.amount,
         currency: result.order.currency,
         grossMargin: Number(result.grossMargin) || 0,
+        mentorBonusAmount: result.order.mentorBonusAmount ?? null,
         mentorContactPreference: result.order.mentorContactPreference ?? mentorContactPreference,
         mentorContactConsentAt: result.order.mentorContactConsentAt ?? null,
         activatedAt: result.order.activatedAt,
+      }).catch(() => null);
+    }
+
+    const { grossMargin: _grossMargin, ...safeResult } = result;
+    return safeResult;
+  }
+}
+
+export class CreateUpgradeOrderUseCase {
+  constructor({ repo, events = domainEvents }) {
+    this.repo = repo;
+    this.events = events;
+  }
+
+  async execute({ partnerId, shipping, idempotencyKey }) {
+    const result = await this.repo.createUpgrade({ partnerId, shipping, idempotencyKey });
+
+    if (!result.repeated) {
+      await this.events.emit('partner.upgraded', {
+        partnerId: String(partnerId),
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        productName: result.order.productName,
+        amount: result.order.amount,
+        grossMargin: Number(result.grossMargin) || 0,
+        upgradedAt: result.order.activatedAt,
       }).catch(() => null);
     }
 

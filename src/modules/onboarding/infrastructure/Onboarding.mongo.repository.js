@@ -19,10 +19,14 @@ import {
   KycSubmissionModel,
   StarterProductModel,
 } from './Onboarding.models.js';
+import {
+  UPGRADE_HANDLING_FEE_NGN,
+  upgradePriceFor,
+} from '../domain/StarterProduct.js';
 
 const opts = (session, extra = {}) => (session ? { ...extra, session } : extra);
 
-const partnerProjection = 'name surname username email phone balance accountState kycStatus suspendedAt activatedAt createdAt emailVerified address partnerOf systemOwned mentorContactPreference mentorContactConsentAt mentorContactPreferenceUpdatedAt';
+const partnerProjection = 'name surname username email phone balance bonusBalance accountState activationTier upgradedAt upgradeOrderId kycStatus suspendedAt activatedAt createdAt emailVerified address partnerOf systemOwned mentorContactPreference mentorContactConsentAt mentorContactPreferenceUpdatedAt';
 
 export const partnerSummary = (partner) => {
   if (!partner) return null;
@@ -34,7 +38,15 @@ export const partnerSummary = (partner) => {
     email: partner.email ?? '',
     phone: partner.phone ?? '',
     balance: Number(partner.balance) || 0,
+    bonusBalance: Math.max(Number(partner.bonusBalance) || 0, 0),
+    // Activation is cash-only, so the UI must show what is actually spendable.
+    withdrawableBalance: Math.max(
+      (Number(partner.balance) || 0) - Math.max(Number(partner.bonusBalance) || 0, 0),
+      0,
+    ),
     accountState: partner.accountState === 'member' ? 'member' : 'partner',
+    activationTier: partner.activationTier === 'essential' ? 'essential' : 'signature',
+    upgradedAt: partner.upgradedAt ?? null,
     kycStatus: partner.kycStatus
       ?? (partner.accountState === 'member' ? 'not_started' : 'verified'),
     activatedAt: partner.activatedAt ?? null,
@@ -59,6 +71,8 @@ export const publicOrder = (order) => {
     orderNumber: order.orderNumber,
     productName: order.productName,
     sku: order.sku,
+    tier: order.tier === 'essential' ? 'essential' : 'signature',
+    kind: order.kind === 'upgrade' ? 'upgrade' : 'activation',
     amount: order.amount,
     currency: order.currency,
     status: order.status,
@@ -159,6 +173,7 @@ export class MongoOnboardingRepository {
     return {
       partner: partnerSummary(partner),
       activationOrder: publicOrder(order),
+      upgrade: await this.upgradeQuote(partner, order),
       kyc: publicKyc(kyc),
       queue: publicQueue(queue, await queuePosition(queue)),
       sponsor: sponsor ? {
@@ -296,8 +311,15 @@ export class MongoOnboardingRepository {
         if (!product || product.active === false) {
           throw new NotFoundException('Starter product not found');
         }
-        if (Number(partner.balance) < Number(product.price)) {
-          throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
+        // Activation is cash-only: bonus credit unlocks after activation.
+        const bonusBalance = Math.max(Number(partner.bonusBalance) || 0, 0);
+        const cashAvailable = Math.max(Number(partner.balance) - bonusBalance, 0);
+        if (cashAvailable < Number(product.price)) {
+          throw new AppError(
+            'Insufficient wallet balance. Activation is paid from cash only; bonus credit unlocks after activation.',
+            409,
+            'INSUFFICIENT_BALANCE',
+          );
         }
 
         const number = orderNumber();
@@ -305,6 +327,10 @@ export class MongoOnboardingRepository {
         const shippingCost = Math.max(Number(product.shippingCost) || 0, 0);
         const paymentFee = Math.round(Number(product.price) * 0.015 * 100) / 100;
         const grossMargin = Math.max(Number(product.price) - cogs - shippingCost - paymentFee, 0);
+        const tier = product.tier === 'essential' ? 'essential' : 'signature';
+        const planMentorBonus = product.mentorBonus === null || product.mentorBonus === undefined
+          ? null
+          : Math.max(Number(product.mentorBonus) || 0, 0);
         const [order] = await ActivationOrderModel.create(
           [{
             orderNumber: number,
@@ -312,6 +338,9 @@ export class MongoOnboardingRepository {
             productId: product._id,
             productName: product.name,
             sku: product.sku,
+            tier,
+            kind: 'activation',
+            mentorBonusAmount: planMentorBonus,
             amount: product.price,
             currency: product.currency ?? 'NGN',
             cogs,
@@ -335,9 +364,11 @@ export class MongoOnboardingRepository {
           {
             partnerId,
             amountNgn: product.price,
+            bonusPolicy: 'cash_only',
             filter: { accountState: 'member' },
             set: {
               accountState: 'partner',
+              activationTier: tier,
               activatedAt: now,
               activationOrderId: order._id,
               ...(partner.partnerOf ? { systemOwned: false } : {}),
@@ -382,6 +413,7 @@ export class MongoOnboardingRepository {
             {
               $set: {
                 status: 'queued',
+                tier,
                 enteredAt: now,
                 allocatedAt: null,
                 campaignId: null,
@@ -396,6 +428,211 @@ export class MongoOnboardingRepository {
           order: publicOrder(order.toObject()),
           queue: publicQueue(queue, await queuePosition(queue, session)),
           partner: partnerSummary(activated),
+          grossMargin,
+          repeated: false,
+        };
+      });
+    } catch (error) {
+      if (error?.code === 11000 && idempotencyKey) {
+        const replay = await existingByIdempotency();
+        if (replay) return replay;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Lifetime upgrade quote. The partner's own activation amount is the
+   * credit; the Signature price and handling fee are added live, so a price
+   * change never leaves a stale fixed upgrade price behind.
+   */
+  async upgradeQuote(partner, activationOrder) {
+    const quote = {
+      eligible: false,
+      price: null,
+      credit: 0,
+      handlingFee: UPGRADE_HANDLING_FEE_NGN,
+      signaturePrice: null,
+      reason: null,
+    };
+    if (!partner) return { ...quote, reason: 'no_partner' };
+    if (partner.accountState !== 'partner') return { ...quote, reason: 'not_activated' };
+    if (partner.activationTier !== 'essential') {
+      return { ...quote, reason: 'already_signature' };
+    }
+    // The latest order can be a refunded upgrade. Fall back to the original
+    // paid activation so the partner can upgrade again.
+    let baseOrder = activationOrder;
+    if (!baseOrder || baseOrder.kind === 'upgrade') {
+      baseOrder = await ActivationOrderModel.findOne({
+        partnerId: partner._id,
+        $or: [{ kind: 'activation' }, { kind: { $exists: false } }],
+        status: { $in: ['Paid', 'Fulfilled'] },
+      }).sort({ createdAt: -1 }).lean();
+    }
+    if (
+      !baseOrder
+      || ['Refunded', 'Cancelled'].includes(baseOrder.status)
+    ) {
+      return { ...quote, reason: 'no_activation_order' };
+    }
+    const signature = await StarterProductModel.findOne({
+      active: true,
+      $or: [{ tier: 'signature' }, { sku: 'MS-STARTER-001' }],
+    }).sort({ sortOrder: 1 }).lean();
+    if (!signature) return { ...quote, reason: 'unavailable' };
+    const credit = Math.max(Number(baseOrder.amount) || 0, 0);
+    return {
+      eligible: true,
+      price: upgradePriceFor({ signaturePrice: signature.price, credit }),
+      credit,
+      handlingFee: UPGRADE_HANDLING_FEE_NGN,
+      signaturePrice: Number(signature.price) || 0,
+      reason: null,
+    };
+  }
+
+  async createUpgrade({ partnerId, shipping, idempotencyKey }) {
+    const now = new Date();
+
+    const existingByIdempotency = async (session) => {
+      if (!idempotencyKey) return null;
+      const order = await ActivationOrderModel.findOne(
+        { partnerId, idempotencyKey, kind: 'upgrade' },
+        null,
+        opts(session),
+      ).lean();
+      if (!order) return null;
+      return {
+        order: publicOrder(order),
+        partner: partnerSummary(await this.findById(partnerId, { session })),
+        repeated: true,
+      };
+    };
+
+    const current = await existingByIdempotency();
+    if (current) return current;
+
+    try {
+      return await runInTransaction(async (session) => {
+        const replay = await existingByIdempotency(session);
+        if (replay) return replay;
+
+        const partner = await this.findById(partnerId, { session });
+        if (!partner) throw new NotFoundException('Partner account not found');
+        if (partner.accountState !== 'partner') {
+          throw new ConflictException('Activate your account before upgrading');
+        }
+        if (partner.activationTier !== 'essential') {
+          throw new ConflictException('Your account is already on the Signature plan');
+        }
+
+        const signature = await StarterProductModel.findOne({
+          active: true,
+          $or: [{ tier: 'signature' }, { sku: 'MS-STARTER-001' }],
+        }).sort({ sortOrder: 1 }).lean();
+        if (!signature) throw new NotFoundException('Signature plan is not available');
+
+        const activationOrder = partner.activationOrderId
+          ? await ActivationOrderModel.findById(
+            partner.activationOrderId,
+            null,
+            opts(session),
+          ).lean()
+          : await ActivationOrderModel.findOne(
+            { partnerId, kind: 'activation', status: { $in: ['Paid', 'Fulfilled'] } },
+            null,
+            opts(session),
+          ).sort({ createdAt: -1 }).lean();
+        if (!activationOrder) {
+          throw new ConflictException('No activation order found to upgrade');
+        }
+
+        const price = upgradePriceFor({
+          signaturePrice: signature.price,
+          credit: activationOrder.amount,
+        });
+        const cogs = Math.max(Number(signature.cogs) || 0, 0);
+        const shippingCost = Math.max(Number(signature.shippingCost) || 0, 0);
+        const paymentFee = Math.round(price * 0.015 * 100) / 100;
+        const grossMargin = Math.max(price - cogs - shippingCost - paymentFee, 0);
+        const number = orderNumber();
+
+        const [order] = await ActivationOrderModel.create(
+          [{
+            orderNumber: number,
+            partnerId,
+            productId: signature._id,
+            productName: signature.name,
+            sku: signature.sku,
+            tier: 'signature',
+            kind: 'upgrade',
+            upgradeOfOrderId: activationOrder._id,
+            mentorBonusAmount: null,
+            amount: price,
+            currency: signature.currency ?? 'NGN',
+            cogs,
+            shippingCost,
+            paymentFee,
+            grossMargin,
+            status: 'Paid',
+            shipping,
+            paymentMethod: 'Wallet',
+            paymentReference: number,
+            idempotencyKey: idempotencyKey || undefined,
+            mentorContactPreference: partner.mentorContactPreference ?? 'in_app',
+            mentorContactConsentAt: partner.mentorContactConsentAt ?? null,
+            activatedAt: now,
+          }],
+          opts(session),
+        );
+
+        // Post-activation purchase: bonus may be spent, because the bonus
+        // lock only covers the first activation.
+        const debit = await debitPartnerWallet(
+          { partners: PartnersModel },
+          {
+            partnerId,
+            amountNgn: price,
+            filter: { accountState: 'partner', activationTier: 'essential' },
+            set: {
+              activationTier: 'signature',
+              upgradedAt: now,
+              upgradeOrderId: order._id,
+              address: {
+                street: shipping.street,
+                city: shipping.city,
+                state: shipping.state,
+                country: shipping.country ?? 'Nigeria',
+              },
+            },
+          },
+          opts(session),
+        );
+        if (!debit) {
+          throw new AppError('Insufficient wallet balance', 409, 'INSUFFICIENT_BALANCE');
+        }
+        const upgraded = debit.partner;
+
+        await TransactionModel.create(
+          [{
+            partnerId,
+            amount: price,
+            bonusAmount: debit.bonusUsed,
+            balanceBefore: Number(upgraded.balance ?? 0) + Number(price),
+            balanceAfter: upgraded.balance ?? null,
+            reference: number,
+            status: 'Completed',
+            paymentMethod: 'Wallet',
+            transactionType: 'Debit',
+            date: now,
+          }],
+          opts(session),
+        );
+
+        return {
+          order: publicOrder(order.toObject()),
+          partner: partnerSummary(upgraded),
           grossMargin,
           repeated: false,
         };
@@ -428,6 +665,7 @@ export class MongoOnboardingRepository {
       ordersPaid, ordersFulfilled,
       queueQueued, queueAllocated,
       queue3, queue7, queue14, paid3, paid7,
+      activationByTier, upgradeByTier,
     ] = await Promise.all([
       PartnersModel.countDocuments({ accountState: 'member' }),
       PartnersModel.countDocuments({ accountState: { $ne: 'member' } }),
@@ -443,14 +681,54 @@ export class MongoOnboardingRepository {
       ActivationQueueEntryModel.countDocuments({ status: 'queued', enteredAt: { $lte: cut14 } }),
       ActivationOrderModel.countDocuments({ status: 'Paid', createdAt: { $lte: cut3 } }),
       ActivationOrderModel.countDocuments({ status: 'Paid', createdAt: { $lte: cut7 } }),
+      ActivationOrderModel.aggregate([
+        {
+          $match: {
+            status: { $in: ['Paid', 'Fulfilled'] },
+            $or: [{ kind: 'activation' }, { kind: { $exists: false } }],
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$tier', 'signature'] },
+            orders: { $sum: 1 },
+            revenue: { $sum: '$amount' },
+            margin: { $sum: '$grossMargin' },
+          },
+        },
+      ]),
+      ActivationOrderModel.aggregate([
+        { $match: { kind: 'upgrade', status: { $in: ['Paid', 'Fulfilled'] } } },
+        {
+          $group: {
+            _id: { $ifNull: ['$tier', 'signature'] },
+            orders: { $sum: 1 },
+            revenue: { $sum: '$amount' },
+            margin: { $sum: '$grossMargin' },
+          },
+        },
+      ]),
     ]);
     const memberCount = Number(members) || 0;
     const partnerCount = Number(partners) || 0;
+    const planRow = (rows, tier) => {
+      const row = (rows ?? []).find((entry) => entry._id === tier);
+      return {
+        orders: Number(row?.orders) || 0,
+        revenue: Math.round((Number(row?.revenue) || 0) * 100) / 100,
+        margin: Math.round((Number(row?.margin) || 0) * 100) / 100,
+      };
+    };
     return {
       generatedAt: now,
       accounts: { total: memberCount + partnerCount, members: memberCount, partners: partnerCount },
       kyc: { pending: Number(kycPending) || 0, verified: Number(kycVerified) || 0, rejected: Number(kycRejected) || 0 },
       orders: { paid: Number(ordersPaid) || 0, fulfilled: Number(ordersFulfilled) || 0 },
+      plans: {
+        essential: planRow(activationByTier, 'essential'),
+        signature: planRow(activationByTier, 'signature'),
+        upgrades: planRow(upgradeByTier, 'signature'),
+      },
       queue: { queued: Number(queueQueued) || 0, allocated: Number(queueAllocated) || 0 },
       aging: {
         queueOver3Days: Number(queue3) || 0,
@@ -468,10 +746,22 @@ export class MongoOnboardingRepository {
     };
   }
 
-  async listAdminOrders({ status, page = 1, limit = 25 } = {}) {
+  async listAdminOrders({ status, tier, kind, page = 1, limit = 25 } = {}) {
     const size = Math.min(Math.max(Number(limit) || 25, 1), 100);
     const current = Math.max(Number(page) || 1, 1);
-    const filter = status ? { status } : {};
+    const filter = {};
+    if (status) filter.status = status;
+    // Legacy rows predate tier/kind; they are Signature activations.
+    if (tier === 'signature') filter.$and = [{ $or: [{ tier: 'signature' }, { tier: { $exists: false } }] }];
+    else if (tier) filter.tier = tier;
+    if (kind === 'activation') {
+      filter.$and = [
+        ...(filter.$and ?? []),
+        { $or: [{ kind: 'activation' }, { kind: { $exists: false } }] },
+      ];
+    } else if (kind) {
+      filter.kind = kind;
+    }
     const [rows, total] = await Promise.all([
       ActivationOrderModel.find(filter)
         .sort({ createdAt: -1 })
@@ -538,13 +828,26 @@ export class MongoOnboardingRepository {
         throw new ConflictException('Cancelled orders cannot be refunded');
       }
 
-      const queue = await ActivationQueueEntryModel.findOne(
-        { partnerId: order.partnerId },
-        null,
-        opts(session),
-      ).lean();
-      if (queue?.status === 'allocated') {
-        throw new ConflictException('This partner is already allocated. Resolve the placement before refunding.');
+      const isUpgrade = order.kind === 'upgrade';
+
+      if (!isUpgrade) {
+        const partnerQuery = PartnersModel.findById(order.partnerId).select('upgradeOrderId');
+        if (session) partnerQuery.session(session);
+        const partnerState = await partnerQuery.lean();
+        if (partnerState?.upgradeOrderId) {
+          throw new ConflictException(
+            'This activation has been upgraded. Refund the upgrade first.',
+          );
+        }
+
+        const queue = await ActivationQueueEntryModel.findOne(
+          { partnerId: order.partnerId },
+          null,
+          opts(session),
+        ).lean();
+        if (queue?.status === 'allocated') {
+          throw new ConflictException('This partner is already allocated. Resolve the placement before refunding.');
+        }
       }
 
       const refunded = await ActivationOrderModel.findOneAndUpdate(
@@ -579,20 +882,25 @@ export class MongoOnboardingRepository {
         Number(order.amount),
         Math.max(0, Number(original?.bonusAmount ?? 0)),
       );
-      const deactivated = await PartnersModel.findOneAndUpdate(
-        { _id: order.partnerId, activationOrderId: order._id },
-        {
-          $inc: { balance: Number(order.amount), bonusBalance: bonusRefund },
-          $set: {
-            accountState: 'member',
-            activatedAt: null,
-            activationOrderId: null,
-          },
-        },
+      // An upgrade refund reverts the tier, not the account. An activation
+      // refund returns the account to member and clears the tier.
+      const partnerUpdate = {
+        $inc: { balance: Number(order.amount), bonusBalance: bonusRefund },
+        $set: isUpgrade
+          ? { activationTier: 'essential', upgradedAt: null, upgradeOrderId: null }
+          : { accountState: 'member', activatedAt: null, activationOrderId: null },
+      };
+      if (!isUpgrade) partnerUpdate.$unset = { activationTier: 1 };
+
+      const settled = await PartnersModel.findOneAndUpdate(
+        isUpgrade
+          ? { _id: order.partnerId, upgradeOrderId: order._id }
+          : { _id: order.partnerId, activationOrderId: order._id },
+        partnerUpdate,
         opts(session, { new: true }),
       ).lean();
 
-      if (!deactivated) {
+      if (!settled) {
         await PartnersModel.updateOne(
           { _id: order.partnerId },
           { $inc: { balance: Number(order.amount), bonusBalance: bonusRefund } },
@@ -600,7 +908,7 @@ export class MongoOnboardingRepository {
         );
       }
 
-      let refundedBalance = deactivated?.balance ?? null;
+      let refundedBalance = settled?.balance ?? null;
       if (refundedBalance === null) {
         const refreshed = await PartnersModel.findById(order.partnerId).select('balance').lean();
         refundedBalance = refreshed?.balance ?? null;
@@ -625,11 +933,13 @@ export class MongoOnboardingRepository {
         opts(session),
       );
 
-      await ActivationQueueEntryModel.updateOne(
-        { partnerId: order.partnerId, status: 'queued' },
-        { $set: { status: 'cancelled', cancelledAt: now } },
-        opts(session),
-      );
+      if (!isUpgrade) {
+        await ActivationQueueEntryModel.updateOne(
+          { partnerId: order.partnerId, status: 'queued' },
+          { $set: { status: 'cancelled', cancelledAt: now } },
+          opts(session),
+        );
+      }
 
       const partner = await this.findById(order.partnerId, { session });
       return {

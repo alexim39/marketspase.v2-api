@@ -5,6 +5,7 @@ import {
   CancelActivationCompensationUseCase,
   RecordActivationCompensationUseCase,
   RecordAllocationCompensationUseCase,
+  RecordUpgradeCompensationUseCase,
   SyncCommissionRankUseCase,
 } from './Compensation.usecases.js';
 
@@ -19,6 +20,7 @@ const safe = (label, fn) => async (payload) => {
 
 export const buildCompensationHandlers = ({ repo }) => {
   const activation = new RecordActivationCompensationUseCase({ repo });
+  const upgrade = new RecordUpgradeCompensationUseCase({ repo });
   const allocation = new RecordAllocationCompensationUseCase({ repo });
   const cancel = new CancelActivationCompensationUseCase({ repo });
   const syncRank = new SyncCommissionRankUseCase({ repo });
@@ -41,7 +43,16 @@ export const buildCompensationHandlers = ({ repo }) => {
       orderNumber: payload?.orderNumber,
       productName: payload?.productName,
       grossMargin: payload?.grossMargin,
+      mentorBonusAmount: payload?.mentorBonusAmount ?? null,
       activatedAt: payload?.activatedAt,
+    })),
+    upgraded: safe('upgrade', (payload) => upgrade.execute({
+      orderId: payload?.orderId,
+      partnerId: payload?.partnerId,
+      orderNumber: payload?.orderNumber,
+      productName: payload?.productName,
+      grossMargin: payload?.grossMargin,
+      activatedAt: payload?.upgradedAt,
     })),
     allocated: safe('allocation', (payload) => allocation.execute({
       partnerId: payload?.partnerId,
@@ -75,6 +86,7 @@ export const subscribeCompensation = ({
 
   const offs = [
     events.on('partner.activated', handlers.activated),
+    events.on('partner.upgraded', handlers.upgraded),
     events.on('partner.allocated', handlers.allocated),
     events.on('partner.activation_refunded', handlers.refunded),
     events.on(PROGRESSION_EVENTS.PROMOTED, handlers.promoted),
