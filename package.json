@@ -16,6 +16,7 @@
     "seed:ipo": "node scripts/seed-ipo-course.js",
     "seed:courses": "node scripts/seed-remaining-courses.js",
     "seed:activation": "node scripts/seed-activation-and-h2os.js",
+    "seed:plans": "node scripts/seed-starter-plans-only.mjs",
     "seed:qa": "node scripts/seed-qa-accounts.js",
     "seed:recruiting": "node scripts/seed-recruiting-course.js",
     "merge:recruiting-machine": "node scripts/merge-recruiting-machine.js",
