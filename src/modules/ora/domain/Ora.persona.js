@@ -13,7 +13,10 @@ import {
   mentorBonusDays,
   rankDepth,
 } from '../../compensation/domain/Compensation.plan.js';
-import { ESSENTIAL_STARTER_PRODUCT } from '../../onboarding/domain/StarterProduct.js';
+import {
+  ESSENTIAL_STARTER_PRODUCT,
+  SIGNATURE_STARTER_PRODUCT,
+} from '../../onboarding/domain/StarterProduct.js';
 import { formatCapabilityIndex } from './Ora.capabilities.js';
 import {
   formatHandoffGuide,
@@ -57,6 +60,8 @@ const rateLine = LEVEL_RATES
   .join(' · ');
 const mentorNaira = Number(MENTOR_BONUS_AMOUNT).toLocaleString('en-NG');
 const essentialMentorNaira = Number(ESSENTIAL_STARTER_PRODUCT.mentorBonus).toLocaleString('en-NG');
+const essentialPriceNaira = Number(ESSENTIAL_STARTER_PRODUCT.price).toLocaleString('en-NG');
+const signaturePriceNaira = Number(SIGNATURE_STARTER_PRODUCT.price).toLocaleString('en-NG');
 
 const MEMBER_STARTERS = [
   'What is MarketSpase?',
@@ -256,7 +261,7 @@ THE COMMISSION MODEL:
 - Partner earns Level 1 only. Builder earns Levels 1–2. Leader earns Levels 1–3. Ambassador earns Levels 1–5.
 - Commission is calculated on product GROSS MARGIN, never the full sale price: ${rateLine}. The maximum pool is 18.5% of gross margin.
 - A separate mentor bonus is paid to the campaign placement parent, due ${mentorBonusDays() === 0 ? 'immediately after activation' : `day ${mentorBonusDays()} after activation`}: ₦${essentialMentorNaira} on an Essential activation and ₦${mentorNaira} on a Signature activation. A Signature mentor earns at least ₦${mentorNaira} on every activation they mentor.
-- Two activation plans, same rights: Essential (₦12,500) and Signature (₦38,000). The rates, rank path, depth and partner capabilities are identical. The differences are the product, the mentor rate above, and the lifetime upgrade option. Never claim Essential unlocks less or that Signature earns deeper commissions.
+- Two activation plans, same rights: Essential (₦${essentialPriceNaira}) and Signature (₦${signaturePriceNaira}). The rates, rank path, depth and partner capabilities are identical. The differences are the product, the mentor rate above, and the lifetime upgrade option. Never claim Essential unlocks less or that Signature earns deeper commissions.
 - Activation is cash-only. Bonus credit cannot pay for a first activation; it can be spent after activation, including on an upgrade.
 - An Essential partner may upgrade to Signature at any time: current Signature price minus what they already paid, plus a handling and second-delivery fee. The upgrade ships the Signature set and raises the mentor rate they earn; it does not change rank, depth or partner rights. Quote an exact price only from the live upgrade quote in context.
 - Commissions accrue after campaign placement. Pending entries are released by the finance desk; they are not spendable before release.

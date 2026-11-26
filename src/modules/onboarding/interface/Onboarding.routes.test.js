@@ -17,6 +17,7 @@ const auth = (req, _res, next) => {
 };
 
 let seenOrderInput = null;
+let seenUpgradeInput = null;
 let repeated = false;
 
 const app = express();
@@ -50,6 +51,24 @@ app.use('/v1/onboarding', buildOnboardingRouter({
         },
         queue: { status: 'queued', position: 1 },
         repeated,
+      };
+    },
+  },
+  createUpgrade: {
+    execute: async (input) => {
+      seenUpgradeInput = input;
+      return {
+        order: {
+          id: orderId,
+          orderNumber: 'MSA-UP-1',
+          amount: 28000,
+          currency: 'NGN',
+          tier: 'signature',
+          kind: 'upgrade',
+          activatedAt: new Date().toISOString(),
+        },
+        partner: { id: partnerId, accountState: 'partner', activationTier: 'signature' },
+        repeated: false,
       };
     },
   },
@@ -138,6 +157,19 @@ describe('onboarding routes', () => {
     assert.equal(seenOrderInput.shipping.fullName, 'Ada Obi');
     assert.equal(seenOrderInput.mentorContactPreference, 'in_app');
     assert.equal(seenOrderInput.mentorContactConsent, false);
+  });
+
+  it('creates a lifetime upgrade order with the idempotency key', async () => {
+    const result = await post('/v1/onboarding/upgrade', {
+      shipping,
+      idempotencyKey: 'upgrade-key-123',
+    });
+
+    assert.equal(result.status, 201);
+    assert.equal(result.body.data.order.kind, 'upgrade');
+    assert.equal(seenUpgradeInput.partnerId, partnerId);
+    assert.equal(seenUpgradeInput.idempotencyKey, 'upgrade-key-123');
+    assert.equal(seenUpgradeInput.shipping.fullName, 'Ada Obi');
   });
 
   it('passes the chosen mentor contact preference through activation', async () => {
