@@ -460,10 +460,19 @@ export class MongoOnboardingRepository {
     if (partner.activationTier !== 'essential') {
       return { ...quote, reason: 'already_signature' };
     }
+    // The latest order can be a refunded upgrade. Fall back to the original
+    // paid activation so the partner can upgrade again.
+    let baseOrder = activationOrder;
+    if (!baseOrder || baseOrder.kind === 'upgrade') {
+      baseOrder = await ActivationOrderModel.findOne({
+        partnerId: partner._id,
+        $or: [{ kind: 'activation' }, { kind: { $exists: false } }],
+        status: { $in: ['Paid', 'Fulfilled'] },
+      }).sort({ createdAt: -1 }).lean();
+    }
     if (
-      !activationOrder
-      || activationOrder.kind === 'upgrade'
-      || ['Refunded', 'Cancelled'].includes(activationOrder.status)
+      !baseOrder
+      || ['Refunded', 'Cancelled'].includes(baseOrder.status)
     ) {
       return { ...quote, reason: 'no_activation_order' };
     }
@@ -472,7 +481,7 @@ export class MongoOnboardingRepository {
       $or: [{ tier: 'signature' }, { sku: 'MS-STARTER-001' }],
     }).sort({ sortOrder: 1 }).lean();
     if (!signature) return { ...quote, reason: 'unavailable' };
-    const credit = Math.max(Number(activationOrder.amount) || 0, 0);
+    const credit = Math.max(Number(baseOrder.amount) || 0, 0);
     return {
       eligible: true,
       price: upgradePriceFor({ signaturePrice: signature.price, credit }),
@@ -742,8 +751,17 @@ export class MongoOnboardingRepository {
     const current = Math.max(Number(page) || 1, 1);
     const filter = {};
     if (status) filter.status = status;
-    if (tier) filter.tier = tier;
-    if (kind) filter.kind = kind;
+    // Legacy rows predate tier/kind; they are Signature activations.
+    if (tier === 'signature') filter.$and = [{ $or: [{ tier: 'signature' }, { tier: { $exists: false } }] }];
+    else if (tier) filter.tier = tier;
+    if (kind === 'activation') {
+      filter.$and = [
+        ...(filter.$and ?? []),
+        { $or: [{ kind: 'activation' }, { kind: { $exists: false } }] },
+      ];
+    } else if (kind) {
+      filter.kind = kind;
+    }
     const [rows, total] = await Promise.all([
       ActivationOrderModel.find(filter)
         .sort({ createdAt: -1 })
