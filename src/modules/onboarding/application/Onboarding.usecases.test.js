@@ -2,12 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CreateActivationOrderUseCase,
+  CreateUpgradeOrderUseCase,
   ListStarterProductsUseCase,
   RefundActivationOrderUseCase,
 } from './Onboarding.usecases.js';
 import { partnerSummary, publicQueue } from '../infrastructure/Onboarding.mongo.repository.js';
 import {
   CreateActivationOrderSchema,
+  CreateUpgradeOrderSchema,
   SubmitKycSchema,
 } from '../interface/Onboarding.validator.js';
 
@@ -280,6 +282,77 @@ describe('onboarding input validation', () => {
     assert.throws(() => CreateActivationOrderSchema.parse({
       productId: 'starter',
       shipping,
+    }));
+  });
+});
+
+describe('upgrade order use case', () => {
+  const shipping = {
+    fullName: 'Ada Obi',
+    phone: '+2348012345678',
+    street: '12 Market Road',
+    city: 'Lagos',
+    state: 'Lagos',
+  };
+  const upgradeOrder = {
+    id: 'order-2',
+    orderNumber: 'MSA-UP-1',
+    productName: 'MarketSpase Signature Clothing Set',
+    amount: 28000,
+    currency: 'NGN',
+    activatedAt: new Date('2026-11-26T10:00:00Z'),
+  };
+
+  it('emits partner.upgraded once for a new upgrade order', async () => {
+    const emitted = [];
+    const useCase = new CreateUpgradeOrderUseCase({
+      repo: {
+        createUpgrade: async () => ({
+          order: upgradeOrder,
+          partner: { id: 'partner-1' },
+          repeated: false,
+          grossMargin: 8580,
+        }),
+      },
+      events: { emit: async (name, payload) => emitted.push({ name, payload }) },
+    });
+
+    const result = await useCase.execute({
+      partnerId: 'partner-1',
+      shipping,
+      idempotencyKey: 'upgrade-key-123',
+    });
+
+    assert.equal(result.order.id, 'order-2');
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].name, 'partner.upgraded');
+    assert.equal(emitted[0].payload.amount, 28000);
+    assert.equal(emitted[0].payload.grossMargin, 8580);
+    assert.equal('grossMargin' in result, false);
+  });
+
+  it('does not emit again when the upgrade replays', async () => {
+    const emitted = [];
+    const useCase = new CreateUpgradeOrderUseCase({
+      repo: { createUpgrade: async () => ({ order: upgradeOrder, repeated: true }) },
+      events: { emit: async (name, payload) => emitted.push({ name, payload }) },
+    });
+
+    const result = await useCase.execute({
+      partnerId: 'partner-1',
+      shipping,
+      idempotencyKey: 'upgrade-key-123',
+    });
+
+    assert.equal(result.repeated, true);
+    assert.equal(emitted.length, 0);
+  });
+
+  it('validates the upgrade shipping payload without a product id', () => {
+    const parsed = CreateUpgradeOrderSchema.parse({ shipping });
+    assert.equal(parsed.shipping.country, 'Nigeria');
+    assert.throws(() => CreateUpgradeOrderSchema.parse({
+      shipping: { fullName: 'A' },
     }));
   });
 });

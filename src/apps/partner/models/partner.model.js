@@ -126,6 +126,22 @@ const partnersSchema = mongoose.Schema(
     kycSubmittedAt: { type: Date, default: null },
     kycVerifiedAt: { type: Date, default: null },
     activatedAt: { type: Date, default: null },
+    /**
+     * Activation plan. Legacy rows without the field are read as
+     * `signature`, so existing partners keep identical treatment.
+     */
+    activationTier: {
+      type: String,
+      enum: ['essential', 'signature'],
+      default: 'signature',
+      index: true,
+    },
+    upgradedAt: { type: Date, default: null },
+    upgradeOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ActivationOrder',
+      default: null,
+    },
     mentorContactPreference: {
       type: String,
       enum: ['in_app', 'email', 'whatsapp', 'phone', 'prefer_not_now'],

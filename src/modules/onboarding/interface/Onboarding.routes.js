@@ -9,6 +9,7 @@ import { MongoOnboardingRepository } from '../infrastructure/Onboarding.mongo.re
 import { MongoCompensationRepository } from '../../compensation/infrastructure/Compensation.mongo.repository.js';
 import {
   CreateActivationOrderUseCase,
+  CreateUpgradeOrderUseCase,
   FulfillActivationOrderUseCase,
   GetActivationSummaryUseCase,
   GetOnboardingStatusUseCase,
@@ -23,6 +24,7 @@ import {
 } from '../application/Onboarding.usecases.js';
 import {
   CreateActivationOrderSchema,
+  CreateUpgradeOrderSchema,
   KycQuerySchema,
   OrderIdParamsSchema,
   OrderQuerySchema,
@@ -48,6 +50,10 @@ export const buildOnboardingRouter = (deps = {}) => {
   const listProducts = deps.listProducts ?? new ListStarterProductsUseCase({ repo });
   const submitKyc = deps.submitKyc ?? new SubmitKycUseCase({ repo });
   const createOrder = deps.createOrder ?? new CreateActivationOrderUseCase({
+    repo,
+    events: deps.events,
+  });
+  const createUpgrade = deps.createUpgrade ?? new CreateUpgradeOrderUseCase({
     repo,
     events: deps.events,
   });
@@ -88,6 +94,26 @@ export const buildOnboardingRouter = (deps = {}) => {
       statusCode: data.repeated ? 200 : 201,
     });
   }));
+
+  router.post(
+    '/upgrade',
+    validate({ body: CreateUpgradeOrderSchema }),
+    asyncHandler(async (req, res) => {
+      const body = req.validated.body;
+      const data = await createUpgrade.execute({
+        partnerId: req.auth.partnerId,
+        shipping: body.shipping,
+        idempotencyKey: body.idempotencyKey ?? headerIdempotencyKey(req),
+      });
+      return sendSuccess(res, {
+        message: data.repeated
+          ? 'Upgrade order already exists'
+          : 'Account upgraded to the Signature plan',
+        data,
+        statusCode: data.repeated ? 200 : 201,
+      });
+    }),
+  );
 
   router.get('/orders', asyncHandler(async (req, res) => {
     const data = await listOrders.execute(req.auth.partnerId);

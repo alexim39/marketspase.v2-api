@@ -6,6 +6,8 @@ const commissionSaleSchema = new mongoose.Schema(
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'partner', required: true, index: true },
     orderNumber: { type: String, default: '', trim: true },
     productName: { type: String, default: '', trim: true },
+    /** Activation and upgrade orders accrue the same table, but report apart. */
+    saleType: { type: String, enum: ['activation', 'upgrade'], default: 'activation', index: true },
     grossMargin: { type: Number, required: true, min: 0 },
     status: {
       type: String,

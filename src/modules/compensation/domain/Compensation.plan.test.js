@@ -2,16 +2,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEVEL_RATES,
+  MENTOR_BONUS_AMOUNT,
   RANK_DEPTH,
   commissionAmount,
   depthAllows,
   mentorBonusDays,
+  mentorBonusForTier,
   planSummary,
   rankDepth,
   rateForLevel,
 } from './Compensation.plan.js';
 
 describe('compensation plan', () => {
+  it('raises the mentor rate for Signature mentors', () => {
+    assert.equal(mentorBonusForTier(800, 'essential'), 800);
+    assert.equal(mentorBonusForTier(800, 'signature'), Math.max(800, MENTOR_BONUS_AMOUNT));
+    assert.equal(mentorBonusForTier(1200, 'essential'), 1200);
+    assert.equal(mentorBonusForTier(0, 'essential'), 0);
+  });
+
   it('uses the approved five-level unilevel rates', () => {
     assert.deepEqual([...LEVEL_RATES], [0.09, 0.045, 0.025, 0.015, 0.01]);
     assert.ok(Math.abs(LEVEL_RATES.reduce((sum, rate) => sum + rate, 0) - 0.185) < 1e-12);

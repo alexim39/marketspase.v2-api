@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import { ProductModel } from '../src/apps/product/models/product.model.js';
 import { computeProductPricing } from '../src/apps/product/domain/ProductPricing.js';
 import { StarterProductModel } from '../src/modules/onboarding/infrastructure/Onboarding.models.js';
+import { STARTER_PRODUCTS } from '../src/modules/onboarding/domain/StarterProduct.js';
 import { buildImageStore } from '../src/modules/settings/infrastructure/CloudinaryClient.js';
 import { env } from '../src/shared/config/env.js';
 import { MongoAuditStore } from '../src/modules/audit/infrastructure/Audit.store.js';
@@ -82,7 +83,13 @@ if (!APPLY) {
   console.log(JSON.stringify({
     mode: 'dry-run (set APPLY=1 to upload media and write products)',
     database,
-    starter: { sku: 'MS-STARTER-001', name: 'MarketSpase Signature Clothing Set', image: '/img/activation-hoodi.jpeg' },
+    plans: STARTER_PRODUCTS.map((plan) => ({
+      sku: plan.sku,
+      tier: plan.tier,
+      name: plan.name,
+      price: plan.price,
+      image: plan.imageUrl,
+    })),
     product: {
       sku: H2OS.sku,
       name: H2OS.name,
@@ -140,36 +147,36 @@ const uploadMedia = async (productId, media) => {
 };
 
 // ----------------------------------------------------------------- starter
-const starterSource = {
-  sku: 'MS-STARTER-001',
-  name: 'MarketSpase Signature Clothing Set',
-  description: 'A premium everyday clothing set, delivered nationwide. Activation includes business onboarding and access to the MarketSpase partner network.',
-  price: 38000,
-  currency: 'NGN',
-  imageUrl: '/img/activation-hoodi.jpeg',
-  shippingCost: 3000,
-  cogs: 16000,
-  active: true,
-  sortOrder: 1,
-};
-const starterExisting = await StarterProductModel.findOne({ sku: starterSource.sku });
-const starter = starterExisting
-  ? await StarterProductModel.findByIdAndUpdate(
-    starterExisting._id,
-    { $set: { ...starterSource, imageUrl: starterSource.imageUrl } },
-    { new: true },
-  )
-  : await StarterProductModel.create(starterSource);
-
-if (APPLY) {
-  await audit.record({
-    actorId: auditActor,
-    action: starterExisting ? 'product.update' : 'product.create',
-    targetType: 'starter-product',
-    targetId: String(starter._id),
-    detail: { name: starter.name, price: starter.price, imageUrl: starter.imageUrl, source: 'seed:activation' },
-  });
+// Both activation plans are seeded idempotently by SKU. The Signature row
+// keeps its existing name, price and image; the Essential row is additive.
+const starterRows = [];
+for (const source of STARTER_PRODUCTS) {
+  const existing = await StarterProductModel.findOne({ sku: source.sku });
+  const doc = existing
+    ? await StarterProductModel.findByIdAndUpdate(
+      existing._id,
+      { $set: { ...source } },
+      { new: true },
+    )
+    : await StarterProductModel.create(source);
+  starterRows.push({ doc, created: !existing });
+  if (APPLY) {
+    await audit.record({
+      actorId: auditActor,
+      action: existing ? 'product.update' : 'product.create',
+      targetType: 'starter-product',
+      targetId: String(doc._id),
+      detail: {
+        name: doc.name,
+        tier: doc.tier,
+        price: doc.price,
+        imageUrl: doc.imageUrl,
+        source: 'seed:activation',
+      },
+    });
+  }
 }
+const starter = starterRows.find((row) => row.doc.sku === 'MS-STARTER-001')?.doc;
 
 // -------------------------------------------------------------------- H2Os
 const pricing = computeProductPricing({
@@ -285,14 +292,19 @@ if (APPLY) {
 console.log(JSON.stringify({
   database,
   admin: auditActor,
-  starter: {
-    id: String(starter._id),
-    sku: starter.sku,
-    name: starter.name,
-    price: starter.price,
-    imageUrl: starter.imageUrl,
-    active: starter.active,
-  },
+  plans: starterRows.map(({ doc, created }) => ({
+    id: String(doc._id),
+    sku: doc.sku,
+    tier: doc.tier,
+    name: doc.name,
+    price: doc.price,
+    mentorBonus: doc.mentorBonus ?? null,
+    upgradeCredit: doc.upgradeCredit ?? 0,
+    imageUrl: doc.imageUrl,
+    imageCount: Array.isArray(doc.images) ? doc.images.length : 0,
+    active: doc.active,
+    created,
+  })),
   product: {
     id: String(product._id),
     sku: product.sku,

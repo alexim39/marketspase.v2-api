@@ -1,5 +1,9 @@
 import { MENTOR_BONUS_AMOUNT } from '../../compensation/domain/Compensation.plan.js';
-import { STARTER_PRODUCT } from '../../onboarding/domain/StarterProduct.js';
+import {
+  ESSENTIAL_STARTER_PRODUCT,
+  SIGNATURE_STARTER_PRODUCT,
+  UPGRADE_HANDLING_FEE_NGN,
+} from '../../onboarding/domain/StarterProduct.js';
 import { storeServiceFeePercent } from '../../stores/domain/StorePricing.js';
 
 /**
@@ -15,9 +19,13 @@ export const MARKETSPASE_ALTERNATIVE = 'MarketSpase is a digital network marketi
 
 const naira = (value) => `₦${Number(value ?? 0).toLocaleString('en-NG')}`;
 
+const essentialPrice = naira(ESSENTIAL_STARTER_PRODUCT.price);
+const signaturePrice = naira(SIGNATURE_STARTER_PRODUCT.price);
+
 export const formatPlatformKnowledge = () => {
-  const price = naira(STARTER_PRODUCT.price);
-  const mentorBonus = naira(MENTOR_BONUS_AMOUNT);
+  const essentialMentor = naira(ESSENTIAL_STARTER_PRODUCT.mentorBonus);
+  const signatureMentor = naira(MENTOR_BONUS_AMOUNT);
+  const handling = naira(UPGRADE_HANDLING_FEE_NGN);
   const fee = Number(storeServiceFeePercent()).toFixed(0);
 
   return `MARKETSPASE — AUTHORITATIVE FACTS
@@ -28,13 +36,14 @@ Fuller alternative: ${MARKETSPASE_ALTERNATIVE}
 Use the fuller alternative only when the member asks for more detail, asks what makes MarketSpase different, or asks how it works before deciding. Do not use both explanations in one reply.
 Purpose: help people turn the time they already spend online into a real, product-backed business without cold calls, chasing friends, scripts or guessing what to do next.
 Free account: creating an account is free. The email verification link lasts 24 hours. A member can explore, chat with Ora, browse products and meet the community before paying anything.
-Activation: optional until the member chooses it. It costs ${price} for the ${STARTER_PRODUCT.name}, paid from the MarketSpase wallet and shipped to the member. Activation requires the identity check (KYC) and unlocks campaigns, resale, bonuses, the store and commission eligibility. If the activation order is refunded, activation is reversed and the account returns to member status.
+Activation: optional until the member chooses it. There are two plans, both paid from the MarketSpase wallet and shipped to the member: Essential is ${essentialPrice} for the ${ESSENTIAL_STARTER_PRODUCT.name}; Signature is ${signaturePrice} for the ${SIGNATURE_STARTER_PRODUCT.name}. Both give full partner rights, the same five-level commission table and the same rank path. Activation requires the identity check (KYC) and unlocks campaigns, resale, bonuses, the store and commission eligibility. Activation is paid from cash; bonus credit unlocks after activation. If an activation order is refunded, activation is reversed and the account returns to member status.
+Upgrade: an Essential partner may upgrade to Signature at any time, with no deadline. The price is the current Signature price minus the amount they already paid, plus a ${handling} handling and second-delivery fee. The upgrade ships the Signature set and raises the mentor rate they earn; it does not change rank, commission depth or partner rights.
 Member vs partner: a new account is a member. Activation makes the member a partner. A referred member keeps their sponsor as mentor and upline. An unsponsored member is matched through fair allocation, depending on active campaigns and capacity.
 Journey: create a free account and verify email → explore as a member → complete KYC and activate → get connected to a mentor → learn the core training → follow the daily plan → optionally open a store → earn and withdraw.
 Daily rhythm: Ora prepares up to three priorities and one momentum item. The member approves, edits or skips. The human conversations, training, using the product and supporting the team remain the member's work.
 Training: Initial Planning Orientation (IPO), Quick Start Guide (QSG), Standard Method of Operation (SMO), and Leadership/Self Development.
-Earnings: resale margin; store sales; activation commissions; product-order commissions; the ${mentorBonus} mentor bonus for mentoring a new partner through activation; and deeper commission levels as rank rises. Signing up alone, recruiting alone, training alone, campaign spend, deposits and withdrawals do not pay.
-Costs: the activation product; optional resale stock; a ${fee}% store service fee on merchandise plus payment processing; courier cost; the delivery fee the partner sets; and withdrawals to a Nigerian bank account.
+Earnings: resale margin; store sales; activation commissions; product-order commissions; the mentor bonus (${essentialMentor} on an Essential activation, ${signatureMentor} on a Signature activation, and a Signature mentor earns at least ${signatureMentor} on every activation they mentor); and deeper commission levels as rank rises. Signing up alone, recruiting alone, training alone, campaign spend, deposits and withdrawals do not pay.
+Costs: the activation plan (from ${essentialPrice}); optional resale stock; a ${fee}% store service fee on merchandise plus payment processing; courier cost; the delivery fee the partner sets; and withdrawals to a Nigerian bank account.
 Store: a partner buys resale stock at partner price, sets the retail price and fulfils orders. Store earnings reach the wallet about 7 days after delivery. The partner covers the actual courier cost. Team commissions do not apply to store sales.
 Ranks: Partner (1 commission level), Builder (2), Leader (3), Ambassador (5). Progression is checked automatically against the requirements, and the Journey page shows exactly what is missing. Never promise a specific date, income or promotion.
 Compliance: no income guarantees; no "passive income" or "money while you sleep"; no get-rich-quick claims; no pressure, countdowns or "last chance"; only contact people who opted in; nothing sends without the member's approval.`;
@@ -43,7 +52,7 @@ Compliance: no income guarantees; no "passive income" or "money while you sleep"
 export const formatObjectionGuide = () => `APPROVED OBJECTION HANDLING
 "Is this a pyramid scheme?" — No. MarketSpase pays on real product activity, not on signing people up. Costs are stated upfront, and the member can see how each earning stream works.
 "I don't want to pitch my friends and family." — Sharing is optional. It is not the business model. Ora prepares recruitment drafts and campaign actions; the member approves before anything goes out.
-"I tried network marketing before and lost money." — That is a fair concern. The activation is ${naira(STARTER_PRODUCT.price)} for the ${STARTER_PRODUCT.name}, and the member can explore free before deciding. No pressure.
+"I tried network marketing before and lost money." — That is a fair concern. Activation is ${essentialPrice} for the ${ESSENTIAL_STARTER_PRODUCT.name} or ${signaturePrice} for the ${SIGNATURE_STARTER_PRODUCT.name}, and the member can explore free before deciding. No pressure.
 "I'm worried about the money." — Creating an account is free. Activation only happens if and when the member chooses it. The costs are the activation product, optional resale stock, store fees and courier costs.
 "I don't have time." — The daily plan is short: up to three priorities and one momentum item. It is designed to fit around work, school or other commitments.
 "I'm not a salesperson." — Ora drafts the first message and the member edits or approves it. The training track and sponsor support the rest.

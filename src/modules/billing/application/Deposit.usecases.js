@@ -258,22 +258,44 @@ const settle = async (query) => (query && typeof query.lean === 'function' ? que
  */
 export const debitPartnerWallet = async (
   { partners },
-  { partnerId, amountNgn, filter = {}, set = null },
+  {
+    partnerId,
+    amountNgn,
+    filter = {},
+    set = null,
+    /**
+     * `spend_first` (default) consumes bonus before cash, as resale,
+     * campaigns and SMS expect. `cash_only` leaves bonus untouched and
+     * requires withdrawable cash to cover the full amount; activation uses
+     * it so bonus credit cannot fund a first activation.
+     */
+    bonusPolicy = 'spend_first',
+  },
   opts = {},
 ) => {
   const amount = Math.round(Number(amountNgn) * 100) / 100;
   if (!(amount > 0)) return null;
+  const cashOnly = bonusPolicy === 'cash_only';
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const current = await settle(walletQuery(partners, partnerId, opts));
     if (!current) throw new NotFoundException('Partner not found');
     const balance = Number(current.balance ?? 0);
-    if (balance < amount) return null;
     const bonusBefore = Math.max(0, Number(current.bonusBalance ?? 0));
-    const bonusUsed = Math.min(bonusBefore, amount);
-    const guard = { _id: partnerId, ...filter, balance: { $gte: amount } };
+    const available = cashOnly ? Math.max(balance - bonusBefore, 0) : balance;
+    if (available < amount) return null;
+    const bonusUsed = cashOnly ? 0 : Math.min(bonusBefore, amount);
+    const guard = {
+      _id: partnerId,
+      ...filter,
+      // With a fixed bonus snapshot, requiring amount + bonus guarantees the
+      // cash-only case cannot dip into bonus between read and write.
+      balance: { $gte: cashOnly ? amount + bonusBefore : amount },
+    };
     if (bonusBefore > 0) guard.bonusBalance = bonusBefore;
     else guard.$or = [{ bonusBalance: 0 }, { bonusBalance: { $exists: false } }];
-    const update = { $inc: { balance: -amount, bonusBalance: -bonusUsed } };
+    const update = cashOnly
+      ? { $inc: { balance: -amount } }
+      : { $inc: { balance: -amount, bonusBalance: -bonusUsed } };
     if (set) update.$set = set;
     const updated = await settle(partners.findOneAndUpdate(guard, update, { new: true, ...opts }));
     if (updated) {
@@ -281,7 +303,9 @@ export const debitPartnerWallet = async (
         partner: updated,
         bonusUsed,
         cashUsed: Math.round((amount - bonusUsed) * 100) / 100,
-        bonusBalance: Math.max(0, Number(updated.bonusBalance ?? 0)),
+        bonusBalance: cashOnly
+          ? bonusBefore
+          : Math.max(0, Number(updated.bonusBalance ?? 0)),
       };
     }
   }

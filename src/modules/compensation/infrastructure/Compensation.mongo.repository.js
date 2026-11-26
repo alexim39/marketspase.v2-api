@@ -24,6 +24,7 @@ import {
   RANKS,
   commissionAmount,
   depthAllows,
+  mentorBonusForTier,
   planSummary,
   rankDepth,
   rateForLevel,
@@ -90,7 +91,17 @@ const publicBonus = (bonus, activation, mentor) => ({
 });
 
 export class MongoCompensationRepository {
-  async recordActivation({ orderId, partnerId, orderNumber, productName, grossMargin, activatedAt }) {
+  async recordActivation({
+    orderId,
+    partnerId,
+    orderNumber,
+    productName,
+    grossMargin,
+    activatedAt,
+    mentorBonusAmount = null,
+    saleType = 'activation',
+    createMentorBonus = true,
+  }) {
     if (!hasId(orderId) || !hasId(partnerId)) throw new ValidationException('Invalid activation identity');
     const at = dateOrNow(activatedAt);
     const margin = Math.max(Number(grossMargin) || 0, 0);
@@ -99,6 +110,14 @@ export class MongoCompensationRepository {
     // campaign allocation sets the mentor, then release immediately.
     const activationPartner = await PartnersModel.findById(partnerId).select('partnerOf').lean();
     const mentorId = activationPartner?.partnerOf ?? null;
+    const planBonus = mentorBonusAmount === null || mentorBonusAmount === undefined
+      ? MENTOR_BONUS_AMOUNT
+      : Math.max(Number(mentorBonusAmount) || 0, 0);
+    let bonusAmount = planBonus;
+    if (mentorId) {
+      const mentor = await PartnersModel.findById(mentorId).select('activationTier').lean();
+      bonusAmount = mentorBonusForTier(planBonus, mentor?.activationTier ?? 'signature');
+    }
     const dueAt = at;
     const expiresAt = new Date(dueAt.getTime() + (MENTOR_BONUS_EXPIRY_DAYS * DAY_MS));
 
@@ -111,6 +130,7 @@ export class MongoCompensationRepository {
             partnerId,
             orderNumber: orderNumber ?? '',
             productName: productName ?? '',
+            saleType: saleType === 'upgrade' ? 'upgrade' : 'activation',
             grossMargin: margin,
             status: 'pending_placement',
             activatedAt: at,
@@ -119,21 +139,23 @@ export class MongoCompensationRepository {
         opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
       ).lean();
 
-      const bonus = await MentorBonusModel.findOneAndUpdate(
-        { orderId },
-        {
-          $setOnInsert: {
-            orderId,
-            activationPartnerId: partnerId,
-            mentorId,
-            amount: MENTOR_BONUS_AMOUNT,
-            dueAt,
-            expiresAt,
-            status: 'scheduled',
+      const bonus = createMentorBonus
+        ? await MentorBonusModel.findOneAndUpdate(
+          { orderId },
+          {
+            $setOnInsert: {
+              orderId,
+              activationPartnerId: partnerId,
+              mentorId,
+              amount: bonusAmount,
+              dueAt,
+              expiresAt,
+              status: 'scheduled',
+            },
           },
-        },
-        opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
-      ).lean();
+          opts(session, { new: true, upsert: true, setDefaultsOnInsert: true }),
+        ).lean()
+        : null;
 
       return { sale, bonus };
     });
@@ -156,6 +178,41 @@ export class MongoCompensationRepository {
       }
     }
     return result;
+  }
+
+  /**
+   * Upgrade orders accrue the same commission table on the incremental
+   * margin, but never create or pay a mentor bonus. The partner is already
+   * placed, so accrue immediately and release.
+   */
+  async recordUpgrade(payload) {
+    const activation = await this.recordActivation({
+      ...payload,
+      saleType: 'upgrade',
+      mentorBonusAmount: 0,
+      createMentorBonus: false,
+    });
+    const partner = await PartnersModel.findById(payload.partnerId)
+      .select('partnerOf placementCampaignId')
+      .lean();
+    if (partner?.partnerOf) {
+      try {
+        const results = await this.handleAllocation({
+          partnerId: payload.partnerId,
+          ownerId: partner.partnerOf,
+          campaignId: partner.placementCampaignId ?? null,
+          orderId: payload.orderId,
+        });
+        for (const result of results) {
+          if (result.entries > 0) {
+            await this.releaseActivationOrder(result.orderId, null).catch(() => null);
+          }
+        }
+      } catch {
+        // The pending sale is picked up by the allocation backfill.
+      }
+    }
+    return activation;
   }
 
   /** Release a scheduled mentor bonus for one activation order (idempotent). */
@@ -471,13 +528,12 @@ export class MongoCompensationRepository {
     });
   }
 
-  async handleAllocation({ partnerId, ownerId, campaignId }) {
+  async handleAllocation({ partnerId, ownerId, campaignId, orderId = null }) {
     if (!hasId(partnerId) || !hasId(ownerId)) throw new ValidationException('Invalid allocation identity');
     const now = new Date();
-    const sales = await CommissionSaleModel.find({
-      partnerId,
-      status: 'pending_placement',
-    }).limit(20).lean();
+    const saleFilter = { partnerId, status: 'pending_placement' };
+    if (orderId) saleFilter.orderId = orderId;
+    const sales = await CommissionSaleModel.find(saleFilter).limit(20).lean();
     const results = [];
 
     for (const sale of sales) {
@@ -524,6 +580,7 @@ export class MongoCompensationRepository {
                     orderId: claimed.orderId,
                     partnerId: claimed.partnerId,
                     earnerId: earner._id,
+                    saleType: claimed.saleType === 'upgrade' ? 'upgrade' : 'activation',
                     level,
                     rate,
                     amount,
@@ -541,11 +598,31 @@ export class MongoCompensationRepository {
           earnerId = earner.partnerOf ?? null;
         }
 
-        await MentorBonusModel.updateOne(
+        // Attaching a mentor can raise the bonus when that mentor is a
+        // Signature partner (Option A mentor rate).
+        const pendingBonus = await MentorBonusModel.findOne(
           { orderId: claimed.orderId, status: 'scheduled', mentorId: null },
-          { $set: { mentorId: ownerId } },
+          null,
           opts(session),
-        );
+        ).lean();
+        if (pendingBonus) {
+          const ownerQuery = PartnersModel.findById(ownerId).select('activationTier');
+          if (session) ownerQuery.session(session);
+          const owner = await ownerQuery.lean();
+          await MentorBonusModel.updateOne(
+            { _id: pendingBonus._id, status: 'scheduled', mentorId: null },
+            {
+              $set: {
+                mentorId: ownerId,
+                amount: mentorBonusForTier(
+                  pendingBonus.amount,
+                  owner?.activationTier ?? 'signature',
+                ),
+              },
+            },
+            opts(session),
+          );
+        }
 
         return {
           saleId: String(claimed._id),
@@ -1263,9 +1340,20 @@ export class MongoCompensationRepository {
           .select('partnerOf')
           .lean();
         if (!partner?.partnerOf) continue;
+        const mentor = await PartnersModel.findById(partner.partnerOf)
+          .select('activationTier')
+          .lean();
         const updated = await MentorBonusModel.updateOne(
           { _id: bonus._id, status: 'scheduled', mentorId: null },
-          { $set: { mentorId: partner.partnerOf } },
+          {
+            $set: {
+              mentorId: partner.partnerOf,
+              amount: mentorBonusForTier(
+                bonus.amount,
+                mentor?.activationTier ?? 'signature',
+              ),
+            },
+          },
         );
         if (updated.modifiedCount > 0) stats.mentorsAttached += 1;
       } catch {
