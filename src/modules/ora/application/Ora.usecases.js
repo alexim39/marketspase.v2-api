@@ -5,12 +5,26 @@ import { extractProposalBlock } from '../domain/Ora.proposals.js';
 import { parsePlanDraft, planDraftFromReply } from '../domain/Ora.plans.js';
 import { capabilityByKey } from '../domain/Ora.capabilities.js';
 import { classifyTopic, summarizeAnalytics } from '../domain/Ora.analytics.js';
+import {
+  ESSENTIAL_STARTER_PRODUCT,
+  SIGNATURE_STARTER_PRODUCT,
+} from '../../onboarding/domain/StarterProduct.js';
 
 /** Recent window sent to the model — bounds tokens per call. */
 export const HISTORY_WINDOW = 12;
 /** Per-partner 24-hour message cap (cost control). */
 export const DEFAULT_DAILY_LIMIT = 25;
 export const MAX_PENDING_ACTIONS = 20;
+
+/** Retired single-plan claims that must never reach a member. */
+export const STALE_ACTIVATION_CLAIM = /(?:has|there is|only)\s+(?:only\s+)?one activation plan|no separate starter package|no (?:separate )?(?:starter )?(?:package|tier) to choose/i;
+
+const naira = (value) => `₦${Number(value ?? 0).toLocaleString('en-NG')}`;
+
+/** Deterministic correction used when the model contradicts the live plans. */
+export const correctActivationFacts = () => (
+  `There are two activation plans: Essential is ${naira(ESSENTIAL_STARTER_PRODUCT.price)} for the ${ESSENTIAL_STARTER_PRODUCT.name}, and Signature is ${naira(SIGNATURE_STARTER_PRODUCT.price)} for the ${SIGNATURE_STARTER_PRODUCT.name}. Both give full partner rights and the same commission table.\n\nWhich plan would you like to compare?`
+);
 
 const toHistory = (messages = []) => messages
   .filter((m) => (m.role === 'user' || m.role === 'assistant') && String(m.content ?? '').trim())
@@ -296,7 +310,8 @@ export class AskOraUseCase {
         }
         throw error;
       }
-      const { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
+      let { text: reply, proposals: parsedProposals } = extractProposalBlock(raw);
+      if (STALE_ACTIVATION_CLAIM.test(reply)) reply = correctActivationFacts();
       const proposals = parsedProposals.length > 0 ? parsedProposals : fallbackProposals(text, snapshot);
       let actions = await materializeProposals({
         partnerId,

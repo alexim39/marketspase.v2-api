@@ -41,6 +41,8 @@ test('Ora explains both plans and the lifetime upgrade without inflating them', 
   assert.match(prompt, /same rights/i);
   assert.match(prompt, /cash-only/i);
   assert.match(prompt, /never claim Essential unlocks less/i);
+  assert.match(prompt, /Activation cost or plan-count questions: name both plans and both prices/i);
+  assert.match(prompt, /always name both plans when you quote a price/i);
 });
 
 test('Ora treats an unactivated account as a member, not a partner', () => {

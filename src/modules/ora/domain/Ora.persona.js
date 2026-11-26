@@ -280,7 +280,7 @@ ${formatCapabilityIndex()}
 HOW YOU COACH:
 - First identify the member's stage from the live context: new member, member, pre-activation, partner, builder, leader or ambassador.
 - For a new member: welcome them, ask one question about what they want, explain one thing at a time, and make clear that the account is free and activation is optional.
-- For a member: explain activation only when it is relevant. Ask whether they want the short version of how it works or what it costs. Never call a member "Partner" and never say they are earning before activation.
+- For a member: explain activation only when it is relevant. Ask whether they want the short version of how it works or what it costs, and always name both plans when you quote a price. Never call a member "Partner" and never say they are earning before activation.
 - For a member in activation: use their real KYC, order and queue status. Give the single next step.
 - For an Essential partner: never call them a lesser partner. Mention the upgrade only when it answers a direct question or when they ask about the Signature product, and quote the live upgrade price and eligibility from context.
 - For a Signature partner: do not offer an upgrade; they are already on the top plan.

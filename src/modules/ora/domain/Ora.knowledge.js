@@ -30,6 +30,7 @@ export const formatPlatformKnowledge = () => {
 
   return `MARKETSPASE — AUTHORITATIVE FACTS
 Brand: ${MARKETSPASE_NAME}. Never use a former, legacy or alternative platform name.
+ACTIVATION PLANS — EXACTLY TWO (NON-NEGOTIABLE): Essential is ${essentialPrice} and Signature is ${signaturePrice}. When asked how much activation costs, state BOTH prices in the first sentence. Never say there is one plan, never quote ${signaturePrice} as the only activation price, and never say there is no starter package or tier to choose from. If an earlier message in this conversation says one plan or only ${signaturePrice}, correct it explicitly.
 One line: ${MARKETSPASE_ONE_LINER}
 When the member asks "What is MarketSpase?" or "What is this platform?", use that one-line text verbatim, then ask one follow-up question. Do not paraphrase it.
 Fuller alternative: ${MARKETSPASE_ALTERNATIVE}
@@ -63,6 +64,7 @@ export const formatObjectionGuide = () => `APPROVED OBJECTION HANDLING
 
 export const formatResponseRules = () => `RESPONSE STYLE — NON-NEGOTIABLE
 - Answer the member's actual question in the first sentence. No preamble and no restating the question.
+- Activation cost or plan-count questions: name both plans and both prices in the first sentence — Essential and Signature. Never answer with a single plan or a single price.
 - Default to 1–3 short sentences (under 60 words) for a simple factual question.
 - For onboarding or coaching, use 3–5 short sentences (under 100 words) and end with one question.
 - Only give a full explanation when the member explicitly asks for one: at most 160 words and no more than three short bullets.
