@@ -1,7 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CreateWithdrawalUseCase } from './Withdrawal.usecases.js';
-import { GetSavedPayoutAccountUseCase } from './SavedPayoutAccount.usecases.js';
+import {
+  DeleteSavedPayoutAccountUseCase,
+  GetSavedPayoutAccountUseCase,
+  ListSavedPayoutAccountsUseCase,
+} from './SavedPayoutAccount.usecases.js';
 
 const account = {
   bankCode: '058',
@@ -15,13 +19,17 @@ const account = {
 const withdrawalDeps = (savedCalls = []) => {
   const created = [];
   const savedAccounts = {
-    upsert: async (partnerId, value) => {
-      savedCalls.push({ action: 'upsert', partnerId, value });
-      return { ...value, accountLast4: value.accountNumber.slice(-4) };
-    },
-    remove: async (partnerId) => {
-      savedCalls.push({ action: 'remove', partnerId });
-      return { removed: true };
+    save: async (partnerId, value) => {
+      savedCalls.push({ action: 'save', partnerId, value });
+      return {
+        account: {
+          id: 'sa1',
+          ...value,
+          accountLast4: value.accountNumber.slice(-4),
+        },
+        created: true,
+        limitReached: false,
+      };
     },
   };
   return {
@@ -82,7 +90,7 @@ describe('saved payout account', () => {
     });
     assert.equal(result.status, 'Pending');
     assert.equal(fake.savedCalls.length, 1);
-    assert.equal(fake.savedCalls[0].action, 'upsert');
+    assert.equal(fake.savedCalls[0].action, 'save');
     assert.deepEqual(fake.savedCalls[0].value, {
       bankCode: '058',
       bankName: 'Guaranty Trust Bank',
@@ -91,7 +99,7 @@ describe('saved payout account', () => {
     });
   });
 
-  it('removes the saved account only when the toggle is switched off', async () => {
+  it('does not delete saved accounts when the save toggle is off', async () => {
     const fake = withdrawalDeps();
     const uc = new CreateWithdrawalUseCase(fake.deps);
     await uc.execute({
@@ -102,7 +110,27 @@ describe('saved payout account', () => {
       amountNgn: 1000,
       saveAccount: false,
     });
-    assert.deepEqual(fake.savedCalls, [{ action: 'remove', partnerId: 'p1' }]);
+    assert.deepEqual(fake.savedCalls, []);
+  });
+
+  it('warns instead of failing when the five-account limit is reached', async () => {
+    const fake = withdrawalDeps();
+    fake.deps.savedAccounts.save = async () => ({
+      account: null,
+      created: false,
+      limitReached: true,
+    });
+    const uc = new CreateWithdrawalUseCase(fake.deps);
+    const result = await uc.execute({
+      partnerId: 'p1',
+      bankCode: '058',
+      bankName: 'Guaranty Trust Bank',
+      accountNumber: '0123456789',
+      amountNgn: 1000,
+      saveAccount: true,
+    });
+    assert.equal(result.status, 'Pending');
+    assert.deepEqual(result.savedAccount, { saved: false, reason: 'LIMIT_REACHED' });
   });
 
   it('leaves the saved account unchanged when the flag is omitted', async () => {
@@ -120,7 +148,7 @@ describe('saved payout account', () => {
 
   it('never fails a valid withdrawal when saving the preference fails', async () => {
     const fake = withdrawalDeps();
-    fake.deps.savedAccounts.upsert = async () => { throw new Error('database unavailable'); };
+    fake.deps.savedAccounts.save = async () => { throw new Error('database unavailable'); };
     const uc = new CreateWithdrawalUseCase(fake.deps);
     const result = await uc.execute({
       partnerId: 'p1',
@@ -150,5 +178,30 @@ describe('saved payout account', () => {
       /balance is too low/,
     );
     assert.equal(fake.savedCalls.length, 0);
+  });
+
+  it('lists up to five saved accounts with the cap', async () => {
+    const uc = new ListSavedPayoutAccountsUseCase({
+      savedAccounts: { listByPartner: async () => [{ ...account, id: 'sa1' }] },
+    });
+    const result = await uc.execute({ partnerId: 'p1' });
+    assert.equal(result.max, 5);
+    assert.equal(result.accounts.length, 1);
+    assert.equal(result.accounts[0].id, 'sa1');
+  });
+
+  it('deletes only an owned saved account', async () => {
+    const ok = new DeleteSavedPayoutAccountUseCase({
+      savedAccounts: { remove: async () => ({ removed: true }) },
+    });
+    assert.deepEqual(await ok.execute({ partnerId: 'p1', accountId: 'a1' }), { removed: true });
+
+    const missing = new DeleteSavedPayoutAccountUseCase({
+      savedAccounts: { remove: async () => ({ removed: false }) },
+    });
+    await assert.rejects(
+      missing.execute({ partnerId: 'p1', accountId: 'a2' }),
+      /not found/i,
+    );
   });
 });

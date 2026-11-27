@@ -25,6 +25,21 @@ export const makeBillingController = (uc) => ({
     });
   }),
 
+  listSavedPayoutAccounts: asyncHandler(async (req, res) => {
+    const data = await uc.listSavedPayoutAccounts.execute({ partnerId: req.auth?.partnerId });
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({ message: 'Saved payout accounts retrieved', data, success: true });
+  }),
+
+  deleteSavedPayoutAccount: asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await uc.deleteSavedPayoutAccount.execute({
+      partnerId: req.auth?.partnerId,
+      accountId: params?.accountId,
+    });
+    res.status(200).json({ message: 'Saved payout account removed', data, success: true });
+  }),
+
   /** Step-up password check for the money-moving withdrawal route. */
   confirmWithdrawalPassword: asyncHandler(async (req, _res, next) => {
     const body = req.validated?.body ?? req.body;

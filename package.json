@@ -28,6 +28,7 @@
     "migrate:pii": "node scripts/migrate-pii-encryption.js",
     "pii:key": "node scripts/generate-pii-key.mjs",
     "migrate:rank-sync": "node scripts/migrate-rank-sync.mjs",
+    "migrate:saved-accounts": "node scripts/migrate-saved-payout-accounts.mjs",
     "migrate:upline": "node scripts/migrate-single-upline.mjs",
     "backfill:bonus": "node scripts/backfill-bonus-balance.mjs",
     "audit:upline": "node scripts/check-single-upline.mjs",

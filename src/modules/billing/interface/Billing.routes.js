@@ -9,7 +9,11 @@ import { idempotency } from '../../../shared/http/idempotency.js';
 import { makeBillingController } from './Billing.controller.js';
 import { ResolveAccountUseCase, ListBanksUseCase } from '../application/Commission.queries.js';
 import { CreateWithdrawalUseCase, MIN_WITHDRAWAL_NGN, MAX_WITHDRAWAL_NGN } from '../application/Withdrawal.usecases.js';
-import { GetSavedPayoutAccountUseCase } from '../application/SavedPayoutAccount.usecases.js';
+import {
+  DeleteSavedPayoutAccountUseCase,
+  GetSavedPayoutAccountUseCase,
+  ListSavedPayoutAccountsUseCase,
+} from '../application/SavedPayoutAccount.usecases.js';
 import { ConfirmPasswordUseCase } from '../../identity-access/application/ConfirmPassword.usecase.js';
 import { MongoPartnerRepository } from '../../identity-access/infrastructure/Auth.mongo.repository.js';
 import { BcryptPasswordHasher } from '../../identity-access/infrastructure/Auth.crypto.js';
@@ -17,10 +21,12 @@ import { MongoSavedPayoutAccountRepository } from '../infrastructure/SavedPayout
 import { PaystackClient } from '../infrastructure/PaystackClient.js';
 import { notifyPayoutOutcome } from '../application/Payout.notifier.js';
 
+const objectId = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'Invalid id');
 const ResolveQuery = z.object({
   accountNumber: z.string().trim().regex(/^\d{10}$/, 'Invalid account number'),
   bankCode: z.string().trim().min(1).max(20),
 });
+const AccountIdParam = z.object({ accountId: objectId });
 const WithdrawalSchema = z.object({
   bankCode: z.string().trim().min(1).max(20),
   bankName: z.string().trim().max(120).optional(),
@@ -49,6 +55,8 @@ export const buildBillingRouter = (deps = {}) => {
     resolveAccount: new ResolveAccountUseCase({ http: deps.http ?? axios }),
     listBanks: new ListBanksUseCase({ http: deps.http ?? axios }),
     getSavedPayoutAccount: new GetSavedPayoutAccountUseCase({ savedAccounts }),
+    listSavedPayoutAccounts: new ListSavedPayoutAccountsUseCase({ savedAccounts }),
+    deleteSavedPayoutAccount: new DeleteSavedPayoutAccountUseCase({ savedAccounts }),
     confirmPassword,
     createWithdrawal: deps.createWithdrawal ?? new CreateWithdrawalUseCase({
       paystack,
@@ -77,8 +85,14 @@ export const buildBillingRouter = (deps = {}) => {
   router.get('/resolve-account', validate({ query: ResolveQuery }), c.resolveAccount);
   // Bank directory — proxied so the browser never calls Paystack directly.
   router.get('/banks', c.listBanks);
-  // Owner-scoped saved destination for the withdrawal dialog.
+  // Owner-scoped saved destinations for the withdrawal dialog.
   router.get('/withdrawal-account', c.getSavedPayoutAccount);
+  router.get('/withdrawal-accounts', c.listSavedPayoutAccounts);
+  router.delete(
+    '/withdrawal-accounts/:accountId',
+    validate({ params: AccountIdParam }),
+    c.deleteSavedPayoutAccount,
+  );
   // Withdrawal request — password confirms the account holder, then the
   // server re-resolves the destination account before debiting the wallet.
   router.post(

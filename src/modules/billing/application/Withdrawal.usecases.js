@@ -42,24 +42,30 @@ export class CreateWithdrawalUseCase {
    * movement. A database failure here must not fail a created withdrawal.
    */
   async persistSavedAccount({ partnerId, saveAccount, bankCode, bankName, accountName, accountNumber }) {
-    if (!this.savedAccounts || saveAccount === undefined || saveAccount === null) return;
+    // Saving is opt-in. Turning the toggle off means "do not save this one";
+    // it never deletes accounts the partner already saved.
+    if (!this.savedAccounts || saveAccount !== true) return null;
     try {
-      if (saveAccount === true) {
-        await this.savedAccounts.upsert(partnerId, {
-          bankCode,
-          bankName,
-          accountName,
-          accountNumber,
-        });
-      } else if (saveAccount === false) {
-        await this.savedAccounts.remove(partnerId);
+      const saved = await this.savedAccounts.save(partnerId, {
+        bankCode,
+        bankName,
+        accountName,
+        accountNumber,
+      });
+      if (saved?.limitReached) {
+        return { saved: false, reason: 'LIMIT_REACHED' };
       }
+      return {
+        saved: true,
+        accountId: saved?.account?.id ?? null,
+        created: saved?.created === true,
+      };
     } catch (error) {
       logger.warn('saved_payout_account_persist_failed', {
         partnerId: String(partnerId),
-        saveAccount,
         error: error?.message ?? String(error),
       });
+      return { saved: false, reason: 'SAVE_FAILED' };
     }
   }
 
@@ -195,14 +201,17 @@ export class CreateWithdrawalUseCase {
       accountNumber: account,
       accountName: resolved.accountName,
     };
-    const persistPreference = () => this.persistSavedAccount({
-      partnerId,
-      saveAccount,
-      bankCode: bank,
-      bankName: bankLabel,
-      accountName: resolved.accountName,
-      accountNumber: account,
-    });
+    const persistPreference = async () => {
+      const savedAccount = await this.persistSavedAccount({
+        partnerId,
+        saveAccount,
+        bankCode: bank,
+        bankName: bankLabel,
+        accountName: resolved.accountName,
+        accountNumber: account,
+      });
+      if (savedAccount) result.savedAccount = savedAccount;
+    };
 
     if (!this.autoPayout) {
       await this.notify({

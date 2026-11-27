@@ -191,7 +191,16 @@ export const INDEXES = [
   { collection: 'training_lessons', keys: { title: 'text', summary: 'text', body: 'text' }, options: {} },
   { collection: 'training_progress', keys: { partnerId: 1, courseId: 1 }, options: { unique: true } },
   { collection: 'training_progress', keys: { courseId: 1 }, options: {} },
-  { collection: 'saved_payout_accounts', keys: { partnerId: 1 }, options: { unique: true } },
+  { collection: 'saved_payout_accounts', keys: { partnerId: 1, updatedAt: -1 }, options: {} },
+  {
+    collection: 'saved_payout_accounts',
+    keys: { partnerId: 1, bankCode: 1, accountNumberHash: 1 },
+    options: {
+      unique: true,
+      partialFilterExpression: { accountNumberHash: { $type: 'string' } },
+      name: 'partner_bank_account_unique',
+    },
+  },
 ];
 
 /**
