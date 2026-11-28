@@ -9,6 +9,7 @@ const tutorialSchema = new mongoose.Schema(
     url: { type: String, default: '', maxlength: 300 },
     area: { type: String, enum: TUTORIAL_AREAS, default: 'Start', index: true },
     order: { type: Number, default: 0, min: 0, max: 10000 },
+    viewCount: { type: Number, default: 0, min: 0 },
     active: { type: Boolean, default: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
     deletedAt: { type: Date, default: null, index: true },

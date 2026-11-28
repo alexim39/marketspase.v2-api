@@ -7,7 +7,7 @@ import { asyncHandler } from '../../../shared/http/asyncHandler.js';
 import { TUTORIAL_AREAS } from '../domain/Tutorial.youtube.js';
 import {
   CreateTutorialUseCase, DeleteTutorialUseCase, ListAdminTutorialsUseCase,
-  ListTutorialsUseCase, UpdateTutorialUseCase,
+  ListTutorialsUseCase, RecordTutorialViewUseCase, UpdateTutorialUseCase,
 } from '../application/Tutorial.usecases.js';
 import { recordAudit } from '../../audit/index.js';
 
@@ -32,6 +32,7 @@ const UpdateSchema = z.object({
 /** Member routes — active tutorials grouped by area. */
 export const buildTutorialRouter = (deps = {}) => {
   const list = deps.list ?? new ListTutorialsUseCase({});
+  const recordView = deps.recordView ?? new RecordTutorialViewUseCase({});
 
   const router = express.Router();
   router.use(requireAuth);
@@ -39,6 +40,15 @@ export const buildTutorialRouter = (deps = {}) => {
   router.get('/', asyncHandler(async (req, res) => {
     const data = await list.execute();
     res.status(200).json({ message: 'Tutorials retrieved successfully', data, success: true });
+  }));
+
+  router.post('/:id/view', validate({ params: z.object({ id: objectId }) }), asyncHandler(async (req, res) => {
+    const params = req.validated?.params ?? req.params;
+    const data = await recordView.execute({
+      tutorialId: params.id,
+      partnerId: req.auth?.partnerId,
+    });
+    res.status(200).json({ message: 'Tutorial view recorded successfully', data, success: true });
   }));
 
   return router;

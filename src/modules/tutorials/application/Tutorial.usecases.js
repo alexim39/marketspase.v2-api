@@ -1,6 +1,7 @@
 import { NotFoundException, ValidationException } from '../../../shared/domain/AppError.js';
 import { TUTORIAL_AREAS, extractYouTubeId } from '../domain/Tutorial.youtube.js';
 import { TutorialModel } from '../infrastructure/Tutorial.mongo.js';
+import { TutorialViewModel } from '../infrastructure/Tutorial.views.mongo.js';
 
 const oid = (v) => String(v);
 const shaped = (t) => t ? {
@@ -10,6 +11,7 @@ const shaped = (t) => t ? {
   youtubeId: t.youtubeId,
   area: t.area,
   order: t.order ?? 0,
+  viewCount: Math.max(0, Number(t.viewCount ?? 0) || 0),
   active: t.active !== false,
   createdAt: t.createdAt ?? null,
   updatedAt: t.updatedAt ?? null,
@@ -29,6 +31,59 @@ export class ListTutorialsUseCase {
       items: (rows ?? []).filter((r) => (r.area ?? 'Start') === area).map(shaped),
     })).filter((g) => g.items.length > 0);
     return { groups, total: (rows ?? []).length };
+  }
+}
+
+/**
+ * Member play — one view per partner per tutorial.
+ *
+ * A separate unique view row makes the count resilient to refreshes and
+ * multiple devices, while the counter stays a single atomic increment.
+ */
+export class RecordTutorialViewUseCase {
+  /** @param {{tutorials, views}} deps */
+  constructor({ tutorials, views } = {}) {
+    this.tutorials = tutorials ?? TutorialModel;
+    this.views = views ?? TutorialViewModel;
+  }
+
+  async execute({ tutorialId, partnerId }) {
+    const tutorial = await this.tutorials.findOne({ _id: tutorialId, active: true })
+      .select('viewCount')
+      .lean();
+    if (!tutorial) throw new NotFoundException('Tutorial not found');
+
+    let counted = false;
+    try {
+      const result = await this.views.updateOne(
+        { tutorialId, partnerId },
+        { $setOnInsert: { tutorialId, partnerId } },
+        { upsert: true },
+      );
+      counted = Number(result?.upsertedCount ?? 0) === 1;
+    } catch (err) {
+      // A concurrent first view can race the unique index. Treat that as
+      // already counted rather than failing the playback request.
+      if (err?.code !== 11000) throw err;
+    }
+
+    if (!counted) {
+      const current = await this.tutorials.findById(tutorialId).select('viewCount').lean();
+      return {
+        viewCount: Math.max(0, Number(current?.viewCount ?? tutorial.viewCount ?? 0) || 0),
+        counted: false,
+      };
+    }
+
+    const updated = await this.tutorials.findByIdAndUpdate(
+      tutorialId,
+      { $inc: { viewCount: 1 } },
+      { new: true, projection: { viewCount: 1 } },
+    ).lean();
+    return {
+      viewCount: Math.max(0, Number(updated?.viewCount ?? tutorial.viewCount + 1) || 0),
+      counted: true,
+    };
   }
 }
 
